@@ -1,0 +1,3 @@
+rule_id, component_1, component_2, support_type, description
+1, cpu, motherboard, socket_match, phải có cùng thế hệ socket mới có thể tương thích
+2, gpu, motherboard, piece_match, phải có cùng hoặc thấp hơn để phù hợp để lắp đặt
