@@ -75,16 +75,35 @@ def _build_product_context(user_message: str, has_cpu: bool, has_gpu: bool,
         # Bỏ qua các trường đã hiển thị và các trường không có giá trị.
         exclude_keys = {'category', 'tên', 'name', 'giá', 'price', 'price_formatted'}
         extra_parts = []
-        # Mapping of field names (case‑insensitive) to unit suffixes
-        unit_map = {
-            'ram tối đa': 'GB',
-            'giá': 'VND',
-            'tdp': 'W',
-            'xung cơ bản': 'GHz',
-            'xung boost': 'GHz',
-            'kich thước': 'mm',
-            # Future fields can be added here, e.g. 'kích thước': 'mm'
+        # -----------------------------------------------------------------
+        # Unit handling – a per‑category mapping with a fallback "default"
+        # -----------------------------------------------------------------
+        # The outer dict is keyed by product category (uppercase strings as
+        # used in the search results).  Each inner dict maps a lower‑cased field
+        # name to its unit.  The special "default" entry is used when a field
+        # does not have a category‑specific override.
+        UNIT_MAP = {
+            "default": {
+                'ram tối đa': 'GB',
+                'giá': 'VND',
+                'tdp': 'W',
+                'xung cơ bản': 'GHz',   # CPU default
+                'xung boost': 'GHz',
+                'kich thước': 'mm',
+            },
+            "GPU": {
+                # GPU clock speeds are expressed in megahertz
+                'xung cơ bản': 'MHz',
+                'xung boost': 'MHz',
+            },
+            # Additional categories (e.g., "CPU", "MAINBOARD") can be added
+            # here if they need different units for the same field.
         }
+        # Determine which unit map to use for the current category.  If the
+        # category does not have a specific override, fall back to the default
+        # mapping.
+        current_unit_map = UNIT_MAP.get(category, UNIT_MAP["default"])
+
         for key, val in item.items():
             if key in exclude_keys:
                 continue
@@ -101,10 +120,10 @@ def _build_product_context(user_message: str, has_cpu: bool, has_gpu: bool,
                 continue
             # Apply unit suffix if the field is known and the value is numeric
             lower_key = key.lower()
-            if lower_key in unit_map:
+            if lower_key in current_unit_map:
                 # If the value already contains a unit (string), keep it as‑is
                 if isinstance(val, (int, float)):
-                    extra_parts.append(f"{key}: {val} {unit_map[lower_key]}")
+                    extra_parts.append(f"{key}: {val} {current_unit_map[lower_key]}")
                 else:
                     extra_parts.append(f"{key}: {val}")
                 continue

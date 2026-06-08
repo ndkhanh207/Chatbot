@@ -14,7 +14,7 @@ DEFAULT_FLOAT_COLS = ['giá', 'xung cơ bản', 'xung boost', 'chiều dài']
 # Bảng giá trị mặc định để chống lỗi Null
 DEFAULT_FILL_VALUES = {col: 0.0 for col in DEFAULT_FLOAT_COLS + DEFAULT_INT_COLS}
 
-DATA_DIR = Path(os.getenv('PC_STORE_DATA_DIR', Path(__file__).resolve().parent / 'structure_data'))
+DATA_DIR = Path(os.getenv('PC_STORE_DATA_DIR', Path(__file__).resolve().parent / 'data'))
 
 def resolve_data_path(filename):
     return DATA_DIR / filename
