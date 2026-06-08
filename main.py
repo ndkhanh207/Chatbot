@@ -24,6 +24,7 @@ from data_loader import load_compatibility_rules, load_knowledge_base, convert_t
 from search_engine import build_corpus_embeddings, hybrid_search
 from chat_handler import handle_chat
 from model_utils import get_ollama_model
+from tool.calculator import convert_unit
 
 # ──────────────────────────────────────────────
 # Global state – populated during lifespan startup
@@ -119,3 +120,18 @@ def test_kb(q: str = None, category: str = None, top_k: int = 5):
 def chat_with_bot(user_message: str):
     """API chatbot hoàn chỉnh với tính năng kiểm tra tương thích."""
     return handle_chat(user_message, KNOWLEDGE_BASE, COMPATIBILITY_RULES, _search)
+
+
+@app.get("/calculate")
+def calculate(value: float, from_unit: str, to_unit: str):
+    """Unit conversion calculator API.
+
+    Examples:
+        /calculate?value=64&from_unit=GB&to_unit=MB
+        /calculate?value=3.5&from_unit=GHz&to_unit=MHz
+    """
+    try:
+        result = convert_unit(value, from_unit, to_unit)
+        return {"status": "success", "result": result}
+    except ValueError as e:
+        return {"status": "error", "message": str(e)}

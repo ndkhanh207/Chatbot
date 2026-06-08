@@ -80,7 +80,8 @@ def hybrid_search(q, category, top_k, knowledge_base, embedding_model, corpus_em
         # format giá sang tiếng việt có dấu và đơn vị VND
         price_val = record.get('giá') if 'giá' in record else record.get('price', 0)
         record['price_formatted'] = format_currency_vietnam(price_val)
-        # Remove internal hybrid_score before returning to the user
+        # Remove internal fields before returning to the user
         record.pop('hybrid_score', None)
+        record.pop('search_text', None)
 
     return records

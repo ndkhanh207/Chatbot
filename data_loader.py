@@ -6,6 +6,10 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from config import Config
 from langchain_chroma import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
+from tqdm import tqdm
+from multiprocessing import Pool
+import warnings
+warnings.filterwarnings('ignore')
 
 # Đã đổi sang tiếng Việt theo đúng Header trong file CSV của bạn
 DEFAULT_INT_COLS = ['số lõi', 'khe RAM', 'khe M.2', 'bộ nhớ', 'RAM tối đa', 'tdp']
@@ -79,38 +83,48 @@ def load_knowledge_base():
 # ==============================================================
 # BỔ SUNG QUAN TRỌNG: Hàm chuyển DataFrame sang LangChain Document
 # ==============================================================
-def convert_to_documents(df):
+def _process_row_for_docs(args):
+    """Helper function for parallel document processing."""
+    index, row, cols_to_use = args
+    splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
+    
+    content_parts = []
+    for col in cols_to_use:
+        val = row.get(col)
+        if val != "" and pd.notna(val) and (not isinstance(val, (int, float)) or val != 0):
+            content_parts.append(f"{str(col).capitalize()}: {val}")
+    
+    page_content = " | ".join(content_parts)
+    chunks = splitter.split_text(page_content)
+    
+    docs = []
+    category = row.get("category", "UNKNOWN")
+    for chunk in chunks:
+        docs.append(Document(page_content=chunk, metadata={"row": index, "category": category}))
+    return docs
+
+def convert_to_documents(df, num_workers=4):
     """Convert each DataFrame row into one or more LangChain ``Document`` objects.
 
-    The original implementation created a single document per row.  For long
-    textual rows (e.g., detailed product descriptions) it is beneficial to
-    split the content into smaller chunks before embedding.  This function now
-    uses :class:`RecursiveCharacterTextSplitter` to break the concatenated
-    ``page_content`` into manageable pieces (default 500 characters with a 50
-    character overlap).  Each chunk is stored as an individual ``Document``
-    while preserving the original row index and category in the metadata.
+    Uses parallel processing for faster document generation. Documents are split
+    into chunks for better embedding performance.
     """
-
-    # Configure a generic text splitter – can be tuned via parameters if needed
-    splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
-
+    # Skip search_text column during document conversion
+    cols_to_use = [col for col in df.columns if col != 'search_text']
+    
+    # Prepare arguments for parallel processing
+    rows_data = [(idx, row.to_dict(), cols_to_use) for idx, row in df.iterrows()]
+    
     docs = []
-    for index, row in df.iterrows():
-        # Build a single string representation of the row (same as before)
-        content_parts = []
-        for col in df.columns:
-            val = row[col]
-            if val != "" and pd.notna(val) and val != 0 and val != 0.0:
-                content_parts.append(f"{str(col).capitalize()}: {val}")
-        page_content = " | ".join(content_parts)
-
-        # Split the content into chunks; if the text is short, ``split_text``
-        # will simply return a list containing the original string.
-        chunks = splitter.split_text(page_content)
-        for chunk in chunks:
-            metadata = {"row": index, "category": row.get("category", "UNKNOWN")}
-            docs.append(Document(page_content=chunk, metadata=metadata))
-
+    with Pool(num_workers) as pool:
+        for doc_batch in tqdm(
+            pool.imap_unordered(_process_row_for_docs, rows_data, chunksize=32),
+            total=len(rows_data),
+            desc="📄 Converting documents",
+            unit="row"
+        ):
+            docs.extend(doc_batch)
+    
     return docs
 
 def load_compatibility_rules():
@@ -149,13 +163,20 @@ def initialize_vector_db():
     # If the directory is empty, build the DB from the knowledge base
     if not os.listdir(Config.VECTOR_DB_DIR):
         try:
-            print("=== [HỆ THỐNG] Vector DB chưa tồn tại, đang tạo mới... ===")
+            print("=== [HỆ THỐNG] Vector DB chưa tồn tại, đang tạo mới... ===\n")
             kb = load_knowledge_base()
-            docs = convert_to_documents(kb)
+            docs = convert_to_documents(kb, num_workers=4)
+            
+            print(f"\n🔄 Adding {len(docs)} documents to vector store...")
             vector_store = Chroma(persist_directory=Config.VECTOR_DB_DIR, embedding_function=embeddings)
-            vector_store.add_documents(docs)
+            
+            # Add documents in larger batches for faster indexing
+            batch_size = 500
+            for i in tqdm(range(0, len(docs), batch_size), desc="💾 Indexing documents", unit="batch"):
+                batch = docs[i:i + batch_size]
+                vector_store.add_documents(batch)
 
-            print("=== [HỆ THỐNG] Đã tạo và lưu Vector DB thành công. ===")
+            print("\n=== [HỆ THỐNG] Đã tạo và lưu Vector DB thành công. ===\n")
         except Exception as e:
             print(f"❌ LỖI TẠO VECTOR DB trong data_loader: {e}")
             raise

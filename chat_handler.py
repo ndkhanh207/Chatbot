@@ -9,6 +9,8 @@ import ollama
 from model_utils import get_ollama_model
 from compatibility import build_compatibility_context
 from utils import format_currency_vietnam, normalize_text
+from tool.calculator import auto_convert_context_value
+from unit_config import get_unit_map
 
 
 # ──────────────────────────────────────────────
@@ -34,6 +36,8 @@ def _normalize_user_message(user_message: str) -> str:
         .replace("card đồ họa", "gpu")
         .replace("vga", "gpu")
         .replace("đồ họa", "gpu")
+        .replace("điện năng", "tpd")
+        .replace("điện năng tiêu thụ", "tdp")  
     )
 
 
@@ -72,37 +76,14 @@ def _build_product_context(user_message: str, has_cpu: bool, has_gpu: bool,
         )
         name = item.get('tên') or item.get('name')
         # Tự động thêm các thông tin chi tiết còn lại (không cần liệt kê từng loại)
-        # Bỏ qua các trường đã hiển thị và các trường không có giá trị.
-        exclude_keys = {'category', 'tên', 'name', 'giá', 'price', 'price_formatted'}
-        extra_parts = []
-        # -----------------------------------------------------------------
-        # Unit handling – a per‑category mapping with a fallback "default"
-        # -----------------------------------------------------------------
-        # The outer dict is keyed by product category (uppercase strings as
-        # used in the search results).  Each inner dict maps a lower‑cased field
-        # name to its unit.  The special "default" entry is used when a field
-        # does not have a category‑specific override.
-        UNIT_MAP = {
-            "default": {
-                'ram tối đa': 'GB',
-                'giá': 'VND',
-                'tdp': 'W',
-                'xung cơ bản': 'GHz',   # CPU default
-                'xung boost': 'GHz',
-                'kich thước': 'mm',
-            },
-            "GPU": {
-                # GPU clock speeds are expressed in megahertz
-                'xung cơ bản': 'MHz',
-                'xung boost': 'MHz',
-            },
-            # Additional categories (e.g., "CPU", "MAINBOARD") can be added
-            # here if they need different units for the same field.
+        # Bỏ qua các trường đã hiển thị, các trường nội bộ và các trường không có giá trị.
+        exclude_keys = {
+            'category', 'tên', 'name', 'giá', 'price', 'price_formatted',
+            'search_text',
         }
-        # Determine which unit map to use for the current category.  If the
-        # category does not have a specific override, fall back to the default
-        # mapping.
-        current_unit_map = UNIT_MAP.get(category, UNIT_MAP["default"])
+        extra_parts = []
+        # Use the centralized unit mapping from unit_config
+        current_unit_map = get_unit_map(category)
 
         for key, val in item.items():
             if key in exclude_keys:
@@ -121,9 +102,13 @@ def _build_product_context(user_message: str, has_cpu: bool, has_gpu: bool,
             # Apply unit suffix if the field is known and the value is numeric
             lower_key = key.lower()
             if lower_key in current_unit_map:
+                unit = current_unit_map[lower_key]
                 # If the value already contains a unit (string), keep it as‑is
                 if isinstance(val, (int, float)):
-                    extra_parts.append(f"{key}: {val} {current_unit_map[lower_key]}")
+                    extra_parts.append(f"{key}: {val} {unit}")
+                    # Auto-convert to other useful units via calculator tool
+                    conversions = auto_convert_context_value(val, unit)
+                    extra_parts.extend(conversions)
                 else:
                     extra_parts.append(f"{key}: {val}")
                 continue
@@ -150,6 +135,7 @@ Nhiệm vụ của bạn là sử dụng DUY NHẤT các thông tin được cun
 3. TUYỆT ĐỐI KHÔNG CÃI HỆ THỐNG: Nếu "DỮ LIỆU THỰC TẾ" ghi là "TƯƠNG THÍCH HOÀN HẢO", bạn phải khẳng định 100% là tương thích. Nếu ghi "KHÔNG TƯƠNG THÍCH", phải cảnh báo khách hàng ngay lập tức.
 4. Trả lời lịch sự, ngắn gọn và xưng hô thân thiện với người dùng.
 5. TUYỆT ĐỐI KHÔNG LẶP LẠI: Không được nhắc lại nhãn "DỮ LIỆU THỰC TẾ", "[TRUTH CONTEXT]" hay bất kỳ nhãn cấu trúc nào trong câu trả lời. Chỉ trả lời trực tiếp bằng ngôn ngữ tự nhiên.
+6. CHUYỂN ĐỔI ĐƠN VỊ: Dữ liệu thực tế đã bao gồm các chuyển đổi đơn vị sẵn (ví dụ: "64 GB = 65536 MB"). Hãy SỬ DỰNG trực tiếp các giá trị chuyển đổi này trong câu trả lời. Khi người dùng hỏi bằng đơn vị khác (MB, GHz, v.v.), hãy tìm giá trị chuyển đổi tương ứng trong dữ liệu và trả lời chính xác.
 """
 
 
