@@ -18,6 +18,12 @@ DEFAULT_FLOAT_COLS = ['giá', 'xung cơ bản', 'xung boost', 'chiều dài']
 # Bảng giá trị mặc định để chống lỗi Null
 DEFAULT_FILL_VALUES = {col: 0.0 for col in DEFAULT_FLOAT_COLS + DEFAULT_INT_COLS}
 
+FIELD_ALIAS_MAP = {
+    'tdp': ['tdp', 'điện năng', 'điện năng tiêu thụ', 'công suất tiêu thụ'],
+    'xung cơ bản': ['xung cơ bản', 'base clock'],
+    'xung boost': ['xung boost', 'boost clock'],
+}
+
 DATA_DIR = Path(os.getenv('PC_STORE_DATA_DIR', Path(__file__).resolve().parent / 'data'))
 
 def resolve_data_path(filename):
@@ -73,7 +79,10 @@ def load_knowledge_base():
                 continue
             if pd.isna(val) or val == "" or (isinstance(val, (int, float)) and val == 0):
                 continue
-            parts.append(str(val))
+            parts.append(f"{col} {val}")
+            alias_list = FIELD_ALIAS_MAP.get(col.lower())
+            if alias_list:
+                parts.extend(alias_list)
         return " ".join(parts)
 
     knowledge_base['search_text'] = knowledge_base.apply(_make_search_text, axis=1)

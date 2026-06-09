@@ -1,6 +1,6 @@
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
-from utils import format_currency_vietnam, normalize_text
+from util.utils import format_currency_vietnam, normalize_text
 from functools import lru_cache
 
 def build_corpus_embeddings(model, texts):

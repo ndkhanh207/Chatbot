@@ -23,7 +23,7 @@ from config import EMBEDDING_MODEL as EMBEDDING_MODEL_NAME, EMBEDDING_DEVICE, CH
 from data_loader import load_compatibility_rules, load_knowledge_base, convert_to_documents, initialize_vector_db
 from search_engine import build_corpus_embeddings, hybrid_search
 from chat_handler import handle_chat
-from model_utils import get_ollama_model
+from util.model_utils import get_ollama_model
 from tool.calculator import convert_unit
 
 # ──────────────────────────────────────────────

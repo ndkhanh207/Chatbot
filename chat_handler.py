@@ -5,12 +5,14 @@ This module contains all the business logic for the ``/chat`` endpoint so that
 logic separate makes it easier to unit‑test and maintain.
 """
 
+import re
+
 import ollama
-from model_utils import get_ollama_model
+from util.model_utils import get_ollama_model
 from compatibility import build_compatibility_context
-from utils import format_currency_vietnam, normalize_text
-from tool.calculator import auto_convert_context_value
-from unit_config import get_unit_map
+from util.utils import format_currency_vietnam, normalize_text
+from tool.calculator import CONVERSIONS, auto_convert_context_value, convert_if_needed, ALIASES
+from unit import get_unit_map
 
 
 # ──────────────────────────────────────────────
@@ -25,6 +27,14 @@ CPU_TERMS = ['cpu', 'vi xử lý', 'i3', 'i5', 'i7', 'i9', 'ryzen']
 GPU_TERMS = ['gpu', 'vga', 'card', 'đồ họa', 'rtx', 'gtx', 'rx']
 MAIN_TERMS = ['bo mạch chủ', 'motherboard', 'h610', 'b760', 'z790', 'x670', 'a520']
 
+FIELD_KEYWORD_ALIASES = {
+    'tdp': ['tdp', 'điện năng', 'điện năng tiêu thụ', 'công suất'],
+    'xung cơ bản': ['xung cơ bản', 'base clock'],
+    'xung boost': ['xung boost', 'boost clock'],
+    'bộ nhớ': ['bộ nhớ', 'memory'],
+    'socket': ['socket', 'socket type', 'loại socket'],
+}
+
 
 def _normalize_user_message(user_message: str) -> str:
     """Chuẩn hóa từ lóng tiếng Việt trong câu hỏi của người dùng."""
@@ -36,8 +46,8 @@ def _normalize_user_message(user_message: str) -> str:
         .replace("card đồ họa", "gpu")
         .replace("vga", "gpu")
         .replace("đồ họa", "gpu")
-        .replace("điện năng", "tpd")
-        .replace("điện năng tiêu thụ", "tdp")  
+        .replace("điện năng", "tdp")
+        .replace("điện năng tiêu thụ", "tdp")
     )
 
 
@@ -54,6 +64,16 @@ def _detect_intent(msg_lower: str):
 # Context builders
 # ──────────────────────────────────────────────
 
+def _field_relevance_score(field_name: str, msg_lower: str) -> int:
+    field_lower = field_name.lower()
+    if field_lower in msg_lower:
+        return 2
+    for alias in FIELD_KEYWORD_ALIASES.get(field_lower, []):
+        if alias in msg_lower:
+            return 2
+    return 0
+
+
 def _build_product_context(user_message: str, has_cpu: bool, has_gpu: bool,
                            has_main: bool, search_fn) -> str:
     """Build a product‑listing context string for non‑compatibility queries."""
@@ -69,6 +89,19 @@ def _build_product_context(user_message: str, has_cpu: bool, has_gpu: bool,
     if not matched_items or not isinstance(matched_items, list):
         return ""
 
+    msg_lower = user_message.lower()
+    # Detect if the user explicitly requested a unit conversion.
+    # Prefer explicit unit tokens like MB/GB before generic aliases such as "vram".
+    requested_unit: str | None = None
+    for unit in CONVERSIONS.keys():
+        if re.search(rf"\b{re.escape(unit.lower())}\b", msg_lower):
+            requested_unit = unit
+            break
+    if not requested_unit:
+        for alias, canonical in ALIASES.items():
+            if alias.lower() in msg_lower:
+                requested_unit = canonical
+                break
     lines = ["Danh sách linh kiện thực tế đang có sẵn tại cửa hàng:"]
     for item in matched_items:
         p_format = item.get('price_formatted') or format_currency_vietnam(
@@ -81,16 +114,14 @@ def _build_product_context(user_message: str, has_cpu: bool, has_gpu: bool,
             'category', 'tên', 'name', 'giá', 'price', 'price_formatted',
             'search_text',
         }
-        extra_parts = []
-        # Use the centralized unit mapping from unit_config
+        field_entries = []
         current_unit_map = get_unit_map(category)
 
-        for key, val in item.items():
+        for index, (key, val) in enumerate(item.items()):
             if key in exclude_keys:
                 continue
             if val is None:
                 continue
-            # Pandas NaN check
             try:
                 import pandas as pd
                 if pd.isna(val):
@@ -99,21 +130,40 @@ def _build_product_context(user_message: str, has_cpu: bool, has_gpu: bool,
                 pass
             if str(val).strip() == "" or (isinstance(val, (int, float)) and val == 0):
                 continue
-            # Apply unit suffix if the field is known and the value is numeric
+
             lower_key = key.lower()
             if lower_key in current_unit_map:
                 unit = current_unit_map[lower_key]
-                # If the value already contains a unit (string), keep it as‑is
                 if isinstance(val, (int, float)):
-                    extra_parts.append(f"{key}: {val} {unit}")
-                    # Auto-convert to other useful units via calculator tool
-                    conversions = auto_convert_context_value(val, unit)
-                    extra_parts.extend(conversions)
+                    formatted_value = f"{key}: {val} {unit}"
+                    conversions = convert_if_needed(val, unit, requested_unit)
+                    field_entries.append((
+                        _field_relevance_score(key, msg_lower),
+                        index,
+                        formatted_value,
+                        conversions,
+                    ))
                 else:
-                    extra_parts.append(f"{key}: {val}")
-                continue
-            # Default handling – just show key and value
-            extra_parts.append(f"{key}: {val}")
+                    field_entries.append((
+                        _field_relevance_score(key, msg_lower),
+                        index,
+                        f"{key}: {val}",
+                        [],
+                    ))
+            else:
+                field_entries.append((
+                    _field_relevance_score(key, msg_lower),
+                    index,
+                    f"{key}: {val}",
+                    [],
+                ))
+
+        field_entries.sort(key=lambda item: (-item[0], item[1]))
+        extra_parts = []
+        for _, _, entry, conversions in field_entries:
+            extra_parts.append(entry)
+            extra_parts.extend(conversions)
+
         extra = ''
         if extra_parts:
             extra = ' | ' + ' | '.join(extra_parts)

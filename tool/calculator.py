@@ -42,6 +42,7 @@ ALIASES = {
     'millimeter': 'MM', 'millimeters': 'MM',
     'centimeter': 'CM', 'centimeters': 'CM',
     'meter': 'M', 'meters': 'M',
+    'vram': 'GB', 'VRAM': 'GB',
 }
 
 
@@ -160,6 +161,43 @@ def auto_convert_context_value(value: float, unit: str) -> list:
             pass
 
     return results
+
+
+def convert_if_needed(value: float, unit: str, requested_unit: str | None = None) -> list:
+    """Return conversions only when the requested unit differs from the default.
+
+    Parameters
+    ----------
+    value : float
+        The numeric value.
+    unit : str
+        The unit of the value as stored in the dataset (e.g., ``'GB'``).
+    requested_unit : str | None, optional
+        The unit the user explicitly asked for. If ``None`` or equal to
+        ``unit`` the function returns an empty list.
+
+    Returns
+    -------
+    list[str]
+        A list of formatted conversion strings, e.g. ``['64 GB = 65536 MB']``.
+    """
+    if not requested_unit:
+        return []
+    # Normalize both units for comparison
+    try:
+        unit_norm = _normalize_unit(unit)
+        req_norm = _normalize_unit(requested_unit)
+    except ValueError:
+        # If either unit is unknown, fall back to no conversion
+        return []
+    if unit_norm == req_norm:
+        return []
+    # If the requested unit is different, perform a single conversion
+    try:
+        conv = convert_unit(value, unit_norm, req_norm)
+        return [conv['formatted']]
+    except Exception:
+        return []
 
 
 if __name__ == '__main__':
