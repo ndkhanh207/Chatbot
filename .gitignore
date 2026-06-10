@@ -220,3 +220,6 @@ __marimo__/
 # Chroma Db
 chroma_db/
 open-db/
+
+# claude
+.claude/

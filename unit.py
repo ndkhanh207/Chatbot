@@ -30,6 +30,7 @@ UNIT_MAP: dict[str, dict[str, str]] = {
         # GPU clock speeds are expressed in megahertz
         'xung cơ bản': 'MHz',
         'xung boost': 'MHz',
+        'bộ nhớ': 'GB',
     },
     # Additional categories (e.g., "CPU", "MAINBOARD") can be added
     # here if they need different units for the same field.
