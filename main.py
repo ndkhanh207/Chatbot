@@ -24,8 +24,7 @@ from data_loader import load_compatibility_rules, load_knowledge_base, convert_t
 from search_engine import build_corpus_embeddings, hybrid_search
 from chat_handler import handle_chat
 from model_utils import get_ollama_model
-from tool.calculator import convert_unit
-
+from tool.calculator import convert_unit                   
 # ──────────────────────────────────────────────
 # Global state – populated during lifespan startup
 # ──────────────────────────────────────────────
