@@ -14,9 +14,9 @@ from compatibility import build_compatibility_context
 from util.utils import format_currency_vietnam, normalize_text
 from tool.calculator import CONVERSIONS, convert_if_needed, ALIASES
 from unit import get_unit_map
-from template.prompt_templates import ADVISOR_TEMPLATE
+from template.prompt_templates import ADVISOR_TEMPLATE, REFORMULATE_TEMPLATE
 from util.response_formatter import build_format_hint
-
+from memory.memory_store import get_trimmed_history, save_message
 # ──────────────────────────────────────────────
 # Intent detection config (giữ nguyên từ code cũ)
 # ──────────────────────────────────────────────
@@ -36,6 +36,7 @@ FIELD_KEYWORD_ALIASES = {
     'socket':       ['socket', 'socket type', 'loại socket'],
 }
 
+_reformulate_chain = None
 
 # ──────────────────────────────────────────────
 # LangChain chain — khởi tạo lazy (tránh lỗi khi
@@ -55,6 +56,33 @@ def _get_chain() -> RunnableSequence:
         _chain = ADVISOR_TEMPLATE | llm
     return _chain
 
+def _get_reformulate_chain():
+    global _reformulate_chain
+    if _reformulate_chain is None:
+        _reformulate_chain = REFORMULATE_TEMPLATE | ChatOllama(
+            model=get_ollama_model(), temperature=0.0
+        )
+    return _reformulate_chain
+
+
+def _reformulate_query(user_message: str, chat_history: list) -> str:
+    if not chat_history:
+        return user_message
+    specific_terms = ['rtx', 'gtx', 'rx', 'i3', 'i5', 'i7', 'i9',
+                      'ryzen', 'b760', 'z790', 'x670', 'h610']
+    if any(t in user_message.lower() for t in specific_terms):
+        return user_message
+    try:
+        response = _get_reformulate_chain().invoke({
+            "user_message": user_message,
+            "chat_history": chat_history,
+        })
+        reformulated = response.content.strip()
+        print(f"[REFORMULATE] '{user_message}' → '{reformulated}'")
+        return reformulated
+    except Exception as e:
+        print(f"[REFORMULATE] Lỗi, dùng query gốc: {e}")
+        return user_message
 
 # ──────────────────────────────────────────────
 # Normalise & intent (giữ nguyên từ code cũ)
@@ -183,7 +211,8 @@ def _build_product_context(user_message: str, category: str | None,
 # Main entry point
 # ──────────────────────────────────────────────
 def handle_chat(user_message: str, knowledge_base,
-                compatibility_rules, search_fn) -> dict:
+                compatibility_rules, search_fn,
+                session_id: str = "default") -> dict:
 
     if knowledge_base is None:
         return {"chatbot_reply": "HỆ THỐNG CHƯA SẴN SÀNG!"}
@@ -194,24 +223,34 @@ def handle_chat(user_message: str, knowledge_base,
     is_compat, has_cpu, has_gpu, has_main = _detect_intent(msg_lower)
     category = _get_category(has_gpu, has_cpu, has_main)
 
-    # 2. Fetch matched items một lần duy nhất (dùng lại cho cả context lẫn formatter)
-    matched_items = search_fn(q=user_message, category=category, top_k=4) or []
+       # 2. Lấy lịch sử TRƯỚC khi search (để reformulate)
+    chat_history = get_trimmed_history(session_id)
 
-    # 3. Build compatibility context (nếu có)
+    # 3. Reformulate query mơ hồ → rõ ràng trước khi search ⭐
+    search_query = _reformulate_query(user_message_fixed, chat_history)
+
+    # 4. Fetch matched_items bằng query đã reformulate
+    matched_items = search_fn(
+        q=search_query,        # ← dùng query đã reformulate
+        category=category,
+        top_k=4
+    ) or []
+
+    # 5. Build compat context
     compatibility_context = ""
     if is_compat:
         compatibility_context = build_compatibility_context(
-            user_message_fixed, knowledge_base, compatibility_rules, search_fn
+            search_query, knowledge_base, compatibility_rules, search_fn
         )
 
-    # 4. Build product context (nếu không có compat)
+    # 6. Build product context
     product_context = ""
     if not compatibility_context:
         product_context = _build_product_context(
-            user_message, category, matched_items
+            search_query, category, matched_items
         )
 
-    # 5. Nothing found?
+    # 7. Nothing found?
     if not compatibility_context and not product_context:
         return {
             "chatbot_reply": (
@@ -220,22 +259,24 @@ def handle_chat(user_message: str, knowledge_base,
             )
         }
 
-    # 6. Chọn context & build format_hint
-    context = compatibility_context if compatibility_context else product_context
-
-    # Compat query không cần format hint
+    # 8. Build context & format_hint
+    context     = compatibility_context if compatibility_context else product_context
     format_hint = build_format_hint(user_message, matched_items) \
                   if not compatibility_context else ""
 
-    # 7. Invoke LangChain chain
+    # 9. Invoke chain với memory
     try:
         chain    = _get_chain()
         response = chain.invoke({
             "context":      context,
-            "format_hint":  format_hint,   # "" nếu không cần
-            "user_message": user_message_fixed,
+            "format_hint":  format_hint,
+            "user_message": user_message_fixed,  # ← vẫn dùng câu gốc cho LLM
+            "chat_history": chat_history,
         })
-        return {"chatbot_reply": response.content}
+
+        reply = response.content
+        save_message(session_id, user_message_fixed, reply)
+        return {"chatbot_reply": reply}
 
     except Exception as e:
         return {"chatbot_reply": f"❌ Lỗi bộ não AI: {str(e)}"}

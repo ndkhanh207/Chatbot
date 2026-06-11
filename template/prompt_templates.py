@@ -1,5 +1,27 @@
 # prompt_templates.py
-from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.prompts import ChatPromptTemplate,MessagesPlaceholder
+
+
+# ── Template reformulate query (thêm mới) ─────
+REFORMULATE_TEMPLATE = ChatPromptTemplate.from_messages([
+    ("system", """\
+Dựa vào lịch sử hội thoại và câu hỏi mới nhất của người dùng, \
+hãy viết lại câu hỏi thành một câu hoàn chỉnh, độc lập, \
+không cần lịch sử để hiểu được.
+
+Ví dụ:
+- Lịch sử: "RTX 5080 giá bao nhiêu?" → Bot trả lời giá
+- Câu hỏi: "nó có bao nhiêu vram?"
+- Viết lại: "RTX 5080 có bao nhiêu vram?"
+
+QUAN TRỌNG:
+- Chỉ viết lại câu hỏi, KHÔNG trả lời.
+- Nếu câu hỏi đã rõ ràng, giữ nguyên.
+- Chỉ trả về câu hỏi đã viết lại, không thêm gì khác.\
+"""),
+    MessagesPlaceholder(variable_name="chat_history"),
+    ("human", "{user_message}"),
+])
 
 # ──────────────────────────────────────────────
 # Template chính dùng cho mọi loại query
@@ -36,6 +58,8 @@ ADVISOR_TEMPLATE = ChatPromptTemplate.from_messages([
 {context}
 {format_hint}\
 """),
+    
+    MessagesPlaceholder(variable_name="chat_history", optional=True),
 
     ("human", "{user_message}"),
 ])
