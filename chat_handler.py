@@ -12,6 +12,12 @@ from compatibility import build_compatibility_context
 from utils import format_currency_vietnam, normalize_text
 from tool.calculator import auto_convert_context_value
 from unit_config import get_unit_map
+from build_advisor import (
+    build_2combo_no_result_reply,
+    _detect_2component_intent,
+    find_2component_combo,
+    build_2combo_context,
+)
 
 
 # ──────────────────────────────────────────────
@@ -32,7 +38,6 @@ def _normalize_user_message(user_message: str) -> str:
     return (
         user_message
         .lower()
-        # FIX: "main" → "bo mạch chủ" (not "bo mạch chủboard" — no stray "board" suffix)
         .replace("mainboard", "bo mạch chủ")
         .replace("main", "bo mạch chủ")
         .replace("chip", "cpu")
@@ -47,9 +52,9 @@ def _normalize_user_message(user_message: str) -> str:
 def _detect_intent(msg_lower: str):
     """Return a tuple ``(is_compat_query, has_cpu, has_gpu, has_main)``."""
     is_compat = any(w in msg_lower for w in COMPAT_TRIGGERS)
-    has_cpu = any(w in msg_lower for w in CPU_TERMS)
-    has_gpu = any(w in msg_lower for w in GPU_TERMS)
-    has_main = any(w in msg_lower for w in MAIN_TERMS)
+    has_cpu   = any(w in msg_lower for w in CPU_TERMS)
+    has_gpu   = any(w in msg_lower for w in GPU_TERMS)
+    has_main  = any(w in msg_lower for w in MAIN_TERMS)
     return is_compat, has_cpu, has_gpu, has_main
 
 
@@ -57,7 +62,6 @@ def _detect_intent(msg_lower: str):
 # Reply post-processor  (safety net for rule violations)
 # ──────────────────────────────────────────────
 
-# Phrases that leak the internal data-layer structure (Rule 5)
 _STRUCTURAL_LEAK_PATTERNS = [
     r'dựa trên thông tin (được )?cung cấp[,.]?',
     r'\[?dữ liệu thực tế\]?',
@@ -66,7 +70,6 @@ _STRUCTURAL_LEAK_PATTERNS = [
     r'trong (dữ liệu|thông tin) (đã )?cung cấp[,.]?',
 ]
 
-# Phrases that make forbidden price comparisons (Rule 8)
 _PRICE_COMPARISON_PATTERNS = [
     r'(giá )?(cao|đắt|mắc) nhất( trong danh sách| hiện có| hiện tại)?',
     r'(giá )?(rẻ|thấp|thấp hơn|cao hơn) nhất( trong danh sách| hiện có| hiện tại)?',
@@ -74,60 +77,38 @@ _PRICE_COMPARISON_PATTERNS = [
     r'(cao|thấp|rẻ|đắt) hơn (các )?(sản phẩm|bo mạch|cpu|gpu)',
 ]
 
-# Analysis/reasoning blocks that violate Rule 9
 _ANALYSIS_BLOCK_PATTERNS = [
-    r'\*?\*?lý do\*?\*?\s*[:\-–].*',          # "Lý do: ..." (possibly with **)
+    r'\*?\*?lý do\*?\*?\s*[:\-–].*',
     r'\*?\*?phân tích\*?\*?\s*[:\-–].*',
     r'- \*?\*?(giá cao nhất|lý do|vì vậy)\*?\*?.*',
 ]
 
 
 def _sanitise_reply(text: str) -> str:
-    """Remove rule-violating patterns from the LLM reply.
-
-    This acts as a deterministic safety net so that instruction-following
-    failures in the local LLM do not reach the end user.
-    """
-    # Work line-by-line for block-level patterns
+    """Remove rule-violating patterns from the LLM reply."""
     lines = text.splitlines()
     cleaned_lines = []
-    skip_next = False
     for line in lines:
-        if skip_next:
-            skip_next = False
-            continue
-
         lower = line.lower()
-
-        # Drop analysis block headers and their content lines
         if re.search(r'^\s*\*?\*?(lý do|phân tích)\*?\*?\s*[:\-–]', lower):
-            skip_next = False  # the content is on the same line; handled below
             line = re.sub(r'\*?\*?(lý do|phân tích)\*?\*?\s*[:\-–].*', '', line, flags=re.IGNORECASE).strip()
             if not line:
                 continue
-
         cleaned_lines.append(line)
 
     text = '\n'.join(cleaned_lines)
-
-    # Apply inline substitutions
     flags = re.IGNORECASE | re.DOTALL
 
     for pattern in _STRUCTURAL_LEAK_PATTERNS:
         text = re.sub(pattern, '', text, flags=flags)
-
     for pattern in _PRICE_COMPARISON_PATTERNS:
         text = re.sub(pattern, '', text, flags=flags)
-
     for pattern in _ANALYSIS_BLOCK_PATTERNS:
         text = re.sub(pattern, '', text, flags=flags)
 
-    # Clean up any double-spaces or orphaned punctuation left behind
     text = re.sub(r'[ \t]{2,}', ' ', text)
     text = re.sub(r'\n{3,}', '\n\n', text)
-    text = text.strip()
-
-    return text
+    return text.strip()
 
 
 # ──────────────────────────────────────────────
@@ -149,11 +130,10 @@ def _build_product_context(user_message: str, has_cpu: bool, has_gpu: bool,
     if not matched_items or not isinstance(matched_items, list):
         return ""
 
-    # ── Fallback sentinel: hybrid_search found NO products in the price range ──
     first = matched_items[0]
     if first.get('is_fallback') and first.get('fallback_target_price') is not None:
-        target = first['fallback_target_price']
-        mode   = first.get('fallback_mode', 'less')
+        target    = first['fallback_target_price']
+        mode      = first.get('fallback_mode', 'less')
         cat_label = first.get('category') or category or 'sản phẩm'
 
         if mode == 'less':
@@ -163,7 +143,6 @@ def _build_product_context(user_message: str, has_cpu: bool, has_gpu: bool,
         else:
             range_desc = f"tầm {format_currency_vietnam(target)} VNĐ"
 
-        # Return a plain-language instruction; no substitute products are listed.
         return (
             f"THÔNG BÁO HỆ THỐNG: Trong kho KHÔNG CÓ {cat_label} nào có giá {range_desc}.\n"
             f"Hãy thông báo thành thật với khách hàng rằng hiện tại không có sản phẩm nào "
@@ -212,9 +191,7 @@ def _build_product_context(user_message: str, has_cpu: bool, has_gpu: bool,
 
             extra_parts.append(f"{key}: {val}")
 
-        extra = ''
-        if extra_parts:
-            extra = ' | ' + ' | '.join(extra_parts)
+        extra = ' | ' + ' | '.join(extra_parts) if extra_parts else ''
         lines.append(f"- [{item.get('category')}] {name} | Giá thực tế: {p_format} VNĐ{extra}")
 
     return "\n".join(lines)
@@ -246,15 +223,6 @@ Câu hỏi: "Bo mạch chủ nào giá cao nhất?"
 
 
 def _build_context_message(context: str) -> str:
-    """Build a context block sent as a separate system message.
-
-    Keeping context separate from the instruction system prompt helps small
-    LLMs distinguish between *rules* and *data*, and repeating the most
-    critical rules here reinforces them close to the data where they matter.
-    """
-    # Re-state the three most commonly violated rules right before the data
-    # so they are in the model's immediate context window when it reads the
-    # product list.
     reinforcement = (
         "NHẮC LẠI QUY TẮC QUAN TRỌNG NHẤT:\n"
         "- KHÔNG dùng cụm 'dựa trên thông tin', 'theo dữ liệu', hay nhắc lại nhãn nội bộ.\n"
@@ -269,11 +237,34 @@ def _build_context_message(context: str) -> str:
 
 
 # ──────────────────────────────────────────────
+# LLM call helper
+# ──────────────────────────────────────────────
+
+def _call_llm(user_message_fixed: str, context: str) -> dict:
+    """Gọi LLM với context đã chuẩn bị, trả về dict chatbot_reply."""
+    context_message = _build_context_message(context)
+    try:
+        response = ollama.chat(
+            model=get_ollama_model(),
+            messages=[
+                {"role": "system", "content": _SYSTEM_PROMPT},
+                {"role": "system", "content": context_message},
+                {"role": "user",   "content": user_message_fixed},
+            ],
+            options={"temperature": 0.0, "top_p": 0.1},
+        )
+        raw_reply = response['message']['content']
+        return {"chatbot_reply": _sanitise_reply(raw_reply)}
+    except Exception as e:
+        return {"chatbot_reply": f"❌ Lỗi bộ não AI: {str(e)}"}
+
+
+# ──────────────────────────────────────────────
 # Main entry point
 # ──────────────────────────────────────────────
 
 def handle_chat(user_message: str, knowledge_base, compatibility_rules,
-                search_fn) -> dict:
+                search_fn, embedding_model=None, corpus_embeddings=None) -> dict:
     """Process a chat request and return ``{"chatbot_reply": ...}``.
 
     Parameters
@@ -285,9 +276,11 @@ def handle_chat(user_message: str, knowledge_base, compatibility_rules,
     compatibility_rules : pandas.DataFrame
         Compatibility rules loaded from CSV.
     search_fn : callable
-        A function with the same signature as the ``/test-knowledge-base``
-        endpoint – ``search_fn(q, category, top_k)`` – used to retrieve
-        matching products.
+        ``search_fn(q, category, top_k)`` – retrieves matching products.
+    embedding_model : SentenceTransformer, optional
+        Needed for 2-component combo search.
+    corpus_embeddings : np.ndarray, optional
+        Pre-computed corpus embeddings, needed for 2-component combo search.
     """
     if knowledge_base is None:
         return {"chatbot_reply": "HỆ THỐNG CHƯA SẴN SÀNG!"}
@@ -297,21 +290,53 @@ def handle_chat(user_message: str, knowledge_base, compatibility_rules,
     msg_lower = normalize_text(user_message_fixed)
     is_compat, has_cpu, has_gpu, has_main = _detect_intent(msg_lower)
 
-    # 2. Build compatibility context (if applicable)
+    print(f"\n{'='*60}")
+    print(f"[DEBUG] user_message_fixed : {user_message_fixed}")
+    print(f"[DEBUG] msg_lower          : {msg_lower}")
+    print(f"[DEBUG] intent             : compat={is_compat} cpu={has_cpu} gpu={has_gpu} main={has_main}")
+    print(f"[DEBUG] 2component_intent  : {_detect_2component_intent(msg_lower)}")
+
+    # 2. Combo 2 linh kiện có kiểm tra tương thích (CPU+Main hoặc GPU+Main)
+    if (
+        embedding_model is not None
+        and corpus_embeddings is not None
+        and _detect_2component_intent(msg_lower) is not None
+    ):
+        combo = find_2component_combo(
+            user_message=user_message_fixed,
+            knowledge_base=knowledge_base,
+            embedding_model=embedding_model,
+            corpus_embeddings=corpus_embeddings,
+            compatibility_rules=compatibility_rules,
+        )
+        print(f"[DEBUG] combo result       : {combo}")
+        if combo is not None:
+            # Không tìm được combo → trả lời thẳng, KHÔNG qua LLM
+            # (tránh model nhỏ bịa sản phẩm khi nhận THÔNG BÁO không có kết quả)
+            if combo.get('no_result') or combo.get('no_compatible'):
+                reply = build_2combo_no_result_reply(combo)
+                return {"chatbot_reply": reply}
+
+            context = build_2combo_context(combo)
+            print(f"[DEBUG] 2combo context ↓\n{context}\n{'='*60}\n")
+            return _call_llm(user_message_fixed, context)
+
+    print(f"[DEBUG] → fallback to single-category / compat path")
+    # 3. Build compatibility context (nếu user hỏi tương thích đơn thuần)
     compatibility_context = ""
     if is_compat:
         compatibility_context = build_compatibility_context(
             user_message_fixed, knowledge_base, compatibility_rules, search_fn
         )
 
-    # 3. Build product context (fallback when no compatibility check)
+    # 4. Build product context (tìm kiếm 1 danh mục)
     product_context = ""
     if not compatibility_context:
         product_context = _build_product_context(
             user_message, has_cpu, has_gpu, has_main, search_fn
         )
 
-    # 4. Nothing found?
+    # 5. Không tìm thấy gì
     if not compatibility_context and not product_context:
         return {
             "chatbot_reply": (
@@ -320,25 +345,7 @@ def handle_chat(user_message: str, knowledge_base, compatibility_rules,
             )
         }
 
-    # 5. Build prompt & call LLM
+    # 6. Gọi LLM với context phù hợp
     context = compatibility_context if compatibility_context else product_context
-    context_message = _build_context_message(context)
-
-    try:
-        response = ollama.chat(
-            model=get_ollama_model(),
-            messages=[
-                {"role": "system", "content": _SYSTEM_PROMPT},
-                {"role": "system", "content": context_message},
-                {"role": "user", "content": user_message_fixed},
-            ],
-            options={"temperature": 0.0, "top_p": 0.1},
-        )
-        raw_reply = response['message']['content']
-
-        # 6. Post-process: strip any rule-violating phrases the LLM still produced
-        clean_reply = _sanitise_reply(raw_reply)
-
-        return {"chatbot_reply": clean_reply}
-    except Exception as e:
-        return {"chatbot_reply": f"❌ Lỗi bộ não AI: {str(e)}"}
+    print(f"[DEBUG] fallback context ↓\n{context}\n{'='*60}\n")
+    return _call_llm(user_message_fixed, context)

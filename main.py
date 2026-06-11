@@ -118,7 +118,8 @@ def test_kb(q: str = None, category: str = None, top_k: int = 5):
 @app.get("/chat")
 def chat_with_bot(user_message: str):
     """API chatbot hoàn chỉnh với tính năng kiểm tra tương thích."""
-    return handle_chat(user_message, KNOWLEDGE_BASE, COMPATIBILITY_RULES, _search)
+    return handle_chat(user_message, KNOWLEDGE_BASE, COMPATIBILITY_RULES,
+                        _search,embedding_model=EMBEDDING_MODEL,corpus_embeddings=CORPUS_EMBEDDINGS)
 
 
 @app.get("/calculate")
