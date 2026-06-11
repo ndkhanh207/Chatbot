@@ -129,7 +129,6 @@ def _fetch_candidates_for_combo(category: str, knowledge_base,
     sắp xếp theo giá giảm dần (đắt nhất trong budget lên trước).
     """
     if knowledge_base is None or knowledge_base.empty:
-        print(f"[DEBUG _fetch_candidates_for_combo] knowledge_base is None or empty")
         return []
 
     price_col = 'giá' if 'giá' in knowledge_base.columns else 'price'
@@ -139,20 +138,10 @@ def _fetch_candidates_for_combo(category: str, knowledge_base,
     cat_upper = category.upper().strip()
     df = knowledge_base[knowledge_base['category'].str.upper().str.strip() == cat_upper].copy()
 
-    print(f"[DEBUG _fetch_candidates_for_combo] category='{cat_upper}' "
-          f"rows_found={len(df)} budget={budget:,.0f}")
-
     if df.empty:
-        # Log tất cả giá trị category thực tế trong knowledge_base để debug
-        all_cats = knowledge_base['category'].dropna().unique().tolist()
-        print(f"[DEBUG _fetch_candidates_for_combo] Available categories: {all_cats}")
-        return []
 
-    if budget != float('inf'):
-        before = len(df)
-        df = df[df[price_col] <= budget]
-        print(f"[DEBUG _fetch_candidates_for_combo] after price filter (≤{budget:,.0f}): "
-              f"{before} → {len(df)} rows")
+        if budget != float('inf'):
+         df = df[df[price_col] <= budget]
 
     if df.empty:
         return []
@@ -244,13 +233,10 @@ def _find_best_2combo(items_a: list, items_b: list,
             'compatible': compatible,
         })
 
-    print(f"[DEBUG _find_best_2combo] mode={mode} total_candidates={len(candidates)}")
-
     if not candidates:
         return None
 
     compatible_ones = [c for c in candidates if c['compatible']]
-    print(f"[DEBUG _find_best_2combo] compatible_ones={len(compatible_ones)}")
 
     if mode == 'lowest':
         pool = compatible_ones or candidates
@@ -317,31 +303,18 @@ def find_2component_combo(user_message: str,
             else:
                 mode = 'less'  # mặc định: tổng giá ≤ budget
 
-    print(f"[DEBUG build_advisor] pair={pair} budget={budget:,.0f} VNĐ | mode={mode}")
-
     # ── Lấy ứng viên ────────────────────────────────────────────────────
-    # Với mode='less': mỗi linh kiện tối đa budget/2 để tổng 2 món ≤ budget.
-    # Với mode='highest'/'lowest': không giới hạn giá từng món, để
-    # _find_best_2combo tự chọn theo tổng.
     per_item_budget = (budget / 2) if (mode == 'less' and budget != float('inf')) else float('inf')
-
     items_a = _fetch_candidates_for_combo(cat_a, knowledge_base, per_item_budget)
     items_b = _fetch_candidates_for_combo(cat_b, knowledge_base, per_item_budget)
 
-    print(f"[DEBUG build_advisor] items_a ({cat_a}): {len(items_a)} items")
-    print(f"[DEBUG build_advisor] items_b ({cat_b}): {len(items_b)} items")
-
     items_a = [r for r in items_a if not r.get('is_fallback')]
     items_b = [r for r in items_b if not r.get('is_fallback')]
-
-    print(f"[DEBUG build_advisor] after fallback filter → items_a={len(items_a)} items_b={len(items_b)}")
 
     if not items_a or not items_b:
         return {'no_result': True, 'budget': budget, 'mode': mode, 'pair': pair}
 
     result = _find_best_2combo(items_a, items_b, cat_a, cat_b, budget, mode)
-
-    print(f"[DEBUG build_advisor] _find_best_2combo result: {result}")
 
     if result is None:
         return {'no_result': True, 'budget': budget, 'mode': mode, 'pair': pair}
