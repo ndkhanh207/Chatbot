@@ -33,30 +33,19 @@ EMBEDDING_MODEL = _env('EMBEDDING_MODEL', 'AITeamVN/Vietnamese_Embedding')
 EMBEDDING_DEVICE = _env('EMBEDDING_DEVICE', 'cpu')
 CHAT_MODEL = _env('CHAT_MODEL', _env('OLLAMA_MODEL', 'Vi-Qwen2-1.5B-RAG.Q3_K_L'))
 VECTOR_DB_DIR = _env('VECTOR_DB_DIR', './chroma_db')
-# MYSQL
-MYSQL_USER     = _env('MYSQL_USER',     'root')
-MYSQL_PASSWORD = _env('MYSQL_PASSWORD', '')
-MYSQL_HOST     = _env('MYSQL_HOST',     '127.0.0.1')
-MYSQL_PORT     = _env('MYSQL_PORT',     '3306')
-MYSQL_DB       = _env('MYSQL_DB',       'chat_history')
 
-MYSQL_CONNECTION_STRING = (
-    f"mysql+pymysql://{MYSQL_USER}:{MYSQL_PASSWORD}"
-    f"@{MYSQL_HOST}:{MYSQL_PORT}/{MYSQL_DB}"
-)
 
 class Config:
     EMBEDDING_MODEL = EMBEDDING_MODEL
     EMBEDDING_DEVICE = EMBEDDING_DEVICE
     CHAT_MODEL = CHAT_MODEL
     VECTOR_DB_DIR = VECTOR_DB_DIR
-    MYSQL_CONNECTION_STRING = MYSQL_CONNECTION_STRING
+
 
 __all__ = [
     'EMBEDDING_MODEL',
     'EMBEDDING_DEVICE',
     'CHAT_MODEL',
     'VECTOR_DB_DIR',
-    'MYSQL_CONNECTION_STRING',
     'Config',
 ]
