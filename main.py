@@ -25,7 +25,6 @@ from search_engine import build_corpus_embeddings, hybrid_search
 from chat_handler import handle_chat
 from util.model_utils import get_ollama_model
 from tool.calculator import convert_unit
-from memory.memory_store import clear_session
 
 # ──────────────────────────────────────────────
 # Global state – populated during lifespan startup
@@ -118,13 +117,9 @@ def test_kb(q: str = None, category: str = None, top_k: int = 5):
 
 
 @app.get("/chat")
-def chat_with_bot(user_message: str, session_id: str = "default"):
+def chat_with_bot(user_message: str):
     """API chatbot hoàn chỉnh với tính năng kiểm tra tương thích."""
-    """
-    Thêm session_id để phân biệt user.
-    Ví dụ: /chat?user_message=xin chào&session_id=user_123
-    """
-    return handle_chat(user_message, KNOWLEDGE_BASE, COMPATIBILITY_RULES, _search, session_id=session_id)
+    return handle_chat(user_message, KNOWLEDGE_BASE, COMPATIBILITY_RULES, _search)
 
 
 @app.get("/calculate")
@@ -140,10 +135,3 @@ def calculate(value: float, from_unit: str, to_unit: str):
         return {"status": "success", "result": result}
     except ValueError as e:
         return {"status": "error", "message": str(e)}
-    
-    
-@app.delete("/chat/history/{session_id}")
-def delete_history(session_id: str):
-    """Xóa lịch sử hội thoại của một user."""
-    clear_session(session_id)
-    return {"status": "ok", "message": f"Đã xóa lịch sử session '{session_id}'"}
