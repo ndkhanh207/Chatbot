@@ -15,7 +15,7 @@ from util.utils import format_currency_vietnam, normalize_text
 from tool.calculator import CONVERSIONS, convert_if_needed, ALIASES
 from unit import get_unit_map
 from template.prompt_templates import ADVISOR_TEMPLATE, REFORMULATE_TEMPLATE
-from util.response_formatter import build_format_hint
+from util.response_formatter import build_range_summary
 from memory.memory_store import get_trimmed_history, save_message
 # ──────────────────────────────────────────────
 # Intent detection config (giữ nguyên từ code cũ)
@@ -50,7 +50,7 @@ def _get_chain() -> RunnableSequence:
     if _chain is None:
         llm = ChatOllama(
             model=get_ollama_model(),
-            temperature=0.0,
+            temperature=0.1,
             top_p=0.1,
         )
         _chain = ADVISOR_TEMPLATE | llm
@@ -228,10 +228,18 @@ def handle_chat(user_message: str, knowledge_base,
 
     # 3. Reformulate query mơ hồ → rõ ràng trước khi search ⭐
     search_query = _reformulate_query(user_message_fixed, chat_history)
+    # Giả sử `rewritten_query` là kết quả sau khi chạy REFORMULATE_TEMPLATE
+    # Làm sạch chuỗi, loại bỏ các ký tự xuống dòng nguy hiểm
+    q_clean = search_query.replace("\n", " ").strip()
+    
+    
 
+    # Nếu bot lỡ tay sinh ra cả đoạn văn, chỉ lấy 100 ký tự đầu tiên để tránh làm nghẽn bộ tìm kiếm
+    if len(q_clean) > 150:
+        q_clean = q_clean[:100]
     # 4. Fetch matched_items bằng query đã reformulate
     matched_items = search_fn(
-        q=search_query,        # ← dùng query đã reformulate
+        q=q_clean,        # ← dùng query đã reformulate
         category=category,
         top_k=4
     ) or []
@@ -261,11 +269,24 @@ def handle_chat(user_message: str, knowledge_base,
 
     # 8. Build context & format_hint
     context     = compatibility_context if compatibility_context else product_context
-    format_hint = build_format_hint(user_message, matched_items) \
+    format_hint = build_range_summary(user_message, matched_items) \
                   if not compatibility_context else ""
 
     # 9. Invoke chain với memory
     try:
+  
+        # Debug: In ra query sau khi reformulate và context sẽ truyền vào bot để dễ theo dõi
+        # ──────────────────────────────────────────────────────────────────
+        print("\n" + "═"*60)
+        print(f"🔍 [HỆ THỐNG DEBUG CHAT] - Session ID: {session_id}")
+        print(f"🔹 1. Câu hỏi gốc của khách: '{user_message}'")
+        print(f"🔹 2. Từ khóa dùng để Search (q_clean): '{q_clean}'")
+        print(f"🔹 3. Số lượng linh kiện tìm thấy trong DB: {len(matched_items)} món")
+        print(f"🔹 4. Nội dung [format_hint] sinh ra:\n{repr(format_hint)}")
+        print(f"🔹 5. Nội dung [context] nhét vào miệng Bot:\n{context}")
+        print("═"*60 + "\n")
+        # ──────────────────────────────────────────────────────────────────
+  
         chain    = _get_chain()
         response = chain.invoke({
             "context":      context,
