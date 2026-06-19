@@ -12,6 +12,7 @@ lives in dedicated modules:
 """
 
 import os
+from pathlib import Path
 import pandas as pd
 import ollama
 from fastapi import FastAPI
@@ -26,6 +27,7 @@ from chat_handler import handle_chat
 from util.model_utils import get_ollama_model
 from tool.calculator import convert_unit
 from memory.memory_store import clear_session
+from pc_build_advisor import find_best_build
 
 # ──────────────────────────────────────────────
 # Global state – populated during lifespan startup
@@ -34,6 +36,7 @@ KNOWLEDGE_BASE = None
 EMBEDDING_MODEL = None
 CORPUS_EMBEDDINGS = None
 COMPATIBILITY_RULES = None
+BUILD_DATA = None   # DataFrame từ Pc_build_data_cleaned.csv
 
 
 # ──────────────────────────────────────────────
@@ -41,12 +44,20 @@ COMPATIBILITY_RULES = None
 # ──────────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global KNOWLEDGE_BASE, EMBEDDING_MODEL, CORPUS_EMBEDDINGS, COMPATIBILITY_RULES
+    global KNOWLEDGE_BASE, EMBEDDING_MODEL, CORPUS_EMBEDDINGS, COMPATIBILITY_RULES, BUILD_DATA
     print("=== [HỆ THỐNG] Đang khởi tạo Kho tri thức từ structure_data... ===")
 
     try:
         KNOWLEDGE_BASE = load_knowledge_base()
         COMPATIBILITY_RULES = load_compatibility_rules()
+
+        # Load dữ liệu bộ PC (Pc_build_data_cleaned.csv)
+        try:
+            _build_csv = Path(__file__).resolve().parent / 'data' / 'Pc_build_data_cleaned.csv'
+            BUILD_DATA = pd.read_csv(_build_csv)
+            print(f"=== [HỆ THỐNG] Đã load {len(BUILD_DATA)} bộ PC từ Pc_build_data_cleaned.csv ===")
+        except Exception as build_err:
+            print(f"⚠️ [HỆ THỐNG] Không load được dữ liệu bộ PC: {build_err}")
 
         print(f"=== [HỆ THỐNG] Gộp thành công! Tổng số linh kiện: {len(KNOWLEDGE_BASE)} dòng. ===")
         print(f"=== [HỆ THỐNG] Nạp thành công {len(COMPATIBILITY_RULES)} quy tắc tương thích! ===")
@@ -119,12 +130,19 @@ def test_kb(q: str = None, category: str = None, top_k: int = 5):
 
 @app.get("/chat")
 def chat_with_bot(user_message: str, session_id: str = "default"):
-    """API chatbot hoàn chỉnh với tính năng kiểm tra tương thích."""
+    """API chatbot hoàn chỉnh với tính năng kiểm tra tương thích và gợi ý bộ PC."""
     """
     Thêm session_id để phân biệt user.
     Ví dụ: /chat?user_message=xin chào&session_id=user_123
     """
-    return handle_chat(user_message, KNOWLEDGE_BASE, COMPATIBILITY_RULES, _search, session_id=session_id)
+    return handle_chat(
+        user_message,
+        KNOWLEDGE_BASE,
+        COMPATIBILITY_RULES,
+        _search,
+        session_id=session_id,
+        build_df=BUILD_DATA,
+    )
 
 
 @app.get("/calculate")

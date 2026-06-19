@@ -14,9 +14,15 @@ from compatibility import build_compatibility_context
 from util.utils import format_currency_vietnam, normalize_text
 from tool.calculator import CONVERSIONS, convert_if_needed, ALIASES
 from unit import get_unit_map
-from template.prompt_templates import ADVISOR_TEMPLATE, REFORMULATE_TEMPLATE
+from template.prompt_templates import ADVISOR_TEMPLATE, REFORMULATE_TEMPLATE, PC_BUILD_TEMPLATE
 from util.response_formatter import build_format_hint
 from memory.memory_store import get_trimmed_history, save_message
+from pc_build_advisor import (
+    detect_build_pc_intent,
+    extract_budget,
+    find_best_build,
+    format_build_context,
+)
 # ──────────────────────────────────────────────
 # Intent detection config (giữ nguyên từ code cũ)
 # ──────────────────────────────────────────────
@@ -43,6 +49,7 @@ _reformulate_chain = None
 # Ollama chưa chạy lúc import)
 # ──────────────────────────────────────────────
 _chain: RunnableSequence | None = None
+_pc_build_chain: RunnableSequence | None = None
 
 def _get_chain() -> RunnableSequence:
     """Trả về chain, tạo mới nếu chưa có."""
@@ -55,6 +62,18 @@ def _get_chain() -> RunnableSequence:
         )
         _chain = ADVISOR_TEMPLATE | llm
     return _chain
+
+def _get_pc_build_chain() -> RunnableSequence:
+    """Trả về chain dành riêng cho tư vấn bộ PC, tạo mới nếu chưa có."""
+    global _pc_build_chain
+    if _pc_build_chain is None:
+        llm = ChatOllama(
+            model=get_ollama_model(),
+            temperature=0.0,  # Hạ nhiệt độ để chống bịa đặt
+            top_p=0.1,
+        )
+        _pc_build_chain = PC_BUILD_TEMPLATE | llm
+    return _pc_build_chain
 
 def _get_reformulate_chain():
     global _reformulate_chain
@@ -212,10 +231,51 @@ def _build_product_context(user_message: str, category: str | None,
 # ──────────────────────────────────────────────
 def handle_chat(user_message: str, knowledge_base,
                 compatibility_rules, search_fn,
-                session_id: str = "default") -> dict:
+                session_id: str = "default",
+                build_df=None) -> dict:
 
     if knowledge_base is None:
         return {"chatbot_reply": "HỆ THỐNG CHƯA SẴN SÀNG!"}
+
+    # ── 0. PC Build intent — xử lý trước tất cả các intent khác ──
+    if detect_build_pc_intent(user_message):
+        budget = extract_budget(user_message)
+        chat_history = get_trimmed_history(session_id)
+
+        if budget is None:
+            # Không trích xuất được ngân sách → hỏi lại user
+            reply = (
+                "Dạ em chưa xác định được ngân sách của bạn. "
+                "Bạn vui lòng cho em biết tầm giá bạn muốn đầu tư cho bộ PC nhé "
+                "(ví dụ: 20 triệu, 30 triệu...)"
+            )
+            save_message(session_id, user_message, reply)
+            return {"chatbot_reply": reply}
+
+        best_build = find_best_build(budget, user_message, build_df)
+
+        if best_build is None:
+            reply = (
+                "Dạ, hiện tại bên em không tìm được bộ PC nào phù hợp với "
+                f"ngân sách và mục đích của bạn. "
+                "Bạn có thể điều chỉnh ngân sách hoặc cho em biết thêm nhu cầu "
+                "cụ thể để em tư vấn thêm nhé!"
+            )
+            save_message(session_id, user_message, reply)
+            return {"chatbot_reply": reply}
+
+        build_context = format_build_context(best_build)
+
+        try:
+            response = _get_pc_build_chain().invoke({
+                "build_context":  build_context,
+                "user_message":   user_message,
+            })
+            reply = response.content
+            save_message(session_id, user_message, reply)
+            return {"chatbot_reply": reply}
+        except Exception as e:
+            return {"chatbot_reply": f"❌ Lỗi bộ não AI: {str(e)}"}
 
     # 1. Normalise & detect intent
     user_message_fixed = _normalize_user_message(user_message)
