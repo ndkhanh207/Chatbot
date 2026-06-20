@@ -1,32 +1,9 @@
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
-from util.utils import format_currency_vietnam, normalize_text
-from functools import lru_cache
+from util.utils import normalize_text
+from app.compact.pricing import format_currency_vietnam
 
-def build_corpus_embeddings(model, texts):
-    """Encode a list of texts into a NumPy matrix.
-
-    The function is kept simple because the corpus is static and is computed only
-    once during server startup.  No caching is required here.
-    """
-    return model.encode(texts, show_progress_bar=True, convert_to_numpy=True)
-
-@lru_cache(maxsize=128)
-def _cached_encode_query(embedding_model, query: str):
-    """Cache the embedding of a query string.
-
-    ``SentenceTransformer.encode`` is relatively cheap for short queries but can
-    become a bottleneck when the same query is issued repeatedly (e.g., during
-    testing or when users repeat common questions).  Using ``functools.lru_cache``
-    stores the most recent 128 query embeddings in memory, dramatically reducing
-    latency for repeated queries.
-    """
-    # ``embedding_model.encode`` returns a NumPy array when ``convert_to_numpy``
-    # is True.  We keep that behaviour for compatibility with the rest of the
-    # code.
-    return embedding_model.encode([query], convert_to_numpy=True)
-
-def hybrid_search(q, category, top_k, knowledge_base, embedding_model, corpus_embeddings):
+def hybrid_search(q, category, top_k, knowledge_base, vector_store):
     if knowledge_base is None or knowledge_base.empty:
         return []
 
@@ -59,16 +36,36 @@ def hybrid_search(q, category, top_k, knowledge_base, embedding_model, corpus_em
                     name_mask = results['tên'].astype(str).str.contains(q_clean, case=False, na=False, regex=False)
                     keyword_scores[np.arange(score_length)[name_mask.values]] = 1.0
                 elif 'name' in results.columns:
-                    name_mask = results['name'].astype(str).str.contains(q_clean, case=False, na=False)
+                    name_mask = results['name'].astype(str).str.contains(q_clean, case=False, na=False, regex=False)
                     keyword_scores[np.arange(score_length)[name_mask.values]] = 1.0
 
             # ---------------------------------------------------------------
-            # Semantic similarity – unchanged, still uses cached query embedding.
+            # Semantic similarity using Chroma DB
             # ---------------------------------------------------------------
-            if embedding_model is not None and corpus_embeddings is not None and q_clean:
-                query_vector = _cached_encode_query(embedding_model, q_clean)
-                all_similarities = cosine_similarity(query_vector, corpus_embeddings[results.index])[0]
-                semantic_scores = all_similarities
+            if vector_store is not None and q_clean:
+                try:
+                    search_filter = {"category": category.upper().strip()} if category else None
+                    docs_and_scores = vector_store.similarity_search_with_score(
+                        q_clean, 
+                        k=top_k * 4, 
+                        filter=search_filter
+                    )
+                    
+                    for doc, distance in docs_and_scores:
+                        row_idx = doc.metadata.get("row")
+                        # Chroma returns distance (smaller is better). Convert to similarity score [0, 1].
+                        # Usually L2 distance can range higher, but 1 / (1 + dist) maps it nicely.
+                        # Alternatively, simple clamping: max(0, 1 - distance) if cosine.
+                        # We use a robust normalization 1 / (1 + distance)
+                        similarity = 1.0 / (1.0 + float(distance))
+                        
+                        if row_idx is not None and row_idx in results.index:
+                            # Map the original row_idx to the filtered results positional index
+                            pos_indices = np.where(results.index == row_idx)[0]
+                            if len(pos_indices) > 0:
+                                semantic_scores[pos_indices[0]] = max(semantic_scores[pos_indices[0]], similarity)
+                except Exception as e:
+                    print(f"Lỗi khi tìm kiếm qua Chroma: {e}")
 
     # Kết hợp điểm số
     results['hybrid_score'] = 0.4 * keyword_scores + 0.6 * semantic_scores

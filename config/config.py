@@ -2,6 +2,8 @@ import os
 from pathlib import Path
 from typing import Optional
 
+import torch
+
 
 def _load_dotenv(dotenv_path: Path) -> None:
     if not dotenv_path.exists():
@@ -29,8 +31,12 @@ def _env(key: str, default: Optional[str] = None) -> str:
     return os.getenv(key, default or '')
 
 
+def _default_device() -> str:
+    return 'cuda' if torch.cuda.is_available() else 'cpu'
+
+
 EMBEDDING_MODEL = _env('EMBEDDING_MODEL', 'AITeamVN/Vietnamese_Embedding')
-EMBEDDING_DEVICE = _env('EMBEDDING_DEVICE', 'cpu')
+EMBEDDING_DEVICE = _env('EMBEDDING_DEVICE', '') or _default_device()
 CHAT_MODEL = _env('CHAT_MODEL', _env('OLLAMA_MODEL', 'Vi-Qwen2-1.5B-RAG.Q3_K_L'))
 VECTOR_DB_DIR = _env('VECTOR_DB_DIR', './chroma_db')
 # MYSQL

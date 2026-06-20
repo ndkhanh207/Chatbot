@@ -1,18 +1,9 @@
+import re
 import pandas as pd
 
 
-def format_currency_vietnam(value):
-    """Định dạng số thành chuỗi tiền tệ Việt Nam với dấu chấm phân cách."""
-    try:
-        if pd.isna(value) or value == "" or value is None:
-            return "0"
-        value_int = int(float(value))
-        return f"{value_int:,}".replace(",", ".")
-    except Exception:
-        return "0"
-
-
-def normalize_text(value):
-    if value is None:
+def normalize_text(text: str) -> str:
+    if not text:
         return ""
-    return str(value).strip().lower()
+    # Lowercase + chuẩn hóa khoảng trắng (giữ space để keyword matching hoạt động)
+    return re.sub(r'\s+', ' ', text.lower()).strip()

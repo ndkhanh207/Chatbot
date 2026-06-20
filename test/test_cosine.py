@@ -1,10 +1,10 @@
 from langchain_chroma import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
-from config import Config
+from config.config import Config
 import pandas as pd
 import torch
 import os
-from data_loader import load_knowledge_base, convert_to_documents
+from modules.data_loader import load_knowledge_base, convert_to_documents
 
 # Tắt thông báo nhắc nhở ẩn danh của Chroma
 os.environ["ANONYMIZED_TELEMETRY"] = "False"

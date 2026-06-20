@@ -1,33 +1,21 @@
 import os
-from pathlib import Path
 import pandas as pd
-from langchain_core.documents import Document 
+from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from config import Config
+from config.config import Config
+from config.constants import (
+    DEFAULT_INT_COLS,
+    DEFAULT_FLOAT_COLS,
+    DEFAULT_FILL_VALUES,
+    FIELD_ALIAS_MAP,
+    resolve_data_path,
+)
 from langchain_chroma import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
 from tqdm import tqdm
 from multiprocessing import Pool
 import warnings
 warnings.filterwarnings('ignore')
-
-# Đã đổi sang tiếng Việt theo đúng Header trong file CSV của bạn
-DEFAULT_INT_COLS = ['số lõi', 'khe RAM', 'khe M.2', 'bộ nhớ', 'RAM tối đa', 'tdp']
-DEFAULT_FLOAT_COLS = ['giá', 'xung cơ bản', 'xung boost', 'chiều dài']
-
-# Bảng giá trị mặc định để chống lỗi Null
-DEFAULT_FILL_VALUES = {col: 0.0 for col in DEFAULT_FLOAT_COLS + DEFAULT_INT_COLS}
-
-FIELD_ALIAS_MAP = {
-    'tdp': ['tdp', 'điện năng', 'điện năng tiêu thụ', 'công suất tiêu thụ'],
-    'xung cơ bản': ['xung cơ bản', 'base clock'],
-    'xung boost': ['xung boost', 'boost clock'],
-}
-
-DATA_DIR = Path(os.getenv('PC_STORE_DATA_DIR', Path(__file__).resolve().parent / 'data'))
-
-def resolve_data_path(filename):
-    return DATA_DIR / filename
 
 def load_csv(filename, category):
     path = resolve_data_path(filename)
@@ -135,20 +123,6 @@ def convert_to_documents(df, num_workers=4):
             docs.extend(doc_batch)
     
     return docs
-
-def load_compatibility_rules():
-    path = resolve_data_path('compatibility.csv')
-    if not path.exists():
-        return pd.DataFrame()
-
-    rules = pd.read_csv(path, skipinitialspace=True, keep_default_na=True)
-    rules.columns = rules.columns.str.strip()
-
-    for column in ['component_1', 'component_2']:
-        if column in rules.columns:
-            rules[column] = rules[column].astype(str).str.lower().str.strip()
-
-    return rules.fillna("")
 
 # ------------------------------------------------------------
 # Vector DB (Chroma) initialization helper

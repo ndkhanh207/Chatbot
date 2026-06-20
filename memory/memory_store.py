@@ -9,7 +9,7 @@ from sqlalchemy import (
     create_engine, Column, Integer, String, Text, DateTime
 )
 from sqlalchemy.orm import declarative_base, sessionmaker
-from config import MYSQL_CONNECTION_STRING
+from config.config import MYSQL_CONNECTION_STRING
 
 # ──────────────────────────────────────────────
 # SQLAlchemy setup
@@ -38,7 +38,7 @@ engine = create_engine(
 Base.metadata.create_all(engine)  # tạo bảng nếu chưa có
 SessionLocal = sessionmaker(bind=engine)
 
-MAX_CHARS = 8000
+MAX_CHARS = 2000
 
 
 # ──────────────────────────────────────────────

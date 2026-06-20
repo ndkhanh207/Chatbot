@@ -7,7 +7,7 @@ logic and the functions can be unit‑tested independently.
 
 import os
 import ollama
-from config import CHAT_MODEL
+from config.config import CHAT_MODEL
 
 
 def _extract_model_name(model_entry):

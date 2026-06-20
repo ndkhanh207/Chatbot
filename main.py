@@ -1,29 +1,18 @@
-"""FastAPI application entry point.
+"""FastAPI application entry point."""
 
-This file is intentionally **thin** – it only wires up the FastAPI app, the
-lifespan (startup/shutdown) logic, and the API endpoints.  All business logic
-lives in dedicated modules:
-
-* ``model_utils``   – Ollama model selection
-* ``search_engine`` – hybrid search & embedding
-* ``chat_handler``  – chat endpoint logic
-* ``compatibility`` – compatibility‑check helpers
-* ``data_loader``   – data loading & Vector DB initialisation
-"""
-
-import os
+import asyncio
 import pandas as pd
-import ollama
-from fastapi import FastAPI
+import anyio
+from fastapi import FastAPI, HTTPException, status
+from pydantic import BaseModel, Field
 from contextlib import asynccontextmanager
-from sentence_transformers import SentenceTransformer
+from config.config import EMBEDDING_MODEL as EMBEDDING_MODEL_NAME, EMBEDDING_DEVICE, Config
+from langchain_chroma import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
-from config import EMBEDDING_MODEL as EMBEDDING_MODEL_NAME, EMBEDDING_DEVICE, CHAT_MODEL, Config
 
-from data_loader import load_compatibility_rules, load_knowledge_base, convert_to_documents, initialize_vector_db
-from search_engine import build_corpus_embeddings, hybrid_search
-from chat_handler import handle_chat
-from util.model_utils import get_ollama_model
+from modules.data_loader import load_knowledge_base, initialize_vector_db
+from app.search_engine import hybrid_search
+from app.chat_handler import handle_chat
 from tool.calculator import convert_unit
 from memory.memory_store import clear_session
 
@@ -31,60 +20,42 @@ from memory.memory_store import clear_session
 # Global state – populated during lifespan startup
 # ──────────────────────────────────────────────
 KNOWLEDGE_BASE = None
-EMBEDDING_MODEL = None
-CORPUS_EMBEDDINGS = None
-COMPATIBILITY_RULES = None
+VECTOR_STORE = None
+
+
+CHAT_TIMEOUT_SECONDS = 30.0
 
 
 # ──────────────────────────────────────────────
-# Lifespan (startup / shutdown)
+# Lifespan
 # ──────────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global KNOWLEDGE_BASE, EMBEDDING_MODEL, CORPUS_EMBEDDINGS, COMPATIBILITY_RULES
+    global KNOWLEDGE_BASE, VECTOR_STORE
     print("=== [HỆ THỐNG] Đang khởi tạo Kho tri thức từ structure_data... ===")
 
     try:
         KNOWLEDGE_BASE = load_knowledge_base()
-        COMPATIBILITY_RULES = load_compatibility_rules()
 
         print(f"=== [HỆ THỐNG] Gộp thành công! Tổng số linh kiện: {len(KNOWLEDGE_BASE)} dòng. ===")
-        print(f"=== [HỆ THỐNG] Nạp thành công {len(COMPATIBILITY_RULES)} quy tắc tương thích! ===")
-        print("=== [HỆ THỐNG] Đang nạp Model Embedding và số hóa dữ liệu lên RAM... ===")
         print(f"=== [HỆ THỐNG] EMBEDDING MODEL: {EMBEDDING_MODEL_NAME} | DEVICE: {EMBEDDING_DEVICE} ===")
 
-        EMBEDDING_MODEL = SentenceTransformer(EMBEDDING_MODEL_NAME, device=EMBEDDING_DEVICE)
-        # Build a comprehensive text representation for each row to improve
-        # semantic search. Previously we only used ``category`` + product name,
-        # which meant specifications like "xung cơ bản" or "xung boost" were not
-        # part of the embedding space. As a result, queries asking about those
-        # specs (e.g., "Base Clock" of a GPU) could not be matched. We now
-        # concatenate *all* non‑empty, non‑numeric fields (including the
-        # category) into a single string per row.
-        def _row_to_text(row):
-            parts = []
-            # Ensure category is first
-            if 'category' in row and pd.notna(row['category']):
-                parts.append(str(row['category']))
-            for col, val in row.items():
-                if col == 'category':
-                    continue
-                # Include textual and numeric values that are not price
-                if col.lower() in ('giá', 'price'):
-                    continue
-                if pd.isna(val) or val == "" or (isinstance(val, (int, float)) and val == 0):
-                    continue
-                parts.append(str(val))
-            return " ".join(parts)
-
-        corpus_texts = KNOWLEDGE_BASE.apply(_row_to_text, axis=1).tolist()
-        CORPUS_EMBEDDINGS = build_corpus_embeddings(EMBEDDING_MODEL, corpus_texts)
-
-        # Khởi tạo hoặc tải Vector DB (Chroma)
+        # Khởi tạo Vector DB nếu chưa có
         try:
             initialize_vector_db()
         except Exception as db_err:
             print(f"❌ LỖI TẠO VECTOR DB: {db_err}")
+
+        # Nạp Chroma DB vào RAM
+        embeddings = HuggingFaceEmbeddings(
+            model_name=Config.EMBEDDING_MODEL,
+            model_kwargs={"device": Config.EMBEDDING_DEVICE}
+        )
+        VECTOR_STORE = Chroma(
+            persist_directory=Config.VECTOR_DB_DIR, 
+            embedding_function=embeddings
+        )
+        print("=== [HỆ THỐNG] Đã nạp thành công Chroma Vector DB! ===")
 
         print("=== [HỆ THỐNG] Khởi tạo hệ thống Server hoàn tất! Sẵn sàng nhận API. ===")
 
@@ -98,52 +69,98 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 
 
-# ──────────────────────────────────────────────
-# Internal search helper (used by chat handler)
-# ──────────────────────────────────────────────
-def _search(q: str = None, category: str = None, top_k: int = 5):
-    """Thin wrapper around ``hybrid_search`` that injects the global state."""
-    return hybrid_search(q, category, top_k, KNOWLEDGE_BASE, EMBEDDING_MODEL, CORPUS_EMBEDDINGS)
 
 
 # ──────────────────────────────────────────────
-# API endpoints
+# Request / Response schemas
 # ──────────────────────────────────────────────
-@app.get('/test-knowledge-base')
-def test_kb(q: str = None, category: str = None, top_k: int = 5):
-    """API tìm kiếm lai (Hybrid Search)."""
+class ChatRequest(BaseModel):
+    user_message: str = Field(..., min_length=1, description="Câu hỏi của khách hàng")
+    session_id: str = Field(..., min_length=1, description="ID phiên chat")
+
+
+class ChatResponse(BaseModel):
+    chatbot_reply: str
+
+
+class ConvertResponse(BaseModel):
+    result: float
+
+
+# ──────────────────────────────────────────────
+# POST /chat — tạo một "message" mới trong session, trả lời chatbot
+# Body JSON thay cho query params (chuẩn REST: dữ liệu thuộc body, không phải URL)
+# ──────────────────────────────────────────────
+@app.post("/chat", response_model=ChatResponse, status_code=status.HTTP_200_OK)
+async def chat_endpoint(payload: ChatRequest):
     if KNOWLEDGE_BASE is None:
-        return {'status': 'Kho hàng trống!'}
-    return _search(q, category, top_k)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Hệ thống chưa khởi tạo xong, vui lòng thử lại sau."
+        )
+
+    try:
+        # ⭐ FIX QUAN TRỌNG: truyền hàm trần (không gọi ()) + args riêng,
+        # để run_sync thực thi nó trong thread riêng — không block event loop.
+        # Trước đây code gọi chat_with_bot(...) ngay lập tức rồi đưa KẾT QUẢ
+        # (chuỗi string) vào run_sync, khiến toàn bộ logic chạy đồng bộ trên
+        # event loop chính và timeout hoàn toàn không có tác dụng.
+        result = await asyncio.wait_for(
+            anyio.to_thread.run_sync(
+                handle_chat,
+                payload.user_message,
+                KNOWLEDGE_BASE,
+                VECTOR_STORE,
+                payload.session_id,
+            ),
+            timeout=CHAT_TIMEOUT_SECONDS,
+        )
+        # handle_chat trả về dict {"chatbot_reply": "..."}
+        return ChatResponse(chatbot_reply=result["chatbot_reply"])
+
+    except asyncio.TimeoutError:
+        raise HTTPException(
+            status_code=status.HTTP_408_REQUEST_TIMEOUT,
+            detail="Dạ, hệ thống đang bận, bạn thử lại sau nhé!"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Đã xảy ra lỗi hệ thống: {str(e)}"
+        )
 
 
-@app.get("/chat")
-def chat_with_bot(user_message: str, session_id: str = "default"):
-    """API chatbot hoàn chỉnh với tính năng kiểm tra tương thích."""
-    """
-    Thêm session_id để phân biệt user.
-    Ví dụ: /chat?user_message=xin chào&session_id=user_123
-    """
-    return handle_chat(user_message, KNOWLEDGE_BASE, COMPATIBILITY_RULES, _search, session_id=session_id)
+# ──────────────────────────────────────────────
+# GET /search — tra cứu, đúng ngữ nghĩa REST cho thao tác đọc (không đổi state)
+# Giữ query params vì đây là filter/search, không phải tạo resource
+# ──────────────────────────────────────────────
+@app.get("/search")
+def search_knowledge_base(q: str = None, category: str = None, top_k: int = 5):
+    if KNOWLEDGE_BASE is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Kho tri thức chưa được nạp."
+        )
+    return hybrid_search(q, category, top_k, KNOWLEDGE_BASE, VECTOR_STORE)
 
 
-@app.get("/calculate")
-def calculate(value: float, from_unit: str, to_unit: str):
-    """Unit conversion calculator API.
-
-    Examples:
-        /calculate?value=64&from_unit=GB&to_unit=MB
-        /calculate?value=3.5&from_unit=GHz&to_unit=MHz
-    """
+# ──────────────────────────────────────────────
+# GET /unit-conversions — thao tác tính toán thuần (không phải resource, GET hợp lý)
+# ──────────────────────────────────────────────
+@app.get("/unit-conversions", response_model=ConvertResponse)
+def convert(value: float, from_unit: str, to_unit: str):
     try:
         result = convert_unit(value, from_unit, to_unit)
-        return {"status": "success", "result": result}
+        return ConvertResponse(result=result)
     except ValueError as e:
-        return {"status": "error", "message": str(e)}
-    
-    
-@app.delete("/chat/history/{session_id}")
-def delete_history(session_id: str):
-    """Xóa lịch sử hội thoại của một user."""
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+# ──────────────────────────────────────────────
+# DELETE /sessions/{session_id} — xóa resource "session"
+# (đổi route cho đúng resource-oriented: session là resource, không phải "history")
+# ──────────────────────────────────────────────
+@app.delete("/sessions/{session_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_session(session_id: str):
     clear_session(session_id)
-    return {"status": "ok", "message": f"Đã xóa lịch sử session '{session_id}'"}
+    return None
