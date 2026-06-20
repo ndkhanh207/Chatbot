@@ -144,6 +144,8 @@ def handle_pc_build_flow(
             purpose_str = kw
             break
 
+    assembly_price = _format_approx_million(best_build.get('Assembly_Fee', 0.2e6))
+
     reply = (
         f"[GỢI Ý BỘ PC TỐI ƯU]\n"
         f"- Mã bộ: {build_id}\n\n"
@@ -152,8 +154,9 @@ def handle_pc_build_flow(
         f"Bộ PC của bạn sẽ bao gồm các thành phần sau:\n\n"
         f"- CPU: {cpu_model}, giá {cpu_price}\n"
         f"- GPU: {gpu_model}, giá {gpu_price}\n"
-        f"- Mainboard: {main_model}, giá {main_price}\n\n"
-        f"Tổng cộng chi phí cho các thành phần này là khoảng {total_price} (tính từ GPU, Mainboard, CPU và phí lắp ráp)."
+        f"- Mainboard: {main_model}, giá {main_price}\n"
+        f"- Phí lắp ráp: {assembly_price}\n\n"
+        f"Tổng cộng chi phí cho các thành phần này là khoảng {total_price}."
     )
     
     save_message(session_id, user_message, reply)

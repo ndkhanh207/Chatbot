@@ -82,9 +82,8 @@ def _get_reformulate_chain():
     if _reformulate_chain is None:
         _reformulate_chain = REFORMULATE_TEMPLATE | ChatOllama(
             model=get_ollama_model(),
-            temperature=0.1,
+            temperature=0.0,
             repeat_penalty=1.2,
-            format="json"  # ÉP KIỂU JSON TỪ CẤP ĐỘ ENGINE
         )
     return _reformulate_chain
 
@@ -142,21 +141,15 @@ def _reformulate_query(user_message: str, chat_history: list) -> str:
 
     # ── FALLBACK: Nếu code thuần không bắt được thì gọi AI ──
     try:
-        import json
         response = _get_reformulate_chain().invoke({
             "user_message": user_message,
             "last_ai_msg": context_msg,
         })
-        content = response.content.strip()
-        json_match = re.search(r'\{.*\}', content, re.DOTALL)
-        if json_match:
-            try:
-                parsed = json.loads(json_match.group(0))
-                reformulated = parsed.get("query", user_message)
-            except json.JSONDecodeError:
-                reformulated = user_message # FAIL SAFE
-        else:
-            reformulated = user_message # FAIL SAFE: Trả về câu gốc nếu AI bịa chuyện
+        reformulated = response.content.strip()
+        
+        # Fail-safe: nếu AI trả về rỗng hoặc quá dài (ảo giác), dùng câu gốc
+        if not reformulated or len(reformulated) > len(user_message) * 4:
+            reformulated = user_message
 
         print(f"[REFORMULATE - AI] '{user_message}' → '{reformulated}'")
         return reformulated
