@@ -7,7 +7,7 @@ LLM bóc tách tên linh kiện → Python tra DB lấy giá → cộng tổng c
 from app.search_engine import hybrid_search
 from app.compact.compat_intent import PCIntentSchema
 from app.compact.compat_logic import _get_field
-from app.compact.pricing import format_currency_vietnam
+from app.price.pricing import format_currency_vietnam
 
 # Trigger từ khóa mồi để gọi luồng tính giá
 PRICE_CALCULATION_TRIGGERS = [

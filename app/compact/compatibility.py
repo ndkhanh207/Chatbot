@@ -16,7 +16,7 @@ from app.compact.compat_logic import (
 )
 from app.compact.compat_format import _fmt_cpu_main, _fmt_gpu_main, _fmt_cpu_gpu
 from app.compact.compat_intent import parse_compat_intent, PCIntentSchema
-from app.compact.pricing import format_currency_vietnam
+from app.price.pricing import format_currency_vietnam
 
 __all__ = [
     "build_compatibility_context", "build_suggestion_context",

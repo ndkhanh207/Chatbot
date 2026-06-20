@@ -10,7 +10,7 @@ from langchain_core.runnables import RunnableSequence
 
 from util.model_utils import get_ollama_model
 from util.utils import normalize_text
-from app.compact.pricing import format_currency_vietnam
+from app.price.pricing import format_currency_vietnam
 from tool.calculator import CONVERSIONS, convert_if_needed, ALIASES
 from util.unit import get_unit_map
 from template.prompt_templates import ADVISOR_TEMPLATE, COMPAT_CHECK_TEMPLATE, SUGGESTION_TEMPLATE, REFORMULATE_TEMPLATE
@@ -22,7 +22,7 @@ from app.compact.compatibility import (
     is_compatibility_query, parse_compat_intent,
     CPU_TERMS, GPU_TERMS, MAIN_TERMS,
 )
-from app.compact.price_calculator import (
+from app.price.price_calculator import (
     build_price_calculation_context, is_price_calculation_query,
 )
 

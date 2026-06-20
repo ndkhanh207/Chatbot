@@ -1,7 +1,7 @@
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 from util.utils import normalize_text
-from app.compact.pricing import format_currency_vietnam
+from app.price.pricing import format_currency_vietnam
 
 def hybrid_search(q, category, top_k, knowledge_base, vector_store):
     if knowledge_base is None or knowledge_base.empty:

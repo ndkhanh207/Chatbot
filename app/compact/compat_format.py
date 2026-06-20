@@ -1,4 +1,4 @@
-from app.compact.pricing import format_currency_vietnam, calculate_total_price
+from app.price.pricing import format_currency_vietnam, calculate_total_price
 from app.compact.compat_logic import _get_field
 
 def _fmt_cpu_main(cpu: dict, main: dict, check: dict) -> str:
