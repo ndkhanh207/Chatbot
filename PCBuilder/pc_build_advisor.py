@@ -18,7 +18,7 @@ BUILD_PC_TRIGGERS = [
     'bộ pc', 'cấu hình pc', 'dựng pc', 'lắp pc',
     'trọn bộ', 'bộ máy tính', 'cấu hình máy',
     'máy tính tầm', 'pc tầm', 'máy tính dưới',
-    'pc gaming', 'máy gaming',
+    'pc gaming', 'máy gaming', 'bộ khác', 'cấu hình khác'
 ]
 
 # ──────────────────────────────────────────────
@@ -109,7 +109,7 @@ def _score_purpose(build_notes: str, user_msg_lower: str) -> float:
 # ──────────────────────────────────────────────
 # Hàm tìm bộ PC tốt nhất
 # ──────────────────────────────────────────────
-def find_best_build(budget: int, user_message: str, build_df: pd.DataFrame) -> dict | None:
+def find_best_build(budget: int, user_message: str, build_df: pd.DataFrame, exclude_builds: list = None) -> dict | None:
     """
     Tìm bộ PC phù hợp nhất trong DataFrame.
 
@@ -117,6 +117,7 @@ def find_best_build(budget: int, user_message: str, build_df: pd.DataFrame) -> d
         budget:       Ngân sách của user (VNĐ).
         user_message: Câu hỏi gốc của user (dùng để score mục đích).
         build_df:     DataFrame từ Pc_build_data_cleaned.csv.
+        exclude_builds: List các BuildID cần loại trừ.
 
     Returns:
         dict chứa thông tin bộ PC, hoặc None nếu không tìm được.
@@ -132,6 +133,10 @@ def find_best_build(budget: int, user_message: str, build_df: pd.DataFrame) -> d
         (build_df['Total_Price'] >= budget_min) &
         (build_df['Total_Price'] <= budget_max)
     ].copy()
+
+    # Loại bỏ các bộ PC đã gợi ý trước đó (nếu có)
+    if exclude_builds and not filtered.empty:
+        filtered = filtered[~filtered['BuildID'].isin(exclude_builds)]
 
     if filtered.empty:
         return None

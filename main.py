@@ -27,7 +27,7 @@ from chat_handler import handle_chat
 from util.model_utils import get_ollama_model
 from tool.calculator import convert_unit
 from memory.memory_store import clear_session
-from pc_build_advisor import find_best_build
+from PCBuilder.pc_build_advisor import find_best_build
 
 # ──────────────────────────────────────────────
 # Global state – populated during lifespan startup

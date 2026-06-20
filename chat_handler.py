@@ -17,7 +17,7 @@ from unit import get_unit_map
 from template.prompt_templates import ADVISOR_TEMPLATE, REFORMULATE_TEMPLATE, PC_BUILD_TEMPLATE
 from util.response_formatter import build_format_hint
 from memory.memory_store import get_trimmed_history, save_message
-from pc_build_advisor import (
+from PCBuilder.pc_build_advisor import (
     detect_build_pc_intent,
     extract_budget,
     find_best_build,
@@ -97,20 +97,26 @@ def _reformulate_query(user_message: str, chat_history: list) -> str:
     if any(t in user_message.lower() for t in specific_terms):
         return user_message
     import re
-    # Trích xuất đúng câu trả lời cuối cùng của AI để làm ngữ cảnh
+    # Trích xuất đúng câu trả lời cuối cùng của AI, ưu tiên tìm bảng Gợi ý bộ PC
     last_ai_msg = ""
+    last_build_msg = ""
     for msg in reversed(chat_history):
         if getattr(msg, "type", "") == "ai":
-            last_ai_msg = msg.content
-            break
+            if not last_ai_msg:
+                last_ai_msg = msg.content
+            if "[GỢI Ý BỘ PC TỐI ƯU]" in msg.content:
+                last_build_msg = msg.content
+                break
+                
+    context_msg = last_build_msg if last_build_msg else last_ai_msg
 
     # ── FAST PATH: Phân giải đại từ bằng code thuần (chống ảo giác AI 100%) ──
     if last_ai_msg:
         user_msg_lower = user_message.lower()
         
-        cpu_match  = re.search(r'-\s*CPU\s*:\s*(.+?)\s*\|', last_ai_msg, re.IGNORECASE)
-        gpu_match  = re.search(r'-\s*GPU\s*:\s*(.+?)\s*\|', last_ai_msg, re.IGNORECASE)
-        main_match = re.search(r'-\s*Mainboard\s*:\s*(.+?)\s*\|', last_ai_msg, re.IGNORECASE)
+        cpu_match  = re.search(r'-\s*CPU\s*:\s*(.+?)\s*\|', context_msg, re.IGNORECASE)
+        gpu_match  = re.search(r'-\s*GPU\s*:\s*(.+?)\s*\|', context_msg, re.IGNORECASE)
+        main_match = re.search(r'-\s*Mainboard\s*:\s*(.+?)\s*\|', context_msg, re.IGNORECASE)
         
         replaced_msg = user_msg_lower
         matched = False
@@ -139,7 +145,7 @@ def _reformulate_query(user_message: str, chat_history: list) -> str:
         import json
         response = _get_reformulate_chain().invoke({
             "user_message": user_message,
-            "last_ai_msg": last_ai_msg,
+            "last_ai_msg": context_msg,
         })
         content = response.content.strip()
         json_match = re.search(r'\{.*\}', content, re.DOTALL)
@@ -148,9 +154,9 @@ def _reformulate_query(user_message: str, chat_history: list) -> str:
                 parsed = json.loads(json_match.group(0))
                 reformulated = parsed.get("query", user_message)
             except json.JSONDecodeError:
-                reformulated = content
+                reformulated = user_message # FAIL SAFE
         else:
-            reformulated = content
+            reformulated = user_message # FAIL SAFE: Trả về câu gốc nếu AI bịa chuyện
 
         print(f"[REFORMULATE - AI] '{user_message}' → '{reformulated}'")
         return reformulated
@@ -293,54 +299,24 @@ def handle_chat(user_message: str, knowledge_base,
         return {"chatbot_reply": "HỆ THỐNG CHƯA SẴN SÀNG!"}
 
     # ── 0. PC Build intent — xử lý trước tất cả các intent khác ──
-    if detect_build_pc_intent(user_message):
-        budget = extract_budget(user_message)
-        chat_history = get_trimmed_history(session_id)
+    user_message_fixed = _normalize_user_message(user_message)
+    msg_lower = normalize_text(user_message_fixed)
+    is_build_pc = detect_build_pc_intent(user_message_fixed)
+    chat_history = get_trimmed_history(session_id)
 
-        if budget is None:
-            # Không trích xuất được ngân sách → hỏi lại user
-            reply = (
-                "Dạ em chưa xác định được ngân sách của bạn. "
-                "Bạn vui lòng cho em biết tầm giá bạn muốn đầu tư cho bộ PC nhé "
-                "(ví dụ: 20 triệu, 30 triệu...)"
-            )
-            save_message(session_id, user_message, reply)
-            return {"chatbot_reply": reply}
-
-        best_build = find_best_build(budget, user_message, build_df)
-
-        if best_build is None:
-            reply = (
-                "Dạ, hiện tại bên em không tìm được bộ PC nào phù hợp với "
-                f"ngân sách và mục đích của bạn. "
-                "Bạn có thể điều chỉnh ngân sách hoặc cho em biết thêm nhu cầu "
-                "cụ thể để em tư vấn thêm nhé!"
-            )
-            save_message(session_id, user_message, reply)
-            return {"chatbot_reply": reply}
-
-        build_context = format_build_context(best_build)
-
-        # ====== DEBUG PC BUILD ======
-        print("\n" + "═" * 60)
-        print(f"🔍 [HỆ THỐNG DEBUG CHAT] - Session ID: {session_id}")
-        print(f"🔹 1. Câu hỏi gốc của khách: '{user_message}'")
-        print(f"🔹 2. Intent: BUILD PC")
-        print(f"🔹 3. Ngân sách nhận diện: {budget} VNĐ")
-        print(f"🔹 4. Bộ PC tìm thấy: {best_build.get('BuildID', 'N/A')}")
-        print(f"🔹 5. Nội dung [context] nhét vào miệng Bot:\n{build_context}")
-        print("═" * 60 + "\n")
-
-        try:
-            response = _get_pc_build_chain().invoke({
-                "build_context":  build_context,
-                "user_message":   user_message,
-            })
-            reply = response.content
-            save_message(session_id, user_message, reply)
-            return {"chatbot_reply": reply}
-        except Exception as e:
-            return {"chatbot_reply": f"❌ Lỗi bộ não AI: {str(e)}"}
+    # Chuyển quyền xử lý luồng PC Build sang module riêng biệt
+    from PCBuilder.pc_build_flow import handle_pc_build_flow
+    pc_build_result = handle_pc_build_flow(
+        session_id=session_id,
+        user_message=user_message,
+        user_message_fixed=user_message_fixed,
+        msg_lower=msg_lower,
+        chat_history=chat_history,
+        build_df=build_df,
+        is_build_pc=is_build_pc
+    )
+    if pc_build_result is not None:
+        return pc_build_result
 
     # 1. Normalise & detect intent
     user_message_fixed = _normalize_user_message(user_message)
