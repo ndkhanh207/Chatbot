@@ -3,28 +3,27 @@ import pandas as pd
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from config.config import Config
-from config.constants import (
+from app.constants import (
     DEFAULT_INT_COLS,
     DEFAULT_FLOAT_COLS,
     DEFAULT_FILL_VALUES,
     FIELD_ALIAS_MAP,
-    resolve_data_path,
 )
 from langchain_chroma import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
 from tqdm import tqdm
 from multiprocessing import Pool
 import warnings
+from pathlib import Path
 warnings.filterwarnings('ignore')
 
 def load_csv(filename, category):
-    path = resolve_data_path(filename)
+    data_dir = Path(Config.PC_STORE_DATA)
+    path = data_dir / filename
     if not path.exists():
         raise FileNotFoundError(f'Không tìm thấy file dữ liệu: {path}')
     
     df = pd.read_csv(path, keep_default_na=True)
-
-    
     df['category'] = category
     return df
 

@@ -46,6 +46,10 @@ MYSQL_HOST     = _env('MYSQL_HOST',     '127.0.0.1')
 MYSQL_PORT     = _env('MYSQL_PORT',     '3306')
 MYSQL_DB       = _env('MYSQL_DB',       'chat_history')
 
+# Base directory for data files
+PC_STORE_DATA = _env('PC_STORE_DATA','data/dataset')
+
+
 MYSQL_CONNECTION_STRING = (
     f"mysql+pymysql://{MYSQL_USER}:{MYSQL_PASSWORD}"
     f"@{MYSQL_HOST}:{MYSQL_PORT}/{MYSQL_DB}"
@@ -57,6 +61,7 @@ class Config:
     CHAT_MODEL = CHAT_MODEL
     VECTOR_DB_DIR = VECTOR_DB_DIR
     MYSQL_CONNECTION_STRING = MYSQL_CONNECTION_STRING
+    PC_STORE_DATA = PC_STORE_DATA
 
 __all__ = [
     'EMBEDDING_MODEL',
@@ -64,5 +69,6 @@ __all__ = [
     'CHAT_MODEL',
     'VECTOR_DB_DIR',
     'MYSQL_CONNECTION_STRING',
+    'PC_STORE_DATA',
     'Config',
 ]

@@ -1,6 +1,5 @@
 import numpy as np
-from sklearn.metrics.pairwise import cosine_similarity
-from util.utils import normalize_text
+from app.core.query_parser import normalize_text
 from app.price.pricing import format_currency_vietnam
 
 def hybrid_search(q, category, top_k, knowledge_base, vector_store):

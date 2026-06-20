@@ -22,9 +22,9 @@ UNIT_MAP: dict[str, dict[str, str]] = {
         'ram tối đa': 'GB',
         'giá': 'VND',
         'tdp': 'W',
-        'xung cơ bản': 'GHz',   # CPU default
+        'xung cơ bản': 'GHz',
         'xung boost': 'GHz',
-        'kich thước': 'mm',
+        'kích thước': 'mm',
     },
     "GPU": {
         # GPU clock speeds are expressed in megahertz

@@ -10,7 +10,7 @@ from config.config import EMBEDDING_MODEL as EMBEDDING_MODEL_NAME, EMBEDDING_DEV
 from langchain_chroma import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
 
-from modules.data_loader import load_knowledge_base, initialize_vector_db
+from data.data_loader import load_knowledge_base, initialize_vector_db
 from app.search_engine import hybrid_search
 from app.chat_handler import handle_chat
 from tool.calculator import convert_unit

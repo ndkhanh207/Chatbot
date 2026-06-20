@@ -17,16 +17,11 @@ FIELD_ALIAS_MAP = {
     'xung boost': ['xung boost', 'boost clock'],
 }
 
-# Base directory for CSV data files. Can be overridden by env var PC_STORE_DATA_DIR.
-DATA_DIR = Path(os.getenv('PC_STORE_DATA_DIR', Path(__file__).resolve().parent.parent / 'data'))
 
-
-def resolve_data_path(filename: str) -> Path:
-    """Return absolute path to a data file located in the project's data folder.
-
-    Args:
-        filename: Name of the CSV or other data file.
-    Returns:
-        Path object pointing to the file.
-    """
-    return DATA_DIR / filename
+FIELD_KEYWORD_ALIASES = {
+    'tdp':          ['tdp', 'điện năng', 'điện năng tiêu thụ', 'công suất'],
+    'xung cơ bản':  ['xung cơ bản', 'base clock'],
+    'xung boost':   ['xung boost', 'boost clock'],
+    'bộ nhớ':       ['bộ nhớ', 'memory'],
+    'socket':       ['socket', 'socket type', 'loại socket'],
+}
