@@ -50,13 +50,13 @@ def hybrid_search(q, category, top_k, knowledge_base, embedding_model, corpus_em
             # query without manually enumerating each possible column.
             # ---------------------------------------------------------------
             if 'search_text' in results.columns:
-                mask = results['search_text'].astype(str).str.contains(q_clean, case=False, na=False)
+                mask = results['search_text'].astype(str).str.contains(q_clean, case=False, na=False, regex=False)
                 keyword_scores[np.arange(score_length)[mask.values]] = 1.0
             else:
                 # Fallback to previous name‑only logic for backward
                 # compatibility if the column is missing.
                 if 'tên' in results.columns:
-                    name_mask = results['tên'].astype(str).str.contains(q_clean, case=False, na=False)
+                    name_mask = results['tên'].astype(str).str.contains(q_clean, case=False, na=False, regex=False)
                     keyword_scores[np.arange(score_length)[name_mask.values]] = 1.0
                 elif 'name' in results.columns:
                     name_mask = results['name'].astype(str).str.contains(q_clean, case=False, na=False)

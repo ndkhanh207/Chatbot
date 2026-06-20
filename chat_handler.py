@@ -57,8 +57,9 @@ def _get_chain() -> RunnableSequence:
     if _chain is None:
         llm = ChatOllama(
             model=get_ollama_model(),
-            temperature=0.0,
+            temperature=0.1,      # Tránh 0.0 tuyệt đối để không bị loop
             top_p=0.1,
+            repeat_penalty=1.2,   # Hình phạt nặng nếu lặp lại từ
         )
         _chain = ADVISOR_TEMPLATE | llm
     return _chain
@@ -69,8 +70,9 @@ def _get_pc_build_chain() -> RunnableSequence:
     if _pc_build_chain is None:
         llm = ChatOllama(
             model=get_ollama_model(),
-            temperature=0.0,  # Hạ nhiệt độ để chống bịa đặt
+            temperature=0.1,      # Hạ nhiệt độ để chống bịa đặt nhưng tránh 0.0
             top_p=0.1,
+            repeat_penalty=1.2,
         )
         _pc_build_chain = PC_BUILD_TEMPLATE | llm
     return _pc_build_chain
@@ -79,7 +81,10 @@ def _get_reformulate_chain():
     global _reformulate_chain
     if _reformulate_chain is None:
         _reformulate_chain = REFORMULATE_TEMPLATE | ChatOllama(
-            model=get_ollama_model(), temperature=0.0
+            model=get_ollama_model(),
+            temperature=0.1,
+            repeat_penalty=1.2,
+            format="json"  # ÉP KIỂU JSON TỪ CẤP ĐỘ ENGINE
         )
     return _reformulate_chain
 
@@ -91,16 +96,66 @@ def _reformulate_query(user_message: str, chat_history: list) -> str:
                       'ryzen', 'b760', 'z790', 'x670', 'h610']
     if any(t in user_message.lower() for t in specific_terms):
         return user_message
+    import re
+    # Trích xuất đúng câu trả lời cuối cùng của AI để làm ngữ cảnh
+    last_ai_msg = ""
+    for msg in reversed(chat_history):
+        if getattr(msg, "type", "") == "ai":
+            last_ai_msg = msg.content
+            break
+
+    # ── FAST PATH: Phân giải đại từ bằng code thuần (chống ảo giác AI 100%) ──
+    if last_ai_msg:
+        user_msg_lower = user_message.lower()
+        
+        cpu_match  = re.search(r'-\s*CPU\s*:\s*(.+?)\s*\|', last_ai_msg, re.IGNORECASE)
+        gpu_match  = re.search(r'-\s*GPU\s*:\s*(.+?)\s*\|', last_ai_msg, re.IGNORECASE)
+        main_match = re.search(r'-\s*Mainboard\s*:\s*(.+?)\s*\|', last_ai_msg, re.IGNORECASE)
+        
+        replaced_msg = user_msg_lower
+        matched = False
+        
+        if cpu_match and re.search(r'\b(cpu)\b', user_msg_lower):
+            cpu_name = cpu_match.group(1).strip()
+            replaced_msg = re.sub(r'\b(con cpu|cpu)\b', cpu_name, replaced_msg)
+            matched = True
+            
+        if gpu_match and re.search(r'\b(gpu)\b', user_msg_lower):
+            gpu_name = gpu_match.group(1).strip()
+            replaced_msg = re.sub(r'\b(con gpu|gpu)\b', gpu_name, replaced_msg)
+            matched = True
+            
+        if main_match and re.search(r'\b(bo mạch chủ)\b', user_msg_lower):
+            main_name = main_match.group(1).strip()
+            replaced_msg = re.sub(r'\b(con bo mạch chủ|bo mạch chủ)\b', main_name, replaced_msg)
+            matched = True
+            
+        if matched:
+            print(f"[REFORMULATE - REGEX] '{user_message}' → '{replaced_msg}'")
+            return replaced_msg
+
+    # ── FALLBACK: Nếu code thuần không bắt được thì gọi AI ──
     try:
+        import json
         response = _get_reformulate_chain().invoke({
             "user_message": user_message,
-            "chat_history": chat_history,
+            "last_ai_msg": last_ai_msg,
         })
-        reformulated = response.content.strip()
-        print(f"[REFORMULATE] '{user_message}' → '{reformulated}'")
+        content = response.content.strip()
+        json_match = re.search(r'\{.*\}', content, re.DOTALL)
+        if json_match:
+            try:
+                parsed = json.loads(json_match.group(0))
+                reformulated = parsed.get("query", user_message)
+            except json.JSONDecodeError:
+                reformulated = content
+        else:
+            reformulated = content
+
+        print(f"[REFORMULATE - AI] '{user_message}' → '{reformulated}'")
         return reformulated
     except Exception as e:
-        print(f"[REFORMULATE] Lỗi, dùng query gốc: {e}")
+        print(f"[REFORMULATE - LỖI] {e}")
         return user_message
 
 # ──────────────────────────────────────────────
@@ -266,6 +321,16 @@ def handle_chat(user_message: str, knowledge_base,
 
         build_context = format_build_context(best_build)
 
+        # ====== DEBUG PC BUILD ======
+        print("\n" + "═" * 60)
+        print(f"🔍 [HỆ THỐNG DEBUG CHAT] - Session ID: {session_id}")
+        print(f"🔹 1. Câu hỏi gốc của khách: '{user_message}'")
+        print(f"🔹 2. Intent: BUILD PC")
+        print(f"🔹 3. Ngân sách nhận diện: {budget} VNĐ")
+        print(f"🔹 4. Bộ PC tìm thấy: {best_build.get('BuildID', 'N/A')}")
+        print(f"🔹 5. Nội dung [context] nhét vào miệng Bot:\n{build_context}")
+        print("═" * 60 + "\n")
+
         try:
             response = _get_pc_build_chain().invoke({
                 "build_context":  build_context,
@@ -286,7 +351,7 @@ def handle_chat(user_message: str, knowledge_base,
        # 2. Lấy lịch sử TRƯỚC khi search (để reformulate)
     chat_history = get_trimmed_history(session_id)
 
-    # 3. Reformulate query mơ hồ → rõ ràng trước khi search ⭐
+    # 3. Reformulate query mơ hồ → rõ ràng trước khi search
     search_query = _reformulate_query(user_message_fixed, chat_history)
 
     # 4. Fetch matched_items bằng query đã reformulate
@@ -323,6 +388,16 @@ def handle_chat(user_message: str, knowledge_base,
     context     = compatibility_context if compatibility_context else product_context
     format_hint = build_format_hint(user_message, matched_items) \
                   if not compatibility_context else ""
+
+    # ====== DEBUG REGULAR CHAT ======
+    print("\n" + "═" * 60)
+    print(f"🔍 [HỆ THỐNG DEBUG CHAT] - Session ID: {session_id}")
+    print(f"🔹 1. Câu hỏi gốc của khách: '{user_message_fixed}'")
+    print(f"🔹 2. Từ khóa dùng để Search (q_clean): '{search_query}'")
+    print(f"🔹 3. Số lượng linh kiện tìm thấy trong DB: {len(matched_items)} món")
+    print(f"🔹 4. Nội dung [format_hint] sinh ra:\n{repr(format_hint)}")
+    print(f"🔹 5. Nội dung [context] nhét vào miệng Bot:\n{context}")
+    print("═" * 60 + "\n")
 
     # 9. Invoke chain với memory
     try:

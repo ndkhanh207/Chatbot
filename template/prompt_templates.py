@@ -4,23 +4,23 @@ from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
 # ── Template reformulate query (thêm mới) ─────
 REFORMULATE_TEMPLATE = ChatPromptTemplate.from_messages([
-    ("system", """\
-Dựa vào lịch sử hội thoại và câu hỏi mới nhất của người dùng, \
-hãy viết lại câu hỏi thành một câu hoàn chỉnh, độc lập, \
-không cần lịch sử để hiểu được.
+    ("system", "Bạn là một API xử lý ngôn ngữ. Bạn CHỈ ĐƯỢC PHÉP trả về chuỗi định dạng JSON hợp lệ, KHÔNG thêm bất kỳ văn bản nào khác. Định dạng yêu cầu: {{\"query\": \"câu hỏi đã viết lại\"}}"),
+    ("human", """\
+LỜI NÓI TRƯỚC ĐÓ CỦA BOT:
+"{last_ai_msg}"
 
-Ví dụ:
-- Lịch sử: "RTX 5080 giá bao nhiêu?" → Bot trả lời giá
-- Câu hỏi: "nó có bao nhiêu vram?"
-- Viết lại: "RTX 5080 có bao nhiêu vram?"
+CÂU HỎI MỚI CỦA KHÁCH:
+"{user_message}"
 
-QUAN TRỌNG:
-- Chỉ viết lại câu hỏi, KHÔNG trả lời.
-- Nếu câu hỏi đã rõ ràng, giữ nguyên.
-- Chỉ trả về câu hỏi đã viết lại, không thêm gì khác.\
-"""),
-    MessagesPlaceholder(variable_name="chat_history"),
-    ("human", "{user_message}"),
+YÊU CẦU:
+Hãy viết lại CÂU HỎI MỚI bằng cách thay thế các đại từ (nó, con cpu, con gpu, con mainboard...) bằng ĐÚNG TÊN CỦA LINH KIỆN ĐÓ có trong LỜI NÓI TRƯỚC ĐÓ CỦA BOT.
+Ví dụ: Nếu bot vừa nhắc đến "CPU Intel Core i9", và khách hỏi "con cpu có thông số gì?", hãy trả về {{"query": "Intel Core i9 có thông số gì?"}}
+
+Lưu ý:
+- Chỉ trả về chuỗi JSON duy nhất. KHÔNG giải thích. KHÔNG chào hỏi.
+- Nếu không có đại từ cần thay, giữ nguyên câu hỏi cũ.
+
+KẾT QUẢ JSON:"""),
 ])
 
 # ──────────────────────────────────────────────
