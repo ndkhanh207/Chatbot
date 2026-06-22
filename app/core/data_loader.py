@@ -24,7 +24,7 @@ FIELD_ALIAS_MAP = {
     'xung boost': ['xung boost', 'boost clock'],
 }
 
-DATA_DIR = Path(os.getenv('PC_STORE_DATA_DIR', Path(__file__).resolve().parent / 'data'))
+DATA_DIR = Path(os.getenv('PC_STORE_DATA_DIR', Path(__file__).resolve().parent.parent.parent / 'data'))
 
 def resolve_data_path(filename):
     return DATA_DIR / filename

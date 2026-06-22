@@ -1,4 +1,4 @@
-from util.utils import normalize_text
+from app.utils.common import normalize_text
 
 COMPATIBILITY_TRIGGERS = [
     'tương thích', 'lắp được', 'chạy được', 'hợp không', 'đi cùng', 'đi với', 'vừa không', 'cắm được'

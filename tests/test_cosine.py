@@ -4,7 +4,7 @@ from config import Config
 import pandas as pd
 import torch
 import os
-from data_loader import load_knowledge_base, convert_to_documents
+from app.core.data_loader import load_knowledge_base, convert_to_documents
 
 # Tắt thông báo nhắc nhở ẩn danh của Chroma
 os.environ["ANONYMIZED_TELEMETRY"] = "False"

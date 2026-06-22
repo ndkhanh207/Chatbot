@@ -12,6 +12,7 @@ lives in dedicated modules:
 """
 
 import os
+import re
 from pathlib import Path
 import pandas as pd
 import ollama
@@ -21,13 +22,13 @@ from sentence_transformers import SentenceTransformer
 from langchain_huggingface import HuggingFaceEmbeddings
 from config import EMBEDDING_MODEL as EMBEDDING_MODEL_NAME, EMBEDDING_DEVICE, CHAT_MODEL, Config
 
-from data_loader import load_compatibility_rules, load_knowledge_base, convert_to_documents, initialize_vector_db
-from search_engine import build_corpus_embeddings, hybrid_search
-from chat_handler import handle_chat
-from util.model_utils import get_ollama_model
-from tool.calculator import convert_unit
-from memory.memory_store import clear_session
-from PCBuilder.pc_build_advisor import find_best_build
+from app.core.data_loader import load_compatibility_rules, load_knowledge_base, convert_to_documents, initialize_vector_db
+from app.core.search_engine import build_corpus_embeddings, hybrid_search
+from app.core.chat_handler import handle_chat
+from app.utils.model_utils import get_ollama_model
+from app.utils.tools import convert_unit
+from app.memory.memory_store import clear_session
+from app.pc_builder.advisor import find_best_build
 
 # ──────────────────────────────────────────────
 # Global state – populated during lifespan startup
@@ -128,13 +129,20 @@ def test_kb(q: str = None, category: str = None, top_k: int = 5):
     return _search(q, category, top_k)
 
 
+# ──────────────────────────────────────────────
+# Security helpers
+# ──────────────────────────────────────────────
+def _validate_session_id(session_id: str) -> bool:
+    """Chỉ cho phép chữ, số, gạch ngang/dưới, tối đa 64 ký tự."""
+    return bool(re.match(r'^[a-zA-Z0-9_\-]{1,64}$', session_id))
+
+
 @app.get("/chat")
 def chat_with_bot(user_message: str, session_id: str = "default"):
     """API chatbot hoàn chỉnh với tính năng kiểm tra tương thích và gợi ý bộ PC."""
-    """
-    Thêm session_id để phân biệt user.
-    Ví dụ: /chat?user_message=xin chào&session_id=user_123
-    """
+    if not _validate_session_id(session_id):
+        return {"chatbot_reply": "Session ID không hợp lệ. Chỉ dùng chữ, số, '-', '_' (tối đa 64 ký tự)."}
+
     return handle_chat(
         user_message,
         KNOWLEDGE_BASE,

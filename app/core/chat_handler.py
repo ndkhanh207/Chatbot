@@ -9,15 +9,15 @@ import ollama
 from langchain_ollama import ChatOllama
 from langchain_core.runnables import RunnableSequence
 
-from util.model_utils import get_ollama_model
-from compatibility import build_compatibility_context
-from util.utils import format_currency_vietnam, normalize_text
-from tool.calculator import CONVERSIONS, convert_if_needed, ALIASES
-from unit import get_unit_map
-from template.prompt_templates import ADVISOR_TEMPLATE, REFORMULATE_TEMPLATE, PC_BUILD_TEMPLATE
-from util.response_formatter import build_format_hint
-from memory.memory_store import get_trimmed_history, save_message
-from PCBuilder.pc_build_advisor import (
+from app.utils.model_utils import get_ollama_model
+from app.pc_builder.compatibility import build_compatibility_context
+from app.utils.common import format_currency_vietnam, normalize_text
+from app.utils.tools import CONVERSIONS, convert_if_needed, ALIASES
+from app.utils.units import get_unit_map
+from app.templates.prompt_templates import ADVISOR_TEMPLATE, REFORMULATE_TEMPLATE, PC_BUILD_TEMPLATE
+from app.utils.response_formatter import build_format_hint
+from app.memory.memory_store import get_trimmed_history, save_message
+from app.pc_builder.advisor import (
     detect_build_pc_intent,
     extract_budget,
     find_best_build,
@@ -41,6 +41,36 @@ FIELD_KEYWORD_ALIASES = {
     'bộ nhớ':       ['bộ nhớ', 'memory'],
     'socket':       ['socket', 'socket type', 'loại socket'],
 }
+
+# ──────────────────────────────────────────────
+# Prompt Injection Guard
+# ──────────────────────────────────────────────
+INJECTION_PATTERNS = [
+    # English jailbreak patterns
+    r'(ignore|forget|disregard|override).{0,30}(instruction|prompt|system|above|rule)',
+    r'(you are now|act as|pretend to be|roleplay as|simulate)',
+    r'(repeat after me|say exactly|output the following)',
+    r'(DAN|jailbreak|developer mode|unrestricted)',
+    r'(##system|<\|im_start\|>|<\|system\|>|\[system\]|\[INST\])',  # Special tokens
+    # Vietnamese jailbreak patterns
+    r'(bỏ qua|quên|ghi đè|vô hiệu hóa).{0,40}(hướng dẫn|lệnh|quy tắc|system|trên)',
+    r'(từ giờ|bây giờ|hãy).{0,20}(bạn là|bạn không còn|đóng vai|giả vờ)',
+    r'(lặp lại|nhắc lại).{0,10}(sau tôi|chính xác)',
+    r'(không có giới hạn|không bị kiểm duyệt|chế độ nhà phát triển)',
+]
+
+MAX_INPUT_LENGTH = 500  # Ký tự tối đa
+
+def _sanitize_input(text: str) -> tuple[str, bool]:
+    """
+    Kiểm tra prompt injection. Trả về (text_gốc, is_injection).
+    Nếu phát hiện injection pattern → is_injection = True.
+    """
+    for pattern in INJECTION_PATTERNS:
+        if re.search(pattern, text, re.IGNORECASE):
+            print(f"[SECURITY] Phát hiện injection attempt: '{text[:100]}...'")
+            return text, True
+    return text, False
 
 _reformulate_chain = None
 
@@ -91,11 +121,20 @@ def _get_reformulate_chain():
 def _reformulate_query(user_message: str, chat_history: list) -> str:
     if not chat_history:
         return user_message
+
+    # BUG 7: Nếu câu hỏi chỉ chứa số tiền (trả lời ngân sách) → không cần Reformulate
+    # Ví dụ: "giá 30 triệu đi", "30 triệu", "tầm 20tr"
+    budget_only = re.match(
+        r'^[\s\w]*(\d+(?:[.,]\d+)?\s*(?:triệu|tr|m|000[,.]?000))[\s\w!.,?]*$',
+        user_message.strip(), re.IGNORECASE
+    )
+    if budget_only:
+        return user_message
+
     specific_terms = ['rtx', 'gtx', 'rx', 'i3', 'i5', 'i7', 'i9',
                       'ryzen', 'b760', 'z790', 'x670', 'h610']
     if any(t in user_message.lower() for t in specific_terms):
         return user_message
-    import re
     # Trích xuất đúng câu trả lời cuối cùng của AI, ưu tiên tìm bảng Gợi ý bộ PC
     last_ai_msg = ""
     last_build_msg = ""
@@ -141,9 +180,11 @@ def _reformulate_query(user_message: str, chat_history: list) -> str:
 
     # ── FALLBACK: Nếu code thuần không bắt được thì gọi AI ──
     try:
+        # Sanitize last_ai_msg để tránh stored injection từ lịch sử
+        safe_context_msg = context_msg[:800] if context_msg else ""  # Giới hạn 800 ký tự
         response = _get_reformulate_chain().invoke({
             "user_message": user_message,
-            "last_ai_msg": context_msg,
+            "last_ai_msg": safe_context_msg,
         })
         reformulated = response.content.strip()
         
@@ -291,6 +332,48 @@ def handle_chat(user_message: str, knowledge_base,
     if knowledge_base is None:
         return {"chatbot_reply": "HỆ THỐNG CHƯA SẴN SÀNG!"}
 
+    # ── Security: Kiểm tra độ dài và Prompt Injection ──
+    if len(user_message) > MAX_INPUT_LENGTH:
+        return {"chatbot_reply": "Câu hỏi quá dài rồi ạ! Bạn vui lòng rút gọn trong 500 ký tự giúp em nhé 😊"}
+
+    _, is_injection = _sanitize_input(user_message)
+    if is_injection:
+        return {"chatbot_reply": "Dạ em chỉ hỗ trợ tư vấn linh kiện và bộ máy tính thôi ạ! Bạn có câu hỏi nào về PC không? 😊"}
+
+    msg_clean = user_message.strip().lower()
+
+    # ── FEATURE: Giao tiếp cơ bản (Không gọi DB / LLM) ──
+    CASUAL_GREETINGS = ['xin chào', 'chào bạn', 'hi', 'hello', 'chào em', 'chào bot']
+    CASUAL_THANKS = ['cảm ơn', 'thank', 'tks', 'ok', 'oke', 'okela', 'dạ', 'vâng', 'tuyệt vời', 'đã hiểu', 'hay quá']
+    CASUAL_BYE = ['tạm biệt', 'bye', 'hẹn gặp lại']
+
+    if len(msg_clean) < 30:
+        if any(msg_clean == g or msg_clean.startswith(g + ' ') for g in CASUAL_GREETINGS):
+            return {"chatbot_reply": "Dạ em chào bạn! Em là trợ lý tư vấn máy tính, em có thể giúp gì cho bạn hôm nay ạ? 😊"}
+        if any(msg_clean == t or msg_clean.startswith(t + ' ') for t in CASUAL_THANKS):
+            return {"chatbot_reply": "Dạ vâng ạ! Nếu bạn cần tư vấn cấu hình hay linh kiện gì thêm cứ nhắn em nhé. 😊"}
+        if any(msg_clean == b or msg_clean.startswith(b + ' ') for b in CASUAL_BYE):
+            return {"chatbot_reply": "Dạ tạm biệt bạn! Chúc bạn một ngày tốt lành ạ! 😊"}
+
+    # ── FEATURE: Off-topic guard rail ──
+    # Chặn các câu hỏi hoàn toàn ngoài lĩnh vực PC
+    OFF_TOPIC_TRIGGERS = [
+        'laptop', 'macbook', 'điện thoại', 'smartphone', 'iphone', 'samsung',
+        'tivi', 'máy lạnh', 'điều hòa', 'tủ lạnh', 'máy giặt',
+        'xe máy', 'ô tô', 'xe hơi', 'xe đạp',
+        'thời tiết', 'nấu ăn', 'công thức', 'quần áo', 'thời trang', 'giày',
+        'chứng khoán', 'bitcoin', 'crypto', 'cổ phiếu',
+        'bóng đá', 'thể thao', 'ca sĩ', 'diễn viên', 'phim', 'nhạc',
+        'làm thơ', 'kể chuyện', 'viết code', 'viết bài', 'giải toán'
+    ]
+    msg_lower_check = user_message.lower()
+    # Chỉ từ chối nếu off-topic VÀ không liên quan gì đến PC/linh kiện
+    PC_SAFE_TERMS = ['pc', 'cpu', 'gpu', 'ram', 'ssd', 'vga', 'card', 'mainboard', 'build', 'máy tính']
+    is_off_topic = any(t in msg_lower_check for t in OFF_TOPIC_TRIGGERS)
+    is_pc_related = any(t in msg_lower_check for t in PC_SAFE_TERMS)
+    if is_off_topic and not is_pc_related:
+        return {"chatbot_reply": "Dạ em chỉ chuyên tư vấn linh kiện và cấu hình máy tính để bàn thôi ạ! Bạn có cần tư vấn CPU, GPU, hay build bộ PC không? 😊"}
+
     # ── 0. PC Build intent — xử lý trước tất cả các intent khác ──
     user_message_fixed = _normalize_user_message(user_message)
     msg_lower = normalize_text(user_message_fixed)
@@ -298,7 +381,7 @@ def handle_chat(user_message: str, knowledge_base,
     chat_history = get_trimmed_history(session_id)
 
     # Chuyển quyền xử lý luồng PC Build sang module riêng biệt
-    from PCBuilder.pc_build_flow import handle_pc_build_flow
+    from app.pc_builder.flow import handle_pc_build_flow
     pc_build_result = handle_pc_build_flow(
         session_id=session_id,
         user_message=user_message,
