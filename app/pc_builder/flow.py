@@ -23,6 +23,17 @@ def _ai_asked_for_budget(chat_history: list) -> bool:
     return False
 
 
+def _ai_asked_for_purpose(chat_history: list) -> bool:
+    """Kiểm tra xem AI vừa hỏi nhu cầu/mục đích ở tin nhắn trước không."""
+    for msg in reversed(chat_history):
+        if getattr(msg, 'type', '') == 'ai':
+            content = msg.content.lower()
+            if any(kw in content for kw in ['để làm gì', 'mục đích gì', 'nhu cầu của bạn']):
+                return True
+            return False
+    return False
+
+
 def handle_pc_build_flow(
     session_id: str,
     user_message: str,
@@ -46,10 +57,16 @@ def handle_pc_build_flow(
     wants_best     = any(kw in msg_lower for kw in BEST_KEYWORDS)
 
     # ── BUG 3: Context-Aware Follow-up ──
-    # Nếu AI vừa hỏi ngân sách, câu tiếp theo chỉ cần có số tiền là đủ trigger
+    # Nếu AI vừa hỏi ngân sách hoặc mục đích, câu tiếp theo trả lời đúng trọng tâm là đủ trigger
     if not is_build_pc and chat_history:
-        if _ai_asked_for_budget(chat_history):
-            if extract_budget(user_message) is not None or wants_cheapest:
+        asked_budget = _ai_asked_for_budget(chat_history)
+        asked_purpose = _ai_asked_for_purpose(chat_history)
+        
+        if asked_budget and (extract_budget(user_message) is not None or wants_cheapest):
+            is_build_pc = True
+        elif asked_purpose:
+            has_purpose = any(kw in msg_lower for kw_list in PURPOSE_KEYWORD_MAP.values() for kw in kw_list)
+            if has_purpose:
                 is_build_pc = True
 
     # Context-Aware Follow-up chung: đang trong mạch tư vấn PC
