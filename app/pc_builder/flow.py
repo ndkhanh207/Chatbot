@@ -178,37 +178,9 @@ def handle_pc_build_flow(
                     has_final_purpose = True
                     break
 
-    # ── LOGIC CHÍNH: Ưu tiên hỏi Nhu cầu / Ngân sách nếu thiếu ──
-    if budget is None and not has_final_purpose:
-        reply = (
-            "Dạ, để em tư vấn bộ PC chuẩn nhất, bạn cho em biết bạn dùng máy chủ yếu "
-            "để làm gì (chơi game, làm đồ họa...) và tầm giá khoảng bao nhiêu nhé!"
-        )
-        save_message(session_id, user_message, reply)
-        return {'chatbot_reply': reply}
-
-    if budget is None and has_final_purpose:
-        purpose_str = _infer_purpose(combined_message_for_purpose)
-        reply = (
-            f"Dạ để build bộ máy tối ưu cho nhu cầu {purpose_str}, "
-            "bạn dự định đầu tư khoảng bao nhiêu tiền ạ? (ví dụ: 20 triệu, 30 triệu...)"
-        )
-        save_message(session_id, user_message, reply)
-        return {'chatbot_reply': reply}
-
-    if budget is not None and not has_final_purpose:
-        reply = (
-            f"Dạ với ngân sách khoảng {_format_approx_million(budget)}, em có thể ráp được nhiều cấu hình tối ưu "
-            "cho các mục đích khác nhau. Bạn dự định dùng máy chủ yếu để làm gì ạ? "
-            "(ví dụ: chơi game AAA, văn phòng, làm đồ họa 3D, hay lập trình...)"
-        )
-        save_message(session_id, user_message, reply)
-        return {'chatbot_reply': reply}
-
-
     # ── BUG 2: Số lượng bộ PC ("10 bộ giá 200 triệu") ──
     quantity = extract_quantity(user_message)
-    if quantity > 1 and budget > 0:
+    if quantity > 1 and budget is not None and budget > 0:
         budget_per_unit = budget // quantity
         # Đảm bảo budget mỗi bộ hợp lý (>= 5 triệu)
         if budget_per_unit < 5_000_000:
@@ -221,11 +193,65 @@ def handle_pc_build_flow(
             return {'chatbot_reply': reply}
         budget = budget_per_unit
 
-    # ── BUG 5 & 6: Lấy brand filter và component filter ──
-    brand_filter     = extract_brand_filter(user_message)
+    # ── BUG 5 & 6: Lấy brand filter và component filter (CÓ KẾ THỪA LỊCH SỬ) ──
+    brand_filter = extract_brand_filter(user_message)
     component_filter = extract_component_filter(user_message)
 
-    # (Đã di chuyển logic kế thừa mục đích lên phía trên)
+    if chat_history:
+        for msg in reversed(chat_history):
+            if getattr(msg, 'type', '') == 'human':
+                hist_brand = extract_brand_filter(msg.content)
+                hist_comp = extract_component_filter(msg.content)
+
+                # Kế thừa brand nếu hiện tại đang rỗng
+                if not brand_filter.get('cpu_brand') and hist_brand.get('cpu_brand'):
+                    brand_filter['cpu_brand'] = hist_brand['cpu_brand']
+                if not brand_filter.get('gpu_brand') and hist_brand.get('gpu_brand'):
+                    brand_filter['gpu_brand'] = hist_brand['gpu_brand']
+                if not brand_filter.get('any_brand') and hist_brand.get('any_brand'):
+                    brand_filter['any_brand'] = hist_brand['any_brand']
+
+                # Kế thừa component nếu hiện tại đang rỗng
+                if not component_filter.get('cpu_model') and hist_comp.get('cpu_model'):
+                    component_filter['cpu_model'] = hist_comp['cpu_model']
+                if not component_filter.get('gpu_model') and hist_comp.get('gpu_model'):
+                    component_filter['gpu_model'] = hist_comp['gpu_model']
+
+    has_specific_component = bool(component_filter.get('cpu_model') or component_filter.get('gpu_model'))
+
+    # ── LOGIC CHÍNH: Ưu tiên hỏi Nhu cầu / Ngân sách nếu thiếu ──
+    if budget is None and not has_final_purpose and not has_specific_component:
+        reply = (
+            "Dạ, để em tư vấn bộ PC chuẩn nhất, bạn cho em biết bạn dùng máy chủ yếu "
+            "để làm gì (chơi game, làm đồ họa...) và tầm giá khoảng bao nhiêu nhé!"
+        )
+        save_message(session_id, user_message, reply)
+        return {'chatbot_reply': reply}
+
+    if budget is None and (has_final_purpose or has_specific_component):
+        if has_specific_component and not has_final_purpose:
+            comp_name = component_filter.get('cpu_model') or component_filter.get('gpu_model')
+            reply = (
+                f"Dạ để build bộ máy có {comp_name.upper()}, "
+                "bạn dự định đầu tư khoảng bao nhiêu tiền ạ? (ví dụ: 20 triệu, 30 triệu...)"
+            )
+        else:
+            purpose_str = _infer_purpose(combined_message_for_purpose)
+            reply = (
+                f"Dạ để build bộ máy tối ưu cho nhu cầu {purpose_str}, "
+                "bạn dự định đầu tư khoảng bao nhiêu tiền ạ? (ví dụ: 20 triệu, 30 triệu...)"
+            )
+        save_message(session_id, user_message, reply)
+        return {'chatbot_reply': reply}
+
+    if budget is not None and not has_final_purpose and not has_specific_component:
+        reply = (
+            f"Dạ với ngân sách khoảng {_format_approx_million(budget)}, em có thể ráp được nhiều cấu hình tối ưu "
+            "cho các mục đích khác nhau. Bạn dự định dùng máy chủ yếu để làm gì ạ? "
+            "(ví dụ: chơi game AAA, văn phòng, làm đồ họa 3D, hay lập trình...)"
+        )
+        save_message(session_id, user_message, reply)
+        return {'chatbot_reply': reply}
 
     exclude_builds = _get_exclude_builds(chat_history)
 

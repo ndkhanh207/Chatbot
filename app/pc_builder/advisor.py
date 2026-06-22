@@ -83,22 +83,25 @@ def extract_budget(msg: str) -> int | None:
     Ví dụ: '30 triệu' → 30_000_000, '15tr' → 15_000_000, '100k' → 100_000
     Trả về None nếu không tìm thấy, hoặc số âm nếu phát hiện số âm.
     """
-    msg_lower = msg.lower().replace(',', '.').replace(' ', '')
+    msg_lower = msg.lower().replace(',', '.')
 
-    # 1. Pattern triệu/tr (ví dụ: 30tr, -30triệu)
-    m1 = re.search(r'(-?\d+(?:\.\d+)?)(?:triệu|tr)(?!\w)', msg_lower)
+    # 1. Pattern triệu/tr/m (ví dụ: 30tr, -30 triệu, 30.5m)
+    m1 = re.search(r'(-?\d+(?:\.\d+)?)\s*(triệu|tr\b|m\b)', msg_lower)
     if m1: return int(float(m1.group(1)) * 1_000_000)
 
-    # 2. Pattern 30000000 (đã xóa khoảng trắng)
-    m2 = re.search(r'(-?\d+)000000', msg_lower)
+    # Các pattern với số 0 liền kề thì xóa khoảng trắng để dễ bắt (vd: 30 000 000)
+    msg_no_space = msg_lower.replace(' ', '')
+    
+    # 2. Pattern 30000000
+    m2 = re.search(r'(-?\d+)000000\b', msg_no_space)
     if m2: return int(float(m2.group(1)) * 1_000_000)
 
     # 3. Pattern k000 (30k000)
-    m3 = re.search(r'(-?\d+(?:\.\d+)?)k000\b', msg_lower)
+    m3 = re.search(r'(-?\d+(?:\.\d+)?)k000\b', msg_no_space)
     if m3: return int(float(m3.group(1)) * 1_000_000)
 
     # 4. Pattern k (ví dụ: -100k, 100k)
-    m4 = re.search(r'(-?\d+(?:\.\d+)?)k\b', msg_lower)
+    m4 = re.search(r'(-?\d+(?:\.\d+)?)\s*k\b', msg_lower)
     if m4: return int(float(m4.group(1)) * 1_000)
 
     return None
@@ -183,9 +186,9 @@ def extract_component_filter(msg: str) -> dict:
     if gpu_m:
         gpu_model = gpu_m.group(0).strip()
 
-    # CPU patterns: i3/i5/i7/i9-XXXXX hoặc ryzen X XXXX
+    # CPU patterns: i3/i5/i7/i9-XXXXX hoặc ryzen X XXXX hoặc x3d
     cpu_m = re.search(
-        r'\b(i[3579]-?\d{4,5}[a-z]*|ryzen\s*[579]\s*\d{3,5}[a-z]*|core\s*ultra\s*\d+)\b',
+        r'\b(i[3579](?:-?\d{4,5}[a-z]*)?|ryzen\s*[3579](?:\s*\d{3,5}[a-z]*)?|core\s*ultra\s*\d+|x3d)\b',
         msg_lower
     )
     if cpu_m:
