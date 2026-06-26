@@ -12,7 +12,7 @@ from langchain_core.runnables import RunnableSequence
 from app.utils.model_utils import get_ollama_model
 from app.pc_builder.compatibility import build_compatibility_context
 from app.utils.common import format_currency_vietnam, normalize_text
-from app.utils.tools import CONVERSIONS, convert_if_needed, ALIASES
+from app.utils.unit_converter import CONVERSIONS, convert_if_needed, ALIASES
 from app.utils.units import get_unit_map
 from app.templates.prompt_templates import ADVISOR_TEMPLATE, REFORMULATE_TEMPLATE, PC_BUILD_TEMPLATE
 from app.utils.response_formatter import build_format_hint

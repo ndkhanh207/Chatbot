@@ -223,3 +223,10 @@ open-db/
 
 # claude
 .claude/
+
+# test
+cosine_results.md
+report_spec_test.md
+report_compatibility_test.md
+report_build_api_test.md
+report_build_api_test.html

@@ -4,7 +4,7 @@ from pydantic import BaseModel
 
 from app.core.chat_handler import handle_chat
 from app.core.search_engine import hybrid_search
-from app.utils.tools import convert_unit
+from app.utils.unit_converter import convert_unit
 from app.memory.memory_store import clear_session
 
 router = APIRouter()
@@ -72,7 +72,7 @@ def calculate(value: float, from_unit: str, to_unit: str):
     except ValueError as e:
         return {"status": "error", "message": str(e)}
 
-@router.delete("/chat/history/{session_id}")
+@router.delete("/sessions/{session_id}")
 def delete_history(session_id: str):
     """Xóa lịch sử hội thoại của một user."""
     clear_session(session_id)
