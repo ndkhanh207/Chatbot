@@ -5,9 +5,9 @@ LLM bóc tách tên linh kiện → Python tra DB lấy giá → cộng tổng c
 """
 
 from app.search_engine import hybrid_search
-from app.compact.compat_intent import PCIntentSchema
-from app.compact.compat_logic import _get_field
-from app.price.pricing import format_currency_vietnam
+from app.core.master_intent import MasterIntentSchema
+from app.compatibility.compat_logic import _get_field
+from app.price.pricing_util import format_currency_vietnam
 
 # Trigger từ khóa mồi để gọi luồng tính giá
 PRICE_CALCULATION_TRIGGERS = [
@@ -29,7 +29,7 @@ def _resolve_item(name: str, category: str, knowledge_base, vector_store):
     return results[0] if results else None
 
 
-def build_price_calculation_context(intent: PCIntentSchema, knowledge_base, vector_store) -> str:
+def build_price_calculation_context(intent: MasterIntentSchema, knowledge_base, vector_store) -> str:
     """
     Xây dựng context tính tổng giá cho các linh kiện đã được LLM bóc tách.
     Giá được lấy từ DB và cộng bằng Python — KHÔNG để LLM tự tính.

@@ -25,6 +25,7 @@ UNIT_MAP: dict[str, dict[str, str]] = {
         'xung cơ bản': 'GHz',
         'xung boost': 'GHz',
         'kích thước': 'mm',
+        'chiều dài': 'mm',
     },
     "GPU": {
         # GPU clock speeds are expressed in megahertz
@@ -38,22 +39,10 @@ UNIT_MAP: dict[str, dict[str, str]] = {
 
 
 def get_unit_map(category: str | None) -> dict[str, str]:
-    """Return the unit mapping for a given product category.
-
-    If the category has a specific override in ``UNIT_MAP``, that mapping is
-    returned.  Otherwise, the ``"default"`` mapping is returned.
-
-    Parameters
-    ----------
-    category : str | None
-        The product category (e.g. ``"GPU"``, ``"CPU"``).  Case‑sensitive.
-        If ``None`` or not found, the default mapping is used.
-
-    Returns
-    -------
-    dict[str, str]
-        A dictionary mapping lower‑cased field names to their unit strings.
-    """
+    # 1. Lấy toàn bộ đơn vị mặc định làm nền tảng
+    merged_map = UNIT_MAP["default"].copy()
+    # 2. Nếu category có cấu hình riêng, ghi đè (update) lên nền tảng mặc định
     if category and category in UNIT_MAP:
-        return UNIT_MAP[category]
-    return UNIT_MAP["default"]
+        merged_map.update(UNIT_MAP[category])
+        
+    return merged_map

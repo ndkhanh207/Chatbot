@@ -6,21 +6,19 @@ Giữ nguyên giao diện API để không ảnh hưởng đến các module g�
 
 from typing import Optional
 
-from app.search_engine import hybrid_search
-
 # --- Import & Expose các thành phần từ các module con ---
-from app.compact.compat_logic import (
+from app.compatibility.compat_logic import (
     CATEGORY_MAP, _get_field, check_cpu_main_compat, check_gpu_main_compat, check_cpu_gpu_compat,
     is_compatibility_query, find_compatible_build,
     CPU_TERMS, GPU_TERMS, MAIN_TERMS  # Expose cho chat_handler
 )
-from app.compact.compat_format import _fmt_cpu_main, _fmt_gpu_main, _fmt_cpu_gpu
-from app.compact.compat_intent import parse_compat_intent, PCIntentSchema
-from app.price.pricing import format_currency_vietnam
+from app.compatibility.compat_format import _fmt_cpu_main, _fmt_gpu_main, _fmt_cpu_gpu
+from app.core.master_intent import MasterIntentSchema
+from app.price.pricing_util import format_currency_vietnam
 
 __all__ = [
     "build_compatibility_context", "build_suggestion_context",
-    "is_compatibility_query", "parse_compat_intent", "PCIntentSchema",
+    "is_compatibility_query",
     "CPU_TERMS", "GPU_TERMS", "MAIN_TERMS",
 ]
 
@@ -30,6 +28,9 @@ def _resolve_item(name: str, category: str, knowledge_base, vector_store) -> Opt
     hoặc hybrid_search không tìm thấy match nào."""
     if not name or name.strip().lower() == "none":
         return None
+    # Deferred import to avoid circular dependency:
+    # search_engine → query_parser → compatibility → search_engine
+    from app.search_engine import hybrid_search
     normalized_name = name.lower().replace("-", " ")
     results = hybrid_search(normalized_name, category, 1, knowledge_base, vector_store)
     return results[0] if results else None
@@ -38,7 +39,7 @@ def _resolve_item(name: str, category: str, knowledge_base, vector_store) -> Opt
 # ──────────────────────────────────────────────
 # Tích hợp với chat_handler
 # ──────────────────────────────────────────────
-def build_compatibility_context(intent: PCIntentSchema, knowledge_base, vector_store) -> str:
+def build_compatibility_context(intent: MasterIntentSchema, knowledge_base, vector_store) -> str:
     """Check 1 cặp cụ thể, dựa trên tên linh kiện đã bóc tách bởi parse_compat_intent."""
     cpu  = _resolve_item(intent.cpu,       "CPU",       knowledge_base, vector_store)
     main = _resolve_item(intent.mainboard, "MAINBOARD", knowledge_base, vector_store)
@@ -62,7 +63,7 @@ def build_compatibility_context(intent: PCIntentSchema, knowledge_base, vector_s
     return context
 
 
-def build_suggestion_context(intent: PCIntentSchema, knowledge_base, vector_store, top_k: int = 5) -> str:
+def build_suggestion_context(intent: MasterIntentSchema, knowledge_base, vector_store, top_k: int = 5) -> str:
     """Gợi ý build dựa trên ĐÚNG 1 linh kiện đã có (intent.intent == 'suggestion')."""
     candidates = [("cpu", intent.cpu), ("mainboard", intent.mainboard), ("gpu", intent.gpu)]
     owned = [(t, n) for t, n in candidates if n and n.strip().lower() != "none"]

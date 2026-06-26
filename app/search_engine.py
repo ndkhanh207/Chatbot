@@ -1,6 +1,6 @@
 import numpy as np
 from app.core.query_parser import normalize_text
-from app.price.pricing import format_currency_vietnam
+from app.price.pricing_util import format_currency_vietnam
 
 def hybrid_search(q, category, top_k, knowledge_base, vector_store):
     if knowledge_base is None or knowledge_base.empty:

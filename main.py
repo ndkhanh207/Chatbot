@@ -3,6 +3,7 @@
 import asyncio
 import pandas as pd
 import anyio
+import ollama  # Import để check status
 from fastapi import FastAPI, HTTPException, status
 from pydantic import BaseModel, Field
 from contextlib import asynccontextmanager
@@ -22,8 +23,52 @@ from memory.memory_store import clear_session
 KNOWLEDGE_BASE = None
 VECTOR_STORE = None
 
-
 CHAT_TIMEOUT_SECONDS = 30.0
+
+
+# ──────────────────────────────────────────────
+# DEPENDENCY HEALTH CHECKS (Hàm bổ sung)
+# ──────────────────────────────────────────────
+async def check_ollama_status() -> bool:
+    """Kiểm tra dịch vụ Ollama đã bật chưa."""
+    print("🔄 [SYSTEM] Checking Ollama service status...")
+    try:
+        # Chạy ollama.list() trong thread riêng để tránh block event loop
+        await anyio.to_thread.run_sync(ollama.list)
+        print("✅ [SYSTEM] Ollama service is UP and RUNNING!")
+        return True
+    except Exception as e:
+        print(f"❌ [SYSTEM] Ollama check FAILED: Dịch vụ chưa bật hoặc lỗi kết nối! Chi tiết: {e}")
+        return False
+
+
+async def check_mysql_status() -> bool:
+    """Kiểm tra kết nối tới cơ sở dữ liệu MySQL."""
+    print("🔄 [SYSTEM] Checking MySQL connection...")
+    try:
+        # LƯU Ý: Đoạn này tùy thuộc vào thư viện bạn đang dùng (pymysql, mysql-connector, hay SQLAlchemy)
+        # Cách 1: Nếu bạn dùng PyMySQL trực tiếp:
+        import pymysql
+        connection = pymysql.connect(
+            host=Config.MYSQL_HOST,
+            port=int(Config.MYSQL_PORT),  # Ép kiểu sang int vì trong config đang là chuỗi
+            user=Config.MYSQL_USER,
+            password=Config.MYSQL_PASSWORD,
+            database=Config.MYSQL_DB,
+            connect_timeout=5
+        )
+        connection.close()
+        
+        # Cách 2: Nếu bạn dùng SQLAlchemy Engine (Bỏ comment nếu dùng):
+        # from database.mysql import engine
+        # with engine.connect() as conn:
+        #     conn.execute("SELECT 1")
+
+        print("✅ [SYSTEM] MySQL database is UP and RUNNING!")
+        return True
+    except Exception as e:
+        print(f"❌ [SYSTEM] MySQL check FAILED: Không thể kết nối DB! Chi tiết: {e}")
+        return False
 
 
 # ──────────────────────────────────────────────
@@ -32,43 +77,57 @@ CHAT_TIMEOUT_SECONDS = 30.0
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global KNOWLEDGE_BASE, VECTOR_STORE
-    print("=== [HỆ THỐNG] Đang khởi tạo Kho tri thức từ structure_data... ===")
+    print("\n=== 🚀 [SYSTEM STARTUP] TRẠM KIỂM TRA HỆ THỐNG ===")
+
+    # 1. Kiểm tra các dịch vụ cứng trước khi load dữ liệu nặng vào RAM
+    ollama_ok = await check_ollama_status()
+    mysql_ok = await check_mysql_status()
+
+    if not ollama_ok or not mysql_ok:
+        print("❌ [CRITICAL] KHỞI ĐỘNG THẤT BẠI: Một số dịch vụ nền (Ollama/MySQL) chưa sẵn sàng!")
+        print("⚠️ Hệ thống sẽ dừng lại tại đây để bạn kiểm tra docker/service.")
+        # Throw lỗi để giải tán app ngay tại trận, tránh treo máy vô ích
+        raise RuntimeError("External services are offline.")
+
+    print("--------------------------------------------------")
+    print("=== [SYSTEM] Dịch vụ nền OK! Bắt đầu nạp Knowledge Base... ===")
 
     try:
         KNOWLEDGE_BASE = load_knowledge_base()
 
-        print(f"=== [HỆ THỐNG] Gộp thành công! Tổng số linh kiện: {len(KNOWLEDGE_BASE)} dòng. ===")
-        print(f"=== [HỆ THỐNG] EMBEDDING MODEL: {EMBEDDING_MODEL_NAME} | DEVICE: {EMBEDDING_DEVICE} ===")
+        print(f"=== [SYSTEM] Initialization complete! Total records: {len(KNOWLEDGE_BASE)}. ===")
+        print(f"=== [SYSTEM] EMBEDDING MODEL: {EMBEDDING_MODEL_NAME} | DEVICE: {EMBEDDING_DEVICE} ===")
 
         # Khởi tạo Vector DB nếu chưa có
+        print("=== [SYSTEM] Checking Vector DB... ===")
         try:
             initialize_vector_db()
         except Exception as db_err:
             print(f"❌ LỖI TẠO VECTOR DB: {db_err}")
 
         # Nạp Chroma DB vào RAM
+        print(f"=== [SYSTEM] Loading Embedding Model '{Config.EMBEDDING_MODEL}' to {Config.EMBEDDING_DEVICE}... ===")
         embeddings = HuggingFaceEmbeddings(
             model_name=Config.EMBEDDING_MODEL,
             model_kwargs={"device": Config.EMBEDDING_DEVICE}
         )
+        print("=== [SYSTEM] Embedding Model ready. Loading Chroma DB... ===")
         VECTOR_STORE = Chroma(
             persist_directory=Config.VECTOR_DB_DIR, 
             embedding_function=embeddings
         )
-        print("=== [HỆ THỐNG] Đã nạp thành công Chroma Vector DB! ===")
-
-        print("=== [HỆ THỐNG] Khởi tạo hệ thống Server hoàn tất! Sẵn sàng nhận API. ===")
+        print("=== [SYSTEM] Successfully loaded Chroma Vector DB! ===")
+        print("=== [SYSTEM] Server initialization complete! Ready for API requests. ===\n")
 
     except Exception as e:
         print(f"❌ LỖI KHỞI TẠO HỆ THỐNG: {str(e)}")
+        raise e
 
     yield
-    print("=== [HỆ THỐNG] Đang tắt Server... ===")
+    print("=== [SYSTEM] Shutting down Server... ===")
 
 
 app = FastAPI(lifespan=lifespan)
-
-
 
 
 # ──────────────────────────────────────────────
@@ -88,8 +147,7 @@ class ConvertResponse(BaseModel):
 
 
 # ──────────────────────────────────────────────
-# POST /chat — tạo một "message" mới trong session, trả lời chatbot
-# Body JSON thay cho query params (chuẩn REST: dữ liệu thuộc body, không phải URL)
+# POST /chat
 # ──────────────────────────────────────────────
 @app.post("/chat", response_model=ChatResponse, status_code=status.HTTP_200_OK)
 async def chat_endpoint(payload: ChatRequest):
@@ -100,11 +158,6 @@ async def chat_endpoint(payload: ChatRequest):
         )
 
     try:
-        # ⭐ FIX QUAN TRỌNG: truyền hàm trần (không gọi ()) + args riêng,
-        # để run_sync thực thi nó trong thread riêng — không block event loop.
-        # Trước đây code gọi chat_with_bot(...) ngay lập tức rồi đưa KẾT QUẢ
-        # (chuỗi string) vào run_sync, khiến toàn bộ logic chạy đồng bộ trên
-        # event loop chính và timeout hoàn toàn không có tác dụng.
         result = await asyncio.wait_for(
             anyio.to_thread.run_sync(
                 handle_chat,
@@ -115,7 +168,6 @@ async def chat_endpoint(payload: ChatRequest):
             ),
             timeout=CHAT_TIMEOUT_SECONDS,
         )
-        # handle_chat trả về dict {"chatbot_reply": "..."}
         return ChatResponse(chatbot_reply=result["chatbot_reply"])
 
     except asyncio.TimeoutError:
@@ -131,8 +183,7 @@ async def chat_endpoint(payload: ChatRequest):
 
 
 # ──────────────────────────────────────────────
-# GET /search — tra cứu, đúng ngữ nghĩa REST cho thao tác đọc (không đổi state)
-# Giữ query params vì đây là filter/search, không phải tạo resource
+# GET /search
 # ──────────────────────────────────────────────
 @app.get("/search")
 def search_knowledge_base(q: str = None, category: str = None, top_k: int = 5):
@@ -145,7 +196,7 @@ def search_knowledge_base(q: str = None, category: str = None, top_k: int = 5):
 
 
 # ──────────────────────────────────────────────
-# GET /unit-conversions — thao tác tính toán thuần (không phải resource, GET hợp lý)
+# GET /unit-conversions
 # ──────────────────────────────────────────────
 @app.get("/unit-conversions", response_model=ConvertResponse)
 def convert(value: float, from_unit: str, to_unit: str):
@@ -157,8 +208,7 @@ def convert(value: float, from_unit: str, to_unit: str):
 
 
 # ──────────────────────────────────────────────
-# DELETE /sessions/{session_id} — xóa resource "session"
-# (đổi route cho đúng resource-oriented: session là resource, không phải "history")
+# DELETE /sessions/{session_id}
 # ──────────────────────────────────────────────
 @app.delete("/sessions/{session_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_session(session_id: str):

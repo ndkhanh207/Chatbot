@@ -1,25 +1,24 @@
-from app.price.pricing import format_currency_vietnam, calculate_total_price
-from app.compact.compat_logic import _get_field
+from app.price.pricing_util import format_currency_vietnam, calculate_total_price
+from app.compatibility.compat_logic import _get_field
 
 def _fmt_cpu_main(cpu: dict, main: dict, check: dict) -> str:
     cpu_price = _get_field(cpu, 'giá', 'price', default=None)
     main_price = _get_field(main, 'giá', 'price', default=None)
     cpu_price_str = f" | Giá: {format_currency_vietnam(cpu_price)} VNĐ" if cpu_price else ""
     main_price_str = f" | Giá: {format_currency_vietnam(main_price)} VNĐ" if main_price else ""
-    verdict = "CÓ THỂ LẮP ĐƯỢC (TƯƠNG THÍCH)" if check['is_compatible'] else "KHÔNG LẮP ĐƯỢC (KHÔNG TƯƠNG THÍCH)"
+    verdict = "TƯƠNG THÍCH (PHÙ HỢP)" if check['is_compatible'] else "KHÔNG TƯƠNG THÍCH (KHÔNG PHÙ HỢP)"
     
     total_str = calculate_total_price(cpu_price, main_price)
 
     lines = [
-        "[KẾT QUẢ THẨM ĐỊNH TƯƠNG THÍCH CPU - MAINBOARD]",
+        "[THÔNG TIN BẮT BUỘC PHẢI THÔNG BÁO CHO KHÁCH HÀNG]",
         f"- CPU: '{_get_field(cpu, 'tên', 'name', default='')}'{cpu_price_str}",
-        f"- Mainboard: '{_get_field(main, 'tên', 'name', default='')}' "
-        f"(Chipset: {check.get('chipset') or 'không rõ'}){main_price_str}",
+        f"- Mainboard: '{_get_field(main, 'tên', 'name', default='')}' (Chipset: {check.get('chipset') or 'không rõ'}){main_price_str}",
     ]
     if total_str:
         lines.append(total_str)
-    lines.append(f"- KẾT LUẬN KỸ THUẬT: {verdict}")
-    return "\n".join(lines + [f"- {r}" for r in check["reasons"]]) + "\n"
+    lines.append(f"- KẾT LUẬN TƯƠNG THÍCH: {verdict}")
+    return "\n".join(lines + [f"- CHI TIẾT: {r}" for r in check["reasons"]]) + "\n"
 
 
 def _fmt_gpu_main(gpu: dict, main: dict, check: dict) -> str:
@@ -31,15 +30,15 @@ def _fmt_gpu_main(gpu: dict, main: dict, check: dict) -> str:
     total_str = calculate_total_price(gpu_price, main_price)
 
     lines = [
-        "[KẾT QUẢ THẨM ĐỊNH TƯƠNG THÍCH GPU - MAINBOARD]",
+        "[THÔNG TIN BẮT BUỘC PHẢI THÔNG BÁO CHO KHÁCH HÀNG]",
         f"- GPU: '{_get_field(gpu, 'tên', 'name', default='')}' (PCIe: {check.get('gpu_pcie_gen') or '?'}){gpu_price_str}",
         f"- Mainboard: '{_get_field(main, 'tên', 'name', default='')}' (PCIe: {check.get('main_pcie_gen') or '?'}){main_price_str}",
     ]
     if total_str:
         lines.append(total_str)
-    lines.append("- KẾT LUẬN KỸ THUẬT: CÓ THỂ LẮP ĐƯỢC (PCIe tương thích ngược/xuôi).")
+    lines.append("- KẾT LUẬN TƯƠNG THÍCH: TƯƠNG THÍCH (PHÙ HỢP)")
     if check.get("warning"):
-        lines.append(f"- CẢNH BÁO: {check['warning']}")
+        lines.append(f"- CẢNH BÁO BĂNG THÔNG: {check['warning']}")
     return "\n".join(lines) + "\n"
 
 
@@ -52,13 +51,16 @@ def _fmt_cpu_gpu(cpu: dict, gpu: dict, check: dict) -> str:
     total_str = calculate_total_price(cpu_price, gpu_price)
 
     lines = [
-        "[KẾT QUẢ ĐÁNH GIÁ CẶP CPU - GPU]",
+        "[THÔNG TIN BẮT BUỘC PHẢI THÔNG BÁO CHO KHÁCH HÀNG]",
         f"- CPU: '{_get_field(cpu, 'tên', 'name', default='')}'{cpu_price_str}",
         f"- GPU: '{_get_field(gpu, 'tên', 'name', default='')}'{gpu_price_str}",
     ]
     if total_str:
         lines.append(total_str)
-    lines.append("- KẾT LUẬN KỸ THUẬT: PHÙ HỢP (không có giới hạn lắp đặt giữa CPU-GPU).")
+        
     if check.get("warning"):
-        lines.append(f"- LƯU Ý: {check['warning']}")
+        lines.append(f"- CẢNH BÁO QUAN TRỌNG: Cấu hình này CÓ ĐIỂM NGHẼN (BOTTLENECK). {check['warning']}")
+    else:
+        lines.append("- KẾT LUẬN TƯƠNG THÍCH: TƯƠNG THÍCH (PHÙ HỢP)")
+        
     return "\n".join(lines) + "\n"

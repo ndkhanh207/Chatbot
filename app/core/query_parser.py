@@ -1,19 +1,36 @@
 from typing import Optional
-from app.compact.compatibility import is_compatibility_query, CPU_TERMS, GPU_TERMS, MAIN_TERMS
+from app.constants import *
+from app.compatibility.compat_logic import is_compatibility_query
 import re
 
+_MODEL_PATTERN = re.compile(
+    r'(rtx|gtx|rx)\s*-?\s*(\d{3,4})\s*(ti|xt|gre|super|xtx)?',
+    re.IGNORECASE,
+)
+
 def normalize_user_message(user_message: str) -> str:
-    return (
-        user_message
-        .lower()
-        .replace("main",          "bo mạch chủ")
-        .replace("chip",          "cpu")
-        .replace("card đồ họa",   "gpu")
-        .replace("vga",           "gpu")
-        .replace("đồ họa",        "gpu")
-        .replace("điện năng",     "tdp")
-        .replace("điện năng tiêu thụ", "tdp")
-    )
+    msg = user_message.lower()
+    # Thay thế compound trước, rồi mới thay từ đơn
+    # (tránh "mainboard" bị tách thành "bo mạch chủboard")
+    # main 
+    msg = re.sub(r'\bmainboard\b', 'bo mạch chủ', msg)
+    msg = re.sub(r'\bmain\b',      'bo mạch chủ', msg)
+    # card 
+    msg = msg.replace(r'\bchip\b',          "cpu")
+    msg = msg.replace("card đồ họa",   "gpu")
+    msg = msg.replace("vga",           "gpu")
+    msg = msg.replace("đồ họa",        "gpu")
+    msg = re.sub(r'\bcard\b', 'gpu', msg)
+    # tdp
+    msg = msg.replace("điện năng tiêu thụ", "tdp")
+    msg = msg.replace("điện năng",     "tdp")
+    return msg
+
+def normalize_text(text: str) -> str:
+    if not text:
+        return ""
+    # Lowercase + chuẩn hóa khoảng trắng (giữ space để keyword matching hoạt động)
+    return re.sub(r'\s+', ' ', text.lower()).strip()
     
 OWNERSHIP_HINTS = ['tôi có', 'tôi đã có', 'sẵn có', 'đang dùng', 'đang có']
 
@@ -48,8 +65,16 @@ def detect_brand(msg_lower: str) -> Optional[str]:
         return "radeon"
     return None
 
-def normalize_text(text: str) -> str:
-    if not text:
-        return ""
-    # Lowercase + chuẩn hóa khoảng trắng (giữ space để keyword matching hoạt động)
-    return re.sub(r'\s+', ' ', text.lower()).strip()
+
+
+
+def detect_model_query(msg_lower: str) -> Optional[dict]:
+    """
+    Phát hiện dòng GPU cụ thể trong câu hỏi, vd 'rtx 4070' → {'digits': '4070', 'suffix': None}.
+    Trả None nếu không có model cụ thể nào (để chat_handler fallback qua brand-wide hoặc
+    semantic search bình thường).
+    """
+    m = _MODEL_PATTERN.search(msg_lower)
+    if not m:
+        return None
+    return {"digits": m.group(2), "suffix": m.group(3) or None}

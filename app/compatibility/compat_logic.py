@@ -1,6 +1,6 @@
 import re
 from typing import Optional, Tuple, List, Dict, Any, Callable
-
+from app.constants import *
 import pandas as pd
 
 # ──────────────────────────────────────────────
@@ -49,10 +49,7 @@ COMPATIBILITY_TRIGGERS = [
     'tương thích', 'lắp được', 'chạy được', 'hợp không',
     'đi cùng', 'đi với', 'vừa không', 'cắm được', 'gắn được', 'kết hợp'
 ]
-CPU_TERMS  = ['cpu', 'vi xử lý', 'i3', 'i5', 'i7', 'i9', 'ryzen']
-GPU_TERMS  = ['gpu', 'vga', 'card', 'đồ họa', 'rtx', 'gtx', 'rx']
-MAIN_TERMS = ['bo mạch chủ', 'motherboard', 'h610', 'b760', 'z790', 'x670', 'a520']
-CATEGORY_MAP = {"cpu": "CPU", "gpu": "GPU", "mainboard": "MAINBOARD"}
+
 
 # CPU/GPU performance tier (cho gợi ý hiệu năng, KHÔNG phải giới hạn vật lý)
 GPU_TIER_RANK = {50: 1, 60: 2, 70: 3, 80: 4, 90: 5}
@@ -171,21 +168,19 @@ def check_cpu_main_compat(cpu: dict, main: dict) -> Dict[str, Any]:
 
     reasons = []
     if not socket_match:
-        reasons.append(f"Socket không khớp: CPU dùng {cpu_socket or '(?)'}, mainboard dùng {main_socket or '(?)'}.")
+        reasons.append(f"KHÔNG TƯƠNG THÍCH (KHÔNG PHÙ HỢP): Socket không khớp. CPU dùng {cpu_socket or '(?)'}, mainboard dùng {main_socket or '(?)'}.")
     elif not tier_ok:
         if cpu_p and cpu_p.get("has_k_modifier"): 
              # Nếu là bản K/X/3D (Tier bị cộng lên)
              reasons.append(
-                 f"Main Tier ({main_tier}) < {tier_source}. Lắp được vì chung socket, "
-                 f"nhưng bản K/X ăn nhiều điện, cắm main Tier {main_tier} có rủi ro tụt xung hoặc tản VRM sôi nước. Gợi ý lên Main Tier {required_tier}."
+                 f"KHÔNG TƯƠNG THÍCH (KHÔNG PHÙ HỢP): Main Tier ({main_tier}) quá yếu so với {tier_source}. Bản K/X ăn nhiều điện, cắm main Tier {main_tier} có rủi ro tụt xung hoặc tản VRM sôi nước. Gợi ý lên Main Tier {required_tier}."
              )
         else:
              reasons.append(
-                 f"Main Tier ({main_tier}) < {tier_source}. Lắp được vì chung socket, "
-                 f"nhưng Main yếu sinh lý hơn CPU."
+                 f"KHÔNG TƯƠNG THÍCH (KHÔNG PHÙ HỢP): Main Tier ({main_tier}) quá yếu so với {tier_source}. Mainboard không đủ khả năng cấp điện cho CPU."
              )
     else:
-        reasons.append(f"Socket khớp ({cpu_socket}), mainboard chipset {chip_code} (Tier {main_tier}) đủ gánh CPU ({tier_source}).")
+        reasons.append(f"Hoàn toàn TƯƠNG THÍCH (PHÙ HỢP): Socket khớp ({cpu_socket}), mainboard chipset {chip_code} (Tier {main_tier}) đủ gánh CPU ({tier_source}).")
 
     return {
         "is_compatible": is_compatible, "socket_match": socket_match,
@@ -201,8 +196,8 @@ def check_gpu_main_compat(gpu: dict, main: dict) -> Dict[str, Any]:
     warning = None
     if gpu_gen is not None and main_gen is not None and gpu_gen > main_gen:
         warning = (
-            f"GPU dùng PCIe {gpu_gen} nhưng mainboard chỉ hỗ trợ PCIe {main_gen} — "
-            f"vẫn lắp được, nhưng chạy ở tốc độ PCIe {main_gen}."
+            f"Hai linh kiện TƯƠNG THÍCH với nhau. Tuy nhiên GPU dùng PCIe {gpu_gen} nhưng mainboard chỉ hỗ trợ PCIe {main_gen}, "
+            f"do đó băng thông PCIe {main_gen} sẽ không phát huy hết 100% sức mạnh của GPU."
         )
 
     return {"is_compatible": True, "gpu_pcie_gen": gpu_gen, "main_pcie_gen": main_gen, "warning": warning}
@@ -218,9 +213,9 @@ def check_cpu_gpu_compat(cpu: dict, gpu: dict) -> Dict[str, Any]:
     warning = None
     if cpu_tier is not None and gpu_tier is not None:
         if gpu_tier < cpu_tier:
-            warning = "CPU khá mạnh so với GPU — GPU có thể là điểm nghẽn."
+            warning = "GPU khá yếu so với CPU — GPU có thể là điểm nghẽn hiệu năng."
         elif cpu_tier < gpu_tier - 1:
-            warning = "GPU khá mạnh so với CPU — CPU có thể là điểm nghẽn."
+            warning = "GPU khá mạnh so với CPU — CPU có thể là điểm nghẽn hiệu năng."
 
     return {"is_compatible": True, "cpu_tier": cpu_tier, "gpu_tier": gpu_tier, "warning": warning}
 

@@ -1,0 +1,139 @@
+"""
+Test riêng cho tính năng kiểm tra/gợi ý tương thích linh kiện
+(CPU-MAINBOARD, GPU-MAINBOARD, CPU-GPU).
+
+Tách biệt khỏi test_export_qa.py (spec search) — dùng report file
+và session prefix riêng để 2 bộ test không lẫn dữ liệu vào nhau.
+"""
+
+import re
+import pytest
+import requests
+import os
+
+API_URL = "http://127.0.0.1:8000/chat"
+SESSION_API_BASE = "http://127.0.0.1:8000/sessions"
+REPORT_FILE = "test/report_compatibility_test.md"
+
+COMPAT_TEST_CASES = [
+    # ─── CPU - MAINBOARD: socket khớp + tier đủ → tương thích ───
+    ("compat_cpu_main_match",
+     "AMD Ryzen 7 9800X3D có lắp được với main MSI B850 PRO B850M-VC AM5 không",
+     [("tương thích", "phù hợp", "lắp được", "lắp vừa")]),
+
+    # ─── CPU - MAINBOARD: socket KHÔNG khớp (LGA1700 vs AM5) ───
+    ("compat_cpu_main_socket_mismatch",
+     "Intel Core i9-14900K có lắp được với main MSI B850 PRO B850M-VC AM5 không",
+     [("không tương thích", "không phù hợp", "không lắp được", "khác socket")]),
+
+    # ─── CPU - MAINBOARD: socket KHỚP (cả 2 LGA1700) nhưng tier KHÔNG đủ ─── không cấp đủ điện
+   
+    ("compat_cpu_main_tier_insufficient",
+     "Intel Core i9-13900K có lắp được với main Asus H610 PRIME H610M-K LGA1700 DDR5 Micro ATX không",
+     [("không tương thích", "không phù hợp"), ("tier", "cấp điện", "khả năng cấp điện")]),
+
+    # ─── GPU - MAINBOARD: PCIe gen lệch → vẫn tương thích, có cảnh báo băng thông ───
+    ("compat_gpu_main_pcie_warning",
+     "GPU GIGABYTE GeForce RTX 5070 Ti GAMING 16G lắp với main ASUS B760M-AYW WIFI D4 có sao không",
+     ["tương thích", ("băng thông", "pcie 4.0", "không phát huy")]),
+
+    # ─── CPU - GPU: tier cân đối → không cảnh báo nghẽn ───
+    ("compat_cpu_gpu_balanced",
+     "AMD Ryzen 7 9800X3D đi với GPU GIGABYTE GeForce RTX 5070 Ti GAMING 16G có ổn không",
+     [("phù hợp", "ổn", "tương thích")]),
+
+    # ─── CPU - GPU: CPU yếu (tier 1, do suffix G giảm tier) + GPU mạnh (tier 3)
+    # → cảnh báo CPU là điểm nghẽn. Case này không cần giả định gì — toàn bộ
+    # phép tính (line tier, suffix modifier, GPU 2-số-cuối) đều xác định
+    # bằng regex trên chính tên sản phẩm, không phụ thuộc TDP/giá trong DB. ───
+    ("compat_cpu_gpu_bottleneck",
+     "AMD Ryzen 3 3200G đi với GPU MSI VENTUS 2X OC GeForce RTX 5070 12GB GDDR7 có ổn không",
+     [("nghẽn", "điểm nghẽn", "CPU yếu hơn", "CPU có thể là điểm nghẽn")]),
+]
+
+_cleared_sessions = set()
+
+_TRAILING_ZERO_DECIMAL = re.compile(r'^(\d+)\.(0*)$')
+
+
+def _token_in_reply(token: str, reply_lower: str) -> bool:
+    token = token.strip()
+    m = _TRAILING_ZERO_DECIMAL.match(token)
+    if m:
+        base = m.group(1)
+        pattern = rf'\b{re.escape(base)}(?:[.,]\d+)?\b'
+        return re.search(pattern, reply_lower) is not None
+    return token.lower() in reply_lower
+
+
+def _check_requirement(requirement, reply_lower: str) -> bool:
+    """requirement là chuỗi (phải khớp) hoặc tuple các chuỗi đồng nghĩa
+    (chỉ cần 1 trong các lựa chọn khớp)."""
+    if isinstance(requirement, (tuple, list)):
+        return any(_token_in_reply(alt, reply_lower) for alt in requirement)
+    return _token_in_reply(requirement, reply_lower)
+
+
+def _format_requirement(requirement) -> str:
+    if isinstance(requirement, (tuple, list)):
+        return " hoặc ".join(requirement)
+    return requirement
+
+
+def _session_id_for(label: str) -> str:
+    # Mỗi case compat dùng session riêng — câu hỏi compat thường đứng độc
+    # lập (không cần đại từ nối tiếp), nhưng tách session vẫn tránh được
+    # rủi ro history của case trước ảnh hưởng đến reformulate ở case sau.
+    return f"test_compat_{label}"
+
+
+def _ensure_clean_session(session_id: str):
+    if session_id in _cleared_sessions:
+        return
+    try:
+        requests.delete(f"{SESSION_API_BASE}/{session_id}", timeout=10)
+    except requests.RequestException:
+        pass
+    _cleared_sessions.add(session_id)
+
+
+def setup_module(module):
+    os.makedirs(os.path.dirname(REPORT_FILE), exist_ok=True)
+    with open(REPORT_FILE, "w", encoding="utf-8") as f:
+        f.write("# BÁO CÁO KIỂM THỬ TƯƠNG THÍCH LINH KIỆN\n\n")
+        f.write("| # | Session | Câu hỏi | Trả lời | Yêu cầu | Kết quả |\n")
+        f.write("|---|---|---|---|---|---|\n")
+
+
+def _extract_reply(response_json: dict) -> str:
+    if "data" in response_json and isinstance(response_json["data"], dict):
+        return response_json["data"].get("chatbot_reply", "Lỗi phản hồi")
+    return response_json.get("chatbot_reply", "Lỗi phản hồi")
+
+
+@pytest.mark.parametrize("label, question, expected_keywords", COMPAT_TEST_CASES)
+def test_compatibility(label, question, expected_keywords):
+    session_id = _session_id_for(label)
+    _ensure_clean_session(session_id)
+
+    payload = {"user_message": question, "session_id": session_id}
+    response = requests.post(API_URL, json=payload, timeout=30)
+
+    assert response.status_code == 200, (
+        f"HTTP {response.status_code} cho câu hỏi '{question}': {response.text}"
+    )
+
+    reply = _extract_reply(response.json())
+    reply_lower = reply.lower()
+    missing = [req for req in expected_keywords if not _check_requirement(req, reply_lower)]
+    passed = len(missing) == 0
+
+    with open(REPORT_FILE, "a", encoding="utf-8") as f:
+        result_cell = "✅" if passed else f"❌ thiếu: {', '.join(_format_requirement(m) for m in missing)}"
+        keywords_display = ", ".join(_format_requirement(r) for r in expected_keywords)
+        f.write(
+            f"| {label} | {session_id} | {question} | {reply} | "
+            f"{keywords_display} | {result_cell} |\n"
+        )
+
+    assert passed, f"Thiếu {[_format_requirement(m) for m in missing]} trong câu trả lời: '{reply}'"

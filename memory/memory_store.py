@@ -1,18 +1,19 @@
 # memory/memory_store.py
 """
 Persistent chat history dùng MySQL + SQLAlchemy trực tiếp.
+Lazy init: không kết nối MySQL tại import time — tránh block server startup.
 """
 
 from datetime import datetime
 from langchain_core.messages import HumanMessage, AIMessage, BaseMessage, trim_messages
 from sqlalchemy import (
-    create_engine, Column, Integer, String, Text, DateTime
+    create_engine, Column, Integer, String, Text, DateTime, text
 )
 from sqlalchemy.orm import declarative_base, sessionmaker
 from config.config import MYSQL_CONNECTION_STRING
 
 # ──────────────────────────────────────────────
-# SQLAlchemy setup
+# SQLAlchemy setup  (lazy — không block import)
 # ──────────────────────────────────────────────
 Base = declarative_base()
 
@@ -28,17 +29,45 @@ class ChatMessage(Base):
     created_at = Column(DateTime,   default=datetime.utcnow)
 
 
-# Tạo engine + bảng ngay khi import
-engine = create_engine(
-    MYSQL_CONNECTION_STRING,
-    pool_pre_ping=True,   # tự reconnect nếu connection chết
-    pool_recycle=3600,    # recycle connection sau 1 giờ
-    echo=False,           # đổi True nếu muốn xem SQL log
-)
-Base.metadata.create_all(engine)  # tạo bảng nếu chưa có
-SessionLocal = sessionmaker(bind=engine)
+# Lazy init — chỉ kết nối MySQL khi thực sự cần, tránh block server startup
+_engine = None
+_SessionLocal = None
+_db_available = None  # None = chưa thử, True/False = đã thử
+
+
+def _get_session():
+    """Khởi tạo engine + bảng lần đầu gọi. Trả về session hoặc None nếu MySQL lỗi."""
+    global _engine, _SessionLocal, _db_available
+
+    if _db_available is False:
+        return None
+
+    if _SessionLocal is None:
+        try:
+            _engine = create_engine(
+                MYSQL_CONNECTION_STRING,
+                pool_pre_ping=True,
+                pool_recycle=3600,
+                echo=False,
+                connect_args={"connect_timeout": 5},  # timeout 5s thay vì treo vô hạn
+            )
+            # Test kết nối thật trước khi tạo bảng
+            with _engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+            Base.metadata.create_all(_engine)
+            _SessionLocal = sessionmaker(bind=_engine)
+            _db_available = True
+            print("=== [MEMORY] MySQL kết nối thành công! ===")
+        except Exception as e:
+            print(f"⚠️ [MEMORY] Không thể kết nối MySQL: {e}")
+            print("⚠️ [MEMORY] Chat history sẽ không được lưu trong phiên này.")
+            _db_available = False
+            return None
+
+    return _SessionLocal()
 
 MAX_CHARS = 2000
+MAX_AI_SAVE_LEN = 200  # Rút gọn AI reply trước khi lưu, chống ngộ độc history
 
 
 # ──────────────────────────────────────────────
@@ -50,7 +79,10 @@ def _count_chars(messages: list[BaseMessage]) -> int:
 
 def _load_messages(session_id: str) -> list[BaseMessage]:
     """Đọc tất cả messages của session từ MySQL."""
-    with SessionLocal() as db:
+    db = _get_session()
+    if db is None:
+        return []
+    try:
         rows = (
             db.query(ChatMessage)
             .filter(ChatMessage.session_id == session_id)
@@ -64,6 +96,8 @@ def _load_messages(session_id: str) -> list[BaseMessage]:
             elif row.role == "ai":
                 messages.append(AIMessage(content=row.content))
         return messages
+    finally:
+        db.close()
 
 
 # ──────────────────────────────────────────────
@@ -86,9 +120,33 @@ def get_trimmed_history(session_id: str) -> list[BaseMessage]:
     )
 
 
+def _summarize_for_history(ai_msg: str) -> str:
+    """Rút gọn câu trả lời AI trước khi lưu vào history.
+    Chỉ giữ phần đầu (~200 ký tự) để reformulate LLM không bị
+    nhiễm data sản phẩm/giá cả từ reply cũ (ngộ độc history).
+    """
+    if len(ai_msg) <= MAX_AI_SAVE_LEN:
+        return ai_msg
+    # Cắt tại ranh giới câu gần nhất (dấu chấm, xuống dòng)
+    truncated = ai_msg[:MAX_AI_SAVE_LEN]
+    # Tìm vị trí dấu chấm hoặc xuống dòng cuối cùng trong phạm vi cắt
+    for sep in ['. ', '.\n', '\n']:
+        pos = truncated.rfind(sep)
+        if pos > MAX_AI_SAVE_LEN // 2:  # Chỉ cắt nếu không mất quá nhiều
+            truncated = truncated[:pos + 1]
+            break
+    return truncated.strip()
+
+
 def save_message(session_id: str, user_msg: str, ai_msg: str) -> None:
-    """Lưu một lượt hội thoại vào MySQL."""
-    with SessionLocal() as db:
+    """Lưu một lượt hội thoại vào MySQL.
+    AI reply được rút gọn để tránh ngộ độc history cho reformulate.
+    """
+    db = _get_session()
+    if db is None:
+        return
+    try:
+        ai_short = _summarize_for_history(ai_msg)
         db.add(ChatMessage(
             session_id=session_id,
             role="human",
@@ -97,15 +155,22 @@ def save_message(session_id: str, user_msg: str, ai_msg: str) -> None:
         db.add(ChatMessage(
             session_id=session_id,
             role="ai",
-            content=ai_msg,
+            content=ai_short,
         ))
         db.commit()
+    finally:
+        db.close()
 
 
 def clear_session(session_id: str) -> None:
     """Xóa toàn bộ lịch sử của một session."""
-    with SessionLocal() as db:
+    db = _get_session()
+    if db is None:
+        return
+    try:
         db.query(ChatMessage)\
           .filter(ChatMessage.session_id == session_id)\
           .delete()
         db.commit()
+    finally:
+        db.close()

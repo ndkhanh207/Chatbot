@@ -165,14 +165,44 @@ def build_range_summary(user_message: str, matched_items: list) -> str:
 # ──────────────────────────────────────────────
 # Hậu xử lý — chặn cụm từ máy móc / lộ reasoning còn sót lại
 # ──────────────────────────────────────────────
-def world_filter(reply: str) -> str:
+def word_filter(reply: str) -> str:
+    # lọc không giải thích leak system promt
+    paragraph_cutoff_pattern = re.compile(
+        r'\b(giải thích|lý do)\s*:', re.IGNORECASE
+    )
+    m = paragraph_cutoff_pattern.search(reply)
+    if m:
+        reply = reply[:m.start()]
+
     forbidden_pattern = r'(dựa trên|theo)\s+(thông tin|dữ liệu)\s*(được cung cấp|trên|ở trên)?'
     reply = re.sub(forbidden_pattern, '', reply, flags=re.IGNORECASE)
 
-    # Chặn trường hợp LLM gán verdict tương thích làm giá/thông số sản phẩm
-    # Ví dụ: "Giá của GPU này là TƯƠNG THÍCH" → xóa cụm sai
-    compat_as_value_pattern = r'[Gg]iá\s+(?:của\s+\w+\s+(?:này\s+)?)?(?:là|:)\s*\**\s*(?:TƯƠNG THÍCH|KHÔNG TƯƠNG THÍCH|PHÙ HỢP)\s*\**\.?'
-    reply = re.sub(compat_as_value_pattern, '', reply)
+    reply = re.sub(r'câu trả lời cho\s*["\']?.*?["\']?\s*là\s*:?\s*',
+                    '', reply, flags=re.IGNORECASE)
+
+    reply = re.sub(r'vì vậy|vì thế|do đó', '', reply, flags=re.IGNORECASE)
+
+    reply = re.sub(r'\[GỢI Ý LINH KIỆN TƯƠNG THÍCH VỚI .*?\]', '', reply).strip()
+    # Xóa bớt khoảng trắng thừa hoặc dấu hai chấm thừa nếu có
+    reply = reply.replace("ạ: \n", "ạ:\n").replace("ạ: \n\n", "ạ:\n\n")
+
+    internal_note_pattern = r'[^.]*\b(đã (được )?tính toán sẵn|không cần (phải )?suy luận thêm)\b[^.]*\.?'
+    reply = re.sub(internal_note_pattern, '', reply, flags=re.IGNORECASE)
+
+    # ⭐ Chặn meta-commentary về việc tuân thủ instruction / tên label nội bộ
+    meta_commentary_pattern = (
+        r'[^.]*\b('
+        r'dữ liệu thực tế dành cho bạn|'
+        r'không cần (phải )?sử dụng dữ liệu|'
+        r'đã đủ để trả lời|'
+        r'trả lời (một cách )?(chính xác và )?đầy đủ'
+        r'tuân thủ( các)? quy tắc|'       
+        r'phong cách trả lời|'            
+        r'cụm từ máy móc|'                  
+        r'danh sách liệt kê'
+        r')\b[^.]*\.?'
+    )
+    reply = re.sub(meta_commentary_pattern, '', reply, flags=re.IGNORECASE)
 
     robot_phrases = [
         "Trong danh sách sản phẩm", "Vì vậy,", "Tuy nhiên,",
@@ -182,7 +212,7 @@ def world_filter(reply: str) -> str:
         reply = re.compile(re.escape(phrase), re.IGNORECASE).sub('', reply)
 
     reply = re.sub(r'^\s*,\s*', '', reply).strip()
-    reply = re.sub(r'\s+', ' ', reply)
+    reply = re.sub(r'[ \t]+', ' ', reply)
 
     if not reply.startswith("Dạ"):
         reply = "Dạ, " + reply

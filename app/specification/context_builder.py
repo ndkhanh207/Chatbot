@@ -1,6 +1,6 @@
 import re
 from app.constants import FIELD_KEYWORD_ALIASES
-from app.price.pricing import format_currency_vietnam
+from app.price.pricing_util import format_currency_vietnam
 from tool.calculator import CONVERSIONS, convert_if_needed, ALIASES
 from unit.unit import get_unit_map
 
@@ -13,7 +13,7 @@ def field_relevance_score(field_name: str, msg_lower: str) -> int:
             return 2
     return 0
 
-def build_product_context(user_message: str, category: str | None, matched_items: list) -> str:
+def build_product_context(user_message: str, category: str | None, matched_items: list, include_all_fields: bool = False) -> str:
     """Build product listing string từ matched_items đã fetch sẵn."""
     if not matched_items or not isinstance(matched_items, list):
         return ""
@@ -30,7 +30,7 @@ def build_product_context(user_message: str, category: str | None, matched_items
                 requested_unit = canonical
                 break
 
-    wants_all_specs = any(w in msg_lower for w in ["thông số", "chi tiết", "cấu hình", "specs", "đặc điểm", "toàn bộ"])
+    wants_all_specs = include_all_fields or any(w in msg_lower for w in ["thông số", "chi tiết", "cấu hình", "specs", "đặc điểm", "toàn bộ"])
 
     lines = ["Danh sách linh kiện thực tế đang có sẵn tại cửa hàng:"]
     for item in matched_items:
@@ -68,9 +68,14 @@ def build_product_context(user_message: str, category: str | None, matched_items
                         index, formatted_value, conversions,
                     ))
                 else:
+                    str_val = str(val).strip()
+                    if str_val.lower().endswith(unit.lower()):
+                        formatted_value = f"{key}: {val}"
+                    else:
+                        formatted_value = f"{key}: {val} {unit}"
                     field_entries.append((
                         field_relevance_score(key, msg_lower),
-                        index, f"{key}: {val}", [],
+                        index, formatted_value, [],
                     ))
             else:
                 field_entries.append((
@@ -86,43 +91,16 @@ def build_product_context(user_message: str, category: str | None, matched_items
                 extra_parts.extend(conversions)
 
         extra = (' | ' + ' | '.join(extra_parts)) if extra_parts else ''
+        
+        # Chỉ hiển thị giá nếu người dùng hỏi, hoặc nếu đây là tìm kiếm chung chung (extra_parts rỗng)
+        show_price = wants_all_specs or any(k in msg_lower for k in ["giá", "tiền", "budget", "ngân sách", "rẻ", "đắt", "vnd", "vnđ"])
+        if not extra_parts:
+            show_price = True
+            
+        price_str = f" | Giá: {p_format} VNĐ" if show_price else ""
+        
         lines.append(
-            f"- [{item.get('category')}] {name} | Giá: {p_format} VNĐ{extra}"
+            f"- [{item.get('category')}] {name}{price_str}{extra}"
         )
 
     return "\n".join(lines)
-
-
-def filter_knowledge_base_by_price(knowledge_base, category, lo, hi, brand=None, top_k=10):
-    """
-    Lọc TRỰC TIẾP trên toàn bộ knowledge_base (DataFrame) theo khoảng giá,
-    không phụ thuộc vào kết quả semantic search top_k.
-    Trả về (list[dict], total_count).
-    """
-    df = knowledge_base
-    price_col = "giá" if "giá" in df.columns else "price"
-
-    mask = (df[price_col] >= lo) & (df[price_col] <= hi)
-    if category and "category" in df.columns:
-        mask &= (df["category"] == category)
-
-    if brand:
-        search_col = "chipset" if "chipset" in df.columns else (
-            "tên" if "tên" in df.columns else "name"
-        )
-        mask &= df[search_col].str.contains(brand, case=False, na=False)
-
-    full_match = df[mask]
-    if full_match.empty:
-        return [], 0
-
-    total_count = len(full_match)
-    sorted_df = full_match.sort_values(by=price_col)
-
-    if total_count <= top_k:
-        sample = sorted_df
-    else:
-        step = max(1, total_count // top_k)
-        sample = sorted_df.iloc[::step].head(top_k)
-
-    return sample.to_dict(orient="records"), total_count
