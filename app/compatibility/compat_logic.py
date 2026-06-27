@@ -173,7 +173,7 @@ def check_cpu_main_compat(cpu: dict, main: dict) -> Dict[str, Any]:
         if cpu_p and cpu_p.get("has_k_modifier"): 
              # Nếu là bản K/X/3D (Tier bị cộng lên)
              reasons.append(
-                 f"KHÔNG TƯƠNG THÍCH (KHÔNG PHÙ HỢP): Main Tier ({main_tier}) quá yếu so với {tier_source}. Bản K/X ăn nhiều điện, cắm main Tier {main_tier} có rủi ro tụt xung hoặc tản VRM sôi nước. Gợi ý lên Main Tier {required_tier}."
+                 f"KHÔNG TƯƠNG THÍCH (KHÔNG PHÙ HỢP): Main Tier ({main_tier}) quá yếu so với {tier_source}. Bản K/X ăn nhiều điện, cắm main Tier {main_tier} có rủi ro tụt xung, suy giảm hiệu năng. Gợi ý lên Main Tier {required_tier}."
              )
         else:
              reasons.append(

@@ -2,7 +2,7 @@ import ollama
 from pydantic import BaseModel, Field, model_validator
 from typing import Literal
 
-from util.model_utils import get_ollama_model
+from app.utils.model_utils import get_ollama_model
 
 class MasterIntentSchema(BaseModel):
     reasoning: str = Field(description="Bước 1: Trích dẫn NGUYÊN VĂN tên linh kiện và từ khóa thông số khách gõ (KHÔNG TỰ THÊM TÊN HÃNG). Bước 2: Phân tích ý định.")
@@ -13,7 +13,8 @@ class MasterIntentSchema(BaseModel):
         "price_calculation",  # Tính tổng tiền nhiều món
         "specification",      # Hỏi thông số của 1 món cụ thể (vd: vram, socket)
         "price_check",        # Hỏi giá của 1 món cụ thể
-        "budget_search",      # Tìm linh kiện theo ngân sách tối đa
+        "budget_search",      # Tìm 1 linh kiện đơn lẻ theo ngân sách tối đa
+        "build_pc",           # Tư vấn/lắp BỘ PC TRỌN BỘ (CPU+GPU+Mainboard)
         "general_search",     # Tìm linh kiện chung chung (không kèm giá/thông số)
         "none"                # Giao tiếp thông thường / Không rõ
     ] = "none"
@@ -62,35 +63,44 @@ class MasterIntentSchema(BaseModel):
 
 _INTENT_SYSTEM_PROMPT = (
     "Bạn là AI chuyên gia phân tích phần cứng PC. Nhiệm vụ của bạn là đọc câu hỏi, "
-    "CẢNH BÁO QUAN TRỌNG: TRÍCH XUẤT CHÍNH XÁC TỪ KHÓA CỦA KHÁCH. KHÔNG tự ý ghép thêm từ 'Ryzen', 'Intel', 'Nvidia' nếu khách không viết. (Ví dụ: khách ghi 'i9 14900k' thì giữ nguyên 'i9 14900k', tuyệt đối không biến thành 'Ryzen 9').\n\n"
+    "CẢNH BÁO QUAN TRỌNG: TRÍCH XUẤT CHÍNH XÁC TỪ KHÓA CỦA KHÁCH. KHÔNG tự ý ghép thêm từ 'Ryzen', 'Intel', 'Nvidia' nếu khách không viết.\n\n"
     "PHÂN TÍCH (reasoning) mục đích thực sự của khách, sau đó mới phân loại (intent).\n\n"
     "Các bước tư duy:\n"
     "1. Khách đang hỏi về cái gì? (Giá tiền, thông số kỹ thuật, tìm đồ ghép cùng, hay kiểm tra tương thích?)\n"
-    "2. Khách nhắc đến mấy linh kiện cụ thể?\n"
-    "3. Gán linh kiện vào đúng trường dữ liệu theo luật bên dưới.\n\n"
+    "2. Khách nhắc đến mấy linh kiện cụ thể? Hãy đọc kỹ toàn bộ câu, đặc biệt là các từ nằm trước và sau từ nối 'đi với', 'lắp với', 'và', 'cùng với'.\n"
+    "3. Gán TẤT CẢ linh kiện tìm được vào đúng trường dữ liệu.\n\n"
     "Dựa vào câu hỏi, hãy phân loại vào ĐÚNG 1 trong các 'intent' sau:\n"
-    "- 'compatibility': Khách hỏi 2 hoặc nhiều linh kiện CỤ THỂ có lắp/chạy được với nhau không. PHẢI có TỐI THIỂU 2 tên linh kiện cụ thể trong câu hỏi.\n"
-    "- 'suggestion': Khách đã có sẵn 1 linh kiện cụ thể (hoặc vừa hỏi xong về nó), muốn tìm thêm linh kiện khác để ghép cùng. Dấu hiệu: 'tìm ... phù hợp với/cho', 'ghép với', 'lắp với'. CHỈ CÓ 1 linh kiện được nhắc đến.\n"
+    "- 'compatibility': Khách hỏi 2 hoặc nhiều linh kiện CỤ THỂ có lắp/chạy được với nhau không (VD: 'CPU X đi với GPU Y có ổn không', 'Main A lắp với CPU B được không'). Nếu trong câu có TỪ 2 LINH KIỆN CỤ THỂ TRỞ LÊN, đó CHẮC CHẮN là 'compatibility'. Bạn PHẢI điền đầy đủ cả 2 linh kiện đó vào các trường tương ứng (cpu, mainboard, gpu).\n"
+    "- 'suggestion': Khách CHỈ CÓ SẴN 1 LINH KIỆN CỤ THỂ và nhờ tìm 1 linh kiện MỚI (chưa biết tên) để ghép cùng (VD: 'tôi có CPU X rồi, tìm GPU phù hợp', 'gợi ý main cho CPU Y'). CHỈ CÓ 1 linh kiện cụ thể xuất hiện trong câu.\n"
     "- 'price_calculation': Khách liệt kê nhiều linh kiện và muốn tính TỔNG GIÁ tiền.\n"
     "- 'specification': Khách hỏi về THÔNG SỐ (VRAM, socket, số nhân, công suất...) của 1 linh kiện(target_product) cụ thể.\n"
     "- 'price_check': Khách hỏi GIÁ BÁN của 1 linh kiện(target_product) cụ thể.\n"
-    "- 'budget_search': Khách tìm linh kiện dựa trên NGÂN SÁCH/TẦM GIÁ (vd: 'tầm 4 triệu', 'dưới 10 củ').\n"
+    "- 'budget_search': Khách tìm MỘT LINH KIỆN ĐƠN LẺ dựa trên NGÂN SÁCH/TẦM GIÁ (vd: 'tầm 4 triệu', 'dưới 10 củ').\n"
+    "- 'build_pc': Khách muốn tư vấn/lắp ráp BỘ PC TRỌN BỘ gồm nhiều linh kiện (CPU+GPU+Mainboard...).\n"
     "- 'general_search': Khách tìm linh kiện chung chung, không nói rõ giá hay thông số.\n"
     "- 'none': Giao tiếp thông thường.\n\n"
     "QUY TẮC TRÍCH XUẤT THỰC THỂ:\n"
     "1. 'target_product': Tên linh kiện cụ thể khi ý định là 'specification' hoặc 'price_check'.\n"
-    "2. 'cpu', 'mainboard', 'gpu': Trích xuất tên CỤ THỂ (vd: 'i5 12400f', 'rtx 3060'). Bỏ qua từ chung chung như 'main', 'card'\n"
-    "3. 'spec_detail': Tên thông số khách muốn biết (vd: 'vram', 'chuẩn ram', 'xung cơ bản', 'xung boost', ).\n"
-    "4. 'budget_amount': Nếu khách nói ngân sách, CHUYỂN ĐỔI thành số nguyên VNĐ (vd: '4 triệu' -> 4000000). Mặc định là 0.\n"
-    "5. 'category': Loại linh kiện khách đang tìm kiếm (vd: 'gpu', 'mainboard', 'cpu'). CẤM điền 'price', 'giá'.\n"
+    "2. 'cpu', 'mainboard', 'gpu': Trích xuất BẰNG HẾT các tên CỤ THỂ xuất hiện trong câu (VD: 'cpu: ryzen 7 9800x3d', 'gpu: gigabyte rtx 5070 ti gaming 16g').\n"
+    "3. 'spec_detail': Tên thông số khách muốn biết.\n"
+    "4. 'budget_amount': Nếu khách nói ngân sách, CHUYỂN ĐỔI thành số nguyên VNĐ. Mặc định là 0.\n"
+    "5. 'category': Loại linh kiện khách đang tìm kiếm. CẤM điền 'price', 'giá'.\n"
     "Điền 'none' hoặc 0 nếu không có thông tin."
 )
 
 _INTENT_FEWSHOT = [
-    # Nhánh 1: Tương thích
+    # Nhánh 1a: Tương thích CPU + Mainboard
     {"role": "user", "content": "i5 12400f phối với h610m ổn ko admin"},
-    {"role": "assistant", "content": '{"reasoning": "Khách hỏi phối CPU i5 12400f với Mainboard h610m có ổn không là đang hỏi về độ tương thích phần cứng.", "intent": "compatibility", "target_product": "none", "spec_detail": "none", "cpu": "i5 12400f", "mainboard": "h610m", "gpu": "none", "budget_amount": 0, "category": "none"}'},
+    {"role": "assistant", "content": '{"reasoning": "Khách hỏi phối CPU i5 12400f với Mainboard h610m có ổn không. Trong câu có 2 linh kiện cụ thể (CPU và Mainboard) -> intent là compatibility.", "intent": "compatibility", "target_product": "none", "spec_detail": "none", "cpu": "i5 12400f", "mainboard": "h610m", "gpu": "none", "budget_amount": 0, "category": "none"}'},
     
+    # Nhánh 1b: Tương thích CPU + GPU (CỰC KỲ QUAN TRỌNG ĐỂ OLLAMA HỌC THEO)
+    {"role": "user", "content": "AMD Ryzen 7 9800X3D đi với GPU GIGABYTE GeForce RTX 5070 Ti GAMING 16G có ổn không"},
+    {"role": "assistant", "content": '{"reasoning": "Khách hỏi về độ tương thích giữa CPU AMD Ryzen 7 9800X3D và GPU GIGABYTE GeForce RTX 5070 Ti GAMING 16G. Câu hỏi chứa đầy đủ 2 linh kiện cụ thể (CPU và GPU) -> intent là compatibility. Cần trích xuất đủ cả cpu và gpu.", "intent": "compatibility", "target_product": "none", "spec_detail": "none", "cpu": "amd ryzen 7 9800x3d", "mainboard": "none", "gpu": "gigabyte geforce rtx 5070 ti gaming 16g", "budget_amount": 0, "category": "none"}'},
+
+    # Nhánh 1c: Tương thích GPU + Mainboard
+    {"role": "user", "content": "GPU GIGABYTE GeForce RTX 5070 Ti GAMING 16G lắp với main ASUS B760M-AYW WIFI D4 có sao không"},
+    {"role": "assistant", "content": '{"reasoning": "Khách hỏi về độ tương thích giữa GPU GIGABYTE GeForce RTX 5070 Ti GAMING 16G và Mainboard ASUS B760M-AYW WIFI D4. Trong câu có 2 linh kiện cụ thể (GPU và Mainboard) -> intent là compatibility.", "intent": "compatibility", "target_product": "none", "spec_detail": "none", "cpu": "none", "mainboard": "asus b760m-ayw wifi d4", "gpu": "gigabyte geforce rtx 5070 ti gaming 16g", "budget_amount": 0, "category": "none"}'},
+
     # Nhánh 2a: Gợi ý ghép cặp — có sẵn CPU, tìm GPU
     {"role": "user", "content": "tôi có cpu ryzen 9 9950x3d rồi, tìm gpu phù hợp"},
     {"role": "assistant", "content": '{"reasoning": "Khách đã có sẵn một CPU cụ thể và đang nhờ tư vấn tìm thêm linh kiện GPU để lắp cùng. Chỉ có 1 linh kiện → suggestion, KHÔNG PHẢI compatibility.", "intent": "suggestion", "target_product": "none", "spec_detail": "none", "cpu": "ryzen 9 9950x3d", "mainboard": "none", "gpu": "none", "budget_amount": 0, "category": "gpu"}'},
@@ -131,9 +141,25 @@ _INTENT_FEWSHOT = [
     {"role": "user", "content": "con vga 5070 ti gaming 16g khe cắm là chuẩn gì"},
     {"role": "assistant", "content": '{"reasoning": "Khách hỏi thông số kỹ thuật (khe cắm) cho một linh kiện cụ thể (VGA 5070 Ti Gaming 16G). Intent: specification.", "intent": "specification", "target_product": "5070 ti gaming 16g", "spec_detail": "khe cắm", "cpu": "none", "mainboard": "none", "gpu": "none", "budget_amount": 0, "category": "none"}'},
 
+    # Nhánh 6.5: Fix đặc biệt cho chuẩn giao tiếp
+    {"role": "user", "content": "Card đồ họa MSI RTX 5070 Ti MLG dùng chuẩn giao tiếp gì"},
+    {"role": "assistant", "content": '{"reasoning": "Khách hỏi thông số kỹ thuật (chuẩn giao tiếp) cho một linh kiện cụ thể (GPU MSI RTX 5070 Ti MLG). Intent: specification.", "intent": "specification", "target_product": "msi rtx 5070 ti mlg", "spec_detail": "chuẩn giao tiếp", "cpu": "none", "mainboard": "none", "gpu": "none", "budget_amount": 0, "category": "gpu"}'},
+
+    # Nhánh 6.6: Fix đặc biệt cho cổng lưu trữ SATA
+    {"role": "user", "content": "Thông số cổng lưu trữ mở rộng SATA của main MSI B850 PRO này như thế nào"},
+    {"role": "assistant", "content": '{"reasoning": "Khách hỏi thông số kỹ thuật (cổng lưu trữ mở rộng SATA) của mainboard MSI B850 PRO. Intent: specification.", "intent": "specification", "target_product": "msi b850 pro", "spec_detail": "cổng lưu trữ sata", "cpu": "none", "mainboard": "none", "gpu": "none", "budget_amount": 0, "category": "mainboard"}'},
+
     # Nhánh 7: Tìm chung chung
     {"role": "user", "content": "tìm cho tôi ssd của samsung"},
-    {"role": "assistant", "content": '{"reasoning": "Khách tìm kiếm linh kiện SSD của hãng Samsung nhưng không đi kèm khoảng giá hay hỏi thông số cụ thể.", "intent": "general_search", "target_product": "none", "spec_detail": "none", "cpu": "none", "mainboard": "none", "gpu": "none", "budget_amount": 0, "category": "ssd"}'}
+    {"role": "assistant", "content": '{"reasoning": "Khách tìm kiếm linh kiện SSD của hãng Samsung nhưng không đi kèm khoảng giá hay hỏi thông số cụ thể.", "intent": "general_search", "target_product": "none", "spec_detail": "none", "cpu": "none", "mainboard": "none", "gpu": "none", "budget_amount": 0, "category": "ssd"}'},
+
+    # Nhánh 8: Build PC trọn bộ — PHÂN BIỆT với budget_search
+    {"role": "user", "content": "build pc gaming tầm 30 triệu"},
+    {"role": "assistant", "content": '{"reasoning": "Khách muốn lắp NGUYÊN BỘ PC gaming với ngân sách 30 triệu. Đây là build_pc vì cần cả CPU+GPU+Mainboard, không phải tìm 1 linh kiện đơn lẻ.", "intent": "build_pc", "target_product": "none", "spec_detail": "none", "cpu": "none", "mainboard": "none", "gpu": "none", "budget_amount": 30000000, "category": "none"}'},
+
+    # Nhánh 8b: budget_search — tìm 1 linh kiện theo giá (không phải cả bộ)
+    {"role": "user", "content": "tư vấn em con card đồ họa tầm 8 triệu"},
+    {"role": "assistant", "content": '{"reasoning": "Khách chỉ tìm MỘT linh kiện GPU trong tầm giá 8 triệu, không phải lắp nguyên bộ máy. Đây là budget_search.", "intent": "budget_search", "target_product": "none", "spec_detail": "none", "cpu": "none", "mainboard": "none", "gpu": "none", "budget_amount": 8000000, "category": "gpu"}'}
 ]
 
 
@@ -172,7 +198,6 @@ def parse_master_intent(user_msg: str) -> MasterIntentSchema:
         if parsed.intent == "compatibility":
             named_items = [parsed.cpu, parsed.mainboard, parsed.gpu]
             valid_named = [i for i in named_items if i and i.strip().lower() != "none"]
-            # Bổ sung: cũng tính target_product nếu LLM nhét sản phẩm vào đó thay vì cpu/mainboard/gpu
             has_target = parsed.target_product and parsed.target_product.strip().lower() != "none"
             total_items = len(valid_named) + (1 if has_target else 0)
 
@@ -182,7 +207,6 @@ def parse_master_intent(user_msg: str) -> MasterIntentSchema:
                 parsed.intent = "suggestion"
                 # Nếu LLM để sản phẩm trong target_product thay vì cpu/mainboard/gpu → di chuyển
                 if has_target and not valid_named:
-                    # Đoán loại linh kiện từ target_product để điền đúng trường
                     tp = parsed.target_product.lower()
                     if any(k in tp for k in ["ryzen", "i3", "i5", "i7", "i9", "core", "cpu", "chip"]):
                         parsed.cpu = parsed.target_product

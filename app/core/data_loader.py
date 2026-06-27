@@ -17,6 +17,25 @@ import warnings
 from pathlib import Path
 warnings.filterwarnings('ignore')
 
+
+# Đã đổi sang tiếng Việt theo đúng Header trong file CSV của bạn
+DEFAULT_INT_COLS = ['số lõi', 'khe RAM', 'khe M.2', 'bộ nhớ', 'RAM tối đa', 'tdp']
+DEFAULT_FLOAT_COLS = ['giá', 'xung cơ bản', 'xung boost', 'chiều dài']
+
+# Bảng giá trị mặc định để chống lỗi Null
+DEFAULT_FILL_VALUES = {col: 0.0 for col in DEFAULT_FLOAT_COLS + DEFAULT_INT_COLS}
+
+FIELD_ALIAS_MAP = {
+    'tdp': ['tdp', 'điện năng', 'điện năng tiêu thụ', 'công suất tiêu thụ'],
+    'xung cơ bản': ['xung cơ bản', 'base clock'],
+    'xung boost': ['xung boost', 'boost clock'],
+}
+
+DATA_DIR = Path(os.getenv('PC_STORE_DATA_DIR', Path(__file__).resolve().parent.parent.parent / 'data'))
+
+def resolve_data_path(filename):
+    return DATA_DIR / filename
+
 def load_csv(filename, category):
     data_dir = Path(Config.PC_STORE_DATA)
     path = data_dir / filename

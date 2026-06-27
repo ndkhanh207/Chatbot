@@ -62,22 +62,23 @@ def _strip_ai_prefix(text: str) -> str:
     return _AI_PREFIX_PATTERN.sub('', text).strip()
 
 
+_HARDWARE_ENTITY_PATTERN = re.compile(
+    r'\b(i3|i5|i7|i9|ryzen|rtx|gtx|rx\s*\d+|b760|b850|z790|h610|x670|b650|prime|tuf|gaming|mortar|ventus|gigabyte|msi|asus|asrock|intel|amd|nvidia)\b', 
+    re.IGNORECASE
+)
+
+
 def reformulate_query(user_message: str, chat_history: list) -> str:
     if not chat_history:
         return user_message
 
-    # Nếu câu hỏi đã có tên linh kiện cụ thể → không cần reformulate
-    specific_terms = ['rtx', 'gtx', 'rx', 'i3', 'i5', 'i7', 'i9',
-                      'ryzen', 'b760', 'z790', 'x670', 'h610']
-    if any(t in user_message.lower() for t in specific_terms):
-        return user_message
-
-    # Nếu câu hỏi KHÔNG chứa đại từ mơ hồ → không cần reformulate
-    if not _PRONOUN_PATTERN.search(user_message):
+    # P0.2: Thêm pre-check - Chỉ reformulate khi câu hỏi có đại từ mơ hồ HOẶC thiếu entity linh kiện cụ thể
+    if not _PRONOUN_PATTERN.search(user_message) and _HARDWARE_ENTITY_PATTERN.search(user_message):
         return user_message
 
     try:
         history_str = ""
+        last_ai_msg = ""
         _MAX_BOT_HISTORY = 150  # Chống ngộ độc: cắt phần bot để reformulate không bị nhiễu
         for msg in chat_history:
             if getattr(msg, "type", "") == "human":
@@ -85,13 +86,18 @@ def reformulate_query(user_message: str, chat_history: list) -> str:
             elif getattr(msg, "type", "") == "ai":
                 # Xóa tiền tố "Dạ, " và cắt ngắn để tránh nhiễu
                 bot_text = _strip_ai_prefix(msg.content)
+                last_ai_msg = bot_text
                 if len(bot_text) > _MAX_BOT_HISTORY:
                     bot_text = bot_text[:_MAX_BOT_HISTORY].rsplit(' ', 1)[0] + "..."
                 history_str += f"Bot: {bot_text}\n"
 
+        if not last_ai_msg:
+            last_ai_msg = history_str if history_str else user_message
+
         response = get_reformulate_chain().invoke({
             "user_message": user_message,
             "chat_history_str": history_str,
+            "last_ai_msg": last_ai_msg,
         })
         reformulated = response.content.strip()
 
@@ -99,7 +105,10 @@ def reformulate_query(user_message: str, chat_history: list) -> str:
             subject = _extract_subject(reformulated)
             if subject:
                 # Kiểm tra câu gốc có đại từ để thay thế không
-                rebuilt = _PRONOUN_PATTERN.sub(subject, user_message, count=1)
+                if _PRONOUN_PATTERN.search(user_message):
+                    rebuilt = _PRONOUN_PATTERN.sub(subject, user_message, count=1)
+                else:
+                    rebuilt = f"{subject} {user_message}"
                 if rebuilt != user_message:
                     print(f"[REFORMULATE] Trích chủ ngữ '{subject}' → '{rebuilt}'")
                     return rebuilt

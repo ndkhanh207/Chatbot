@@ -225,6 +225,4 @@ open-db/
 .claude/
 
 # test
-report_spec_test.md
-report_compatibility_test.md
-cosine_results.md
+test/reports/*.md

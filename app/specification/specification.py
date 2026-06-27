@@ -1,4 +1,4 @@
-from app.search_engine import hybrid_search
+from app.core.search_engine import hybrid_search
 from app.specification.context_builder import build_product_context
 import pandas as pd
 from app.constants import FIELD_KEYWORD_ALIASES
@@ -30,12 +30,14 @@ def build_specification_context(parsed_intent, category, knowledge_base, vector_
     
     # Re-rank: ưu tiên sản phẩm có tên chứa nhiều token của lookup_term nhất
     if matched_items and len(matched_items) > 1:
-        lookup_tokens = [w for w in lookup_term.lower().split() if len(w) > 1]
+        lookup_clean = lookup_term.replace('-', ' ').lower()
+        lookup_tokens = [w for w in lookup_clean.split() if len(w) > 1]
         def name_match_score(item):
-            name = (item.get('tên') or item.get('name') or '').lower()
-            return sum(1 for t in lookup_tokens if t in name)
+            name = (item.get('tên') or item.get('name') or '').replace('-', ' ').lower()
+            exact_bonus = 100 if lookup_clean in name or all(t in name for t in lookup_tokens) else 0
+            return exact_bonus + sum(1 for t in lookup_tokens if t in name)
         matched_items.sort(key=name_match_score, reverse=True)
-        matched_items = matched_items[:1]
+        matched_items = matched_items[:2]
     
     context = build_product_context(search_query, category, matched_items, include_all_fields=True)
     
@@ -45,7 +47,17 @@ def build_specification_context(parsed_intent, category, knowledge_base, vector_
         actual_name = matched_items[0].get('tên') or matched_items[0].get('name') or lookup_term
         item = matched_items[0]
         query_lower = search_query.lower()
+        item_cat = str(item.get('category') or category or '').upper()
         
+        def is_field_valid_for_category(f_key, cat):
+            if cat == 'MAINBOARD' and f_key == 'interface':
+                return False  # Mainboard dùng pcie/lưu trữ/khe M.2, không dùng interface
+            if cat == 'GPU' and f_key in ['pcie', 'lưu trữ', 'khe M.2', 'khe ram', 'ram tối đa', 'socket']:
+                return False  # GPU dùng interface, không dùng pcie/lưu trữ/khe M.2
+            if cat == 'CPU' and f_key in ['pcie', 'lưu trữ', 'khe M.2', 'khe ram', 'ram tối đa', 'interface', 'kích thước']:
+                return False
+            return True
+
         # Nếu LLM không xác định được spec_detail, tự detect từ câu hỏi gốc
         # bằng cách quét FIELD_KEYWORD_ALIASES
         spec_detail = parsed_intent.spec_detail
@@ -54,6 +66,8 @@ def build_specification_context(parsed_intent, category, knowledge_base, vector_
 
         if not spec_detail or spec_detail.strip().lower() == "none":
             for field_key, aliases in FIELD_KEYWORD_ALIASES.items():
+                if not is_field_valid_for_category(field_key, item_cat):
+                    continue
                 if any(alias in query_lower for alias in aliases):
                     detected_field_key = field_key
                     detected_field_val = item.get(field_key)
@@ -65,10 +79,23 @@ def build_specification_context(parsed_intent, category, knowledge_base, vector_
             # LLM có trả spec_detail → tìm field tương ứng
             asked_lower = spec_detail.lower()
             for field_key, aliases in FIELD_KEYWORD_ALIASES.items():
+                if not is_field_valid_for_category(field_key, item_cat):
+                    continue
                 if asked_lower in aliases or asked_lower == field_key.lower():
                     detected_field_key = field_key
                     detected_field_val = item.get(field_key)
                     break
+            
+            # Nếu LLM trả spec_detail sai/không khớp field nào (như "giá bán"), tự quét lại từ câu hỏi gốc!
+            if not detected_field_key:
+                for field_key, aliases in FIELD_KEYWORD_ALIASES.items():
+                    if not is_field_valid_for_category(field_key, item_cat):
+                        continue
+                    if any(alias in query_lower for alias in aliases):
+                        detected_field_key = field_key
+                        detected_field_val = item.get(field_key)
+                        spec_detail = field_key
+                        break
 
         format_hint = f"THÔNG TIN HỆ THỐNG: Khách đang hỏi thông số '{spec_detail}' của '{actual_name}'."
         
@@ -79,6 +106,6 @@ def build_specification_context(parsed_intent, category, knowledge_base, vector_
                 # Inject trực tiếp giá trị để LLM không phỏng đoán sai
                 format_hint += f"\n✅ DỮ LIỆU THỰC TẾ: Thông số '{detected_field_key}' = '{detected_field_val}'. Hãy trả lời DỰA TRÊN GIÁ TRỊ NÀY, giữ nguyên số và đơn vị."
                     
-        format_hint += "\n📌 QUAN TRỌNG: Trả lời phải giữ NGUYÊN giá trị số và đơn vị như trong dữ liệu. KHÔNG được tự ý chuyển đổi đơn vị (VD: không đổi MHz thành GHz, không bỏ phần thập phân)."
+        format_hint += "\n📌 QUAN TRỌNG: Trả lời phải giữ NGUYÊN giá trị số và đơn vị hoa/thường chuẩn mực như trong dữ liệu (VD: ghi đúng 'VNĐ' không ghi 'VND', giữ nguyên 'MHz' không đổi thành 'GHz', giữ nguyên phần thập phân)."
         
     return context, format_hint

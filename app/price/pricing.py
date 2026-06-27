@@ -1,7 +1,7 @@
 from app.core.query_parser import detect_brand
 from app.specification.context_builder import build_product_context
 from app.price.price_logic import filter_knowledge_base_by_price
-from util.response_formatter import build_range_summary
+from app.utils.response_formatter import build_range_summary
 
 
 

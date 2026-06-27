@@ -1,6 +1,6 @@
 # ── Thêm vào đầu file, sau các import ──────────────────────
 from app.core.llm_chains import get_emergency_chain
-from memory.memory_store import get_trimmed_history
+from app.memory.memory_store import get_trimmed_history
 from langchain_core.runnables import RunnableSequence
 _session_context_cache: dict[str, dict] = {}
 
@@ -95,7 +95,12 @@ def chain_invoke(chain, context, format_hint, user_message_fixed, chat_history, 
 
             if attempt < MAX_RETRY:
                 print(f"⚠️ [OUTPUT-GUARD] Phát hiện hỏi vặn, retry lần {attempt+1}...")
-                chain = get_emergency_chain()
+                if parsed_intent.intent == "compatibility":
+                    print("🚨 [OUTPUT-GUARD] Luồng compatibility không dùng emergency list → format trực tiếp")
+                    reply = _format_context_directly(context, parsed_intent.intent)
+                    break
+                else:
+                    chain = get_emergency_chain()
             else:
                 print("🚨 [OUTPUT-GUARD] Retry thất bại → format trực tiếp")
                 reply = _format_context_directly(context, parsed_intent.intent)

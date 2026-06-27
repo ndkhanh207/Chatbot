@@ -4,7 +4,7 @@ from config.config import Config
 import pandas as pd
 import torch
 import os
-from data.data_loader import load_knowledge_base, convert_to_documents
+from app.core.data_loader import load_knowledge_base, convert_to_documents
 
 # Tắt thông báo nhắc nhở ẩn danh của Chroma
 os.environ["ANONYMIZED_TELEMETRY"] = "False"
@@ -86,7 +86,8 @@ def test_cosine_similarity():
     # 8. Xuất kết quả ra file markdown (đây là cách hiển thị mặc định)
     try:
         md_content = df.to_markdown(index=False)
-        md_path = os.path.join(os.getcwd(), "cosine_results.md")
+        md_path = os.path.join(os.getcwd(), "test", "reports", "cosine_results.md")
+        os.makedirs(os.path.dirname(md_path), exist_ok=True)
         with open(md_path, "w", encoding="utf-8") as f:
             f.write("# Kết quả tìm kiếm độ tương đồng cosine\n\n")
             f.write(md_content)

@@ -5,7 +5,7 @@ import os
 
 API_URL = "http://127.0.0.1:8000/chat"
 SESSION_API_BASE = "http://127.0.0.1:8000/sessions"
-REPORT_FILE = "test/report_spec_test.md"
+REPORT_FILE = "test/reports/report_specification.md"
 
 # expected_keywords: mỗi phần tử là 1 "yêu cầu" — TẤT CẢ yêu cầu phải thỏa.
 # Một yêu cầu là:
@@ -178,9 +178,12 @@ def test_export_qa(label, question, expected_keywords):
     with open(REPORT_FILE, "a", encoding="utf-8") as f:
         result_cell = "✅" if passed else f"❌ thiếu: {', '.join(_format_requirement(m) for m in missing)}"
         keywords_display = ", ".join(_format_requirement(r) for r in expected_keywords)
+        reply_clean = reply.replace("\n", "<br>").replace("|", "\\|")
+        question_clean = question.replace("\n", "<br>").replace("|", "\\|")
+        keywords_clean = keywords_display.replace("\n", "<br>").replace("|", "\\|")
         f.write(
-            f"| {label} | {session_id} | {question} | {reply} | "
-            f"{keywords_display} | {result_cell} |\n"
+            f"| {label} | {session_id} | {question_clean} | {reply_clean} | "
+            f"{keywords_clean} | {result_cell} |\n"
         )
 
     assert passed, f"Thiếu {[_format_requirement(m) for m in missing]} trong câu trả lời: '{reply}'"

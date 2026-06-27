@@ -4,7 +4,7 @@ Module độc lập xử lý yêu cầu TÍNH TỔNG GIÁ linh kiện.
 LLM bóc tách tên linh kiện → Python tra DB lấy giá → cộng tổng cứng (không dùng LLM tính toán).
 """
 
-from app.search_engine import hybrid_search
+from app.core.search_engine import hybrid_search
 from app.core.master_intent import MasterIntentSchema
 from app.compatibility.compat_logic import _get_field
 from app.price.pricing_util import format_currency_vietnam

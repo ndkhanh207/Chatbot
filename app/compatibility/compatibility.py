@@ -30,7 +30,7 @@ def _resolve_item(name: str, category: str, knowledge_base, vector_store) -> Opt
         return None
     # Deferred import to avoid circular dependency:
     # search_engine → query_parser → compatibility → search_engine
-    from app.search_engine import hybrid_search
+    from app.core.search_engine import hybrid_search
     normalized_name = name.lower().replace("-", " ")
     results = hybrid_search(normalized_name, category, 1, knowledge_base, vector_store)
     return results[0] if results else None

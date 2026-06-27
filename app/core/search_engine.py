@@ -1,8 +1,26 @@
 import numpy as np
+
 from app.core.query_parser import normalize_text
 from app.price.pricing_util import format_currency_vietnam
+from app.utils.common import format_currency_vietnam, normalize_text
+    
 
 def hybrid_search(q, category, top_k, knowledge_base, vector_store):
+    """
+    Tìm kiếm kết hợp (Hybrid Search) tính điểm theo cơ chế Trọng số kép:
+    
+    1. Keyword Score (Trọng số 40%):
+       - Tìm chuỗi chính xác (exact match) trong cột `search_text` -> Điểm = 1.0.
+       - Tìm khớp toàn bộ các từ khóa rời (token match, đã chuẩn hóa dấu `-`) -> Điểm = 1.0.
+    
+    2. Semantic Score (Trọng số 60%):
+       - Tìm kiếm vector ngữ nghĩa qua Chroma DB.
+       - Chuẩn hóa khoảng cách L2 thành điểm tương đồng: `similarity = 1.0 / (1.0 + distance)`.
+    
+    3. Hybrid Score Tổng:
+       - `hybrid_score = 0.4 * keyword_scores + 0.6 * semantic_scores`.
+       - Sắp xếp giảm dần theo hybrid_score và lấy Top K sản phẩm tốt nhất.
+    """
     if knowledge_base is None or knowledge_base.empty:
         return []
 
@@ -28,6 +46,22 @@ def hybrid_search(q, category, top_k, knowledge_base, vector_store):
             if 'search_text' in results.columns:
                 mask = results['search_text'].astype(str).str.contains(q_clean, case=False, na=False, regex=False)
                 keyword_scores[np.arange(score_length)[mask.values]] = 1.0
+                
+                # Bổ sung token matching linh hoạt cho keyword_scores
+                q_tokens = [w for w in q_clean.replace('-', ' ').split() if len(w) > 1]
+                if q_tokens:
+                    for idx, row in results.iterrows():
+                        text_clean = str(row.get('search_text', '')).replace('-', ' ').lower()
+                        name_clean = str(row.get('tên') or row.get('name') or '').replace('-', ' ').lower()
+                        
+                        pos = np.where(results.index == idx)[0]
+                        if len(pos) > 0:
+                            # P0.1: Thêm Exact Name Match (score = 2.0)
+                            # Nếu tên sản phẩm chứa chính xác chuỗi query, HOẶC tên sản phẩm chứa trọn vẹn toàn bộ q_tokens trong chính cột tên
+                            if q_clean in name_clean or all(t in name_clean for t in q_tokens):
+                                keyword_scores[pos[0]] = 2.0
+                            elif all(t in text_clean for t in q_tokens):
+                                keyword_scores[pos[0]] = max(keyword_scores[pos[0]], 1.0)
             else:
                 # Fallback to previous name‑only logic for backward
                 # compatibility if the column is missing.

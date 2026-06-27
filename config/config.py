@@ -39,7 +39,7 @@ EMBEDDING_MODEL = _env('EMBEDDING_MODEL', 'AITeamVN/Vietnamese_Embedding')
 EMBEDDING_DEVICE = _env('EMBEDDING_DEVICE', '') or _default_device()
 CHAT_MODEL = _env('CHAT_MODEL', _env('OLLAMA_MODEL', 'Vi-Qwen2-1.5B-RAG.Q3_K_L'))
 VECTOR_DB_DIR = _env('VECTOR_DB_DIR', './chroma_db')
-# MYSQL
+#MYSQL
 MYSQL_USER     = _env('MYSQL_USER',     'root')
 MYSQL_PASSWORD = _env('MYSQL_PASSWORD', '')
 MYSQL_HOST     = _env('MYSQL_HOST',     '127.0.0.1')
@@ -68,7 +68,7 @@ class Config:
     MYSQL_PASSWORD = MYSQL_PASSWORD
     MYSQL_DB = MYSQL_DB
 
-__all__ = [
+all = [
     'EMBEDDING_MODEL',
     'EMBEDDING_DEVICE',
     'CHAT_MODEL',

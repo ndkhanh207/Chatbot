@@ -1,8 +1,8 @@
 from langchain_ollama import ChatOllama
 from langchain_core.runnables import RunnableSequence
 
-from util.model_utils import get_ollama_model
-from template.prompt_templates import (
+from app.utils.model_utils import get_ollama_model
+from app.templates.prompt_templates import (
     BASIC_SEARCH_TEMPLATE, COMPAT_CHECK_TEMPLATE, SUGGESTION_TEMPLATE, REFORMULATE_TEMPLATE, EMERGENCY_LIST_TEMPLATE,
 )
 

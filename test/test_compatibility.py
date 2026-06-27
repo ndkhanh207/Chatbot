@@ -13,7 +13,7 @@ import os
 
 API_URL = "http://127.0.0.1:8000/chat"
 SESSION_API_BASE = "http://127.0.0.1:8000/sessions"
-REPORT_FILE = "test/report_compatibility_test.md"
+REPORT_FILE = "test/reports/report_compatibility.md"
 
 COMPAT_TEST_CASES = [
     # ─── CPU - MAINBOARD: socket khớp + tier đủ → tương thích ───
@@ -29,7 +29,7 @@ COMPAT_TEST_CASES = [
     # ─── CPU - MAINBOARD: socket KHỚP (cả 2 LGA1700) nhưng tier KHÔNG đủ ─── không cấp đủ điện
    
     ("compat_cpu_main_tier_insufficient",
-     "Intel Core i9-13900K có lắp được với main Asus H610 PRIME H610M-K LGA1700 DDR5 Micro ATX không",
+     "Intel Core i9-13900K có lắp được với main Asus H610 PRIME không",
      [("không tương thích", "không phù hợp"), ("tier", "cấp điện", "khả năng cấp điện")]),
 
     # ─── GPU - MAINBOARD: PCIe gen lệch → vẫn tương thích, có cảnh báo băng thông ───
@@ -131,9 +131,12 @@ def test_compatibility(label, question, expected_keywords):
     with open(REPORT_FILE, "a", encoding="utf-8") as f:
         result_cell = "✅" if passed else f"❌ thiếu: {', '.join(_format_requirement(m) for m in missing)}"
         keywords_display = ", ".join(_format_requirement(r) for r in expected_keywords)
+        reply_clean = reply.replace("\n", "<br>").replace("|", "\\|")
+        question_clean = question.replace("\n", "<br>").replace("|", "\\|")
+        keywords_clean = keywords_display.replace("\n", "<br>").replace("|", "\\|")
         f.write(
-            f"| {label} | {session_id} | {question} | {reply} | "
-            f"{keywords_display} | {result_cell} |\n"
+            f"| {label} | {session_id} | {question_clean} | {reply_clean} | "
+            f"{keywords_clean} | {result_cell} |\n"
         )
 
     assert passed, f"Thiếu {[_format_requirement(m) for m in missing]} trong câu trả lời: '{reply}'"
