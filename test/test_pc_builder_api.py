@@ -37,7 +37,7 @@ TEST_CASES = [
 
     # ─── [NHÓM 5]: EDGE CASES — SỐ LƯỢNG BỘ PC ───
     ("build_qty_10", "mua 10 bộ pc tiệm net 200 triệu", ["[GỢI Ý BỘ PC TỐI ƯU]", ("10 bộ", "×10 bộ"), "200", "20"]),
-    ("build_qty_too_low", "mua 3 bộ pc 15 triệu", [("quá thấp", "không đủ", "mỗi bộ chỉ có")]),
+    ("build_qty_too_low", "mua 3 bộ pc 12 triệu", [("quá thấp", "không đủ", "mỗi bộ chỉ có")]),
 
     # ─── [NHÓM 6]: EDGE CASES — "RẺ NHẤT" / "TỐT NHẤT" ───
     ("build_cheapest", "cho mình xem bộ pc rẻ nhất của shop", ["[GỢI Ý BỘ PC TỐI ƯU]", "CPU:", "GPU:", "rẻ nhất"]),
@@ -51,6 +51,13 @@ MULTI_TURN_CASES = [
         [
             ("tư vấn bộ pc chơi game", [("ngân sách", "tầm giá", "bao nhiêu tiền")]),
             ("tầm 35 triệu", ["[GỢI Ý BỘ PC TỐI ƯU]", "35", "game"]),
+        ]
+    ),
+    (
+        "multi_qty_purpose_followup",
+        [
+            ("mua 3 bộ pc 15 triệu", [("ngân sách", "5 triệu"), ("nhu cầu", "mục đích", "để làm gì")]),
+            ("build theo nhu cầu chơi game đi", [("không tìm được", "không có", "không phù hợp", "ngân sách")]),
         ]
     ),
     (

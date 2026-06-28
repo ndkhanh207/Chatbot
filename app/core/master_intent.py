@@ -157,6 +157,9 @@ _INTENT_FEWSHOT = [
     {"role": "user", "content": "build pc gaming tầm 30 triệu"},
     {"role": "assistant", "content": '{"reasoning": "Khách muốn lắp NGUYÊN BỘ PC gaming với ngân sách 30 triệu. Đây là build_pc vì cần cả CPU+GPU+Mainboard, không phải tìm 1 linh kiện đơn lẻ.", "intent": "build_pc", "target_product": "none", "spec_detail": "none", "cpu": "none", "mainboard": "none", "gpu": "none", "budget_amount": 30000000, "category": "none"}'},
 
+    {"role": "user", "content": "pc nvidia 40 triệu render"},
+    {"role": "assistant", "content": '{"reasoning": "Khách muốn tư vấn cấu hình nguyên bộ PC sử dụng card Nvidia với ngân sách 40 triệu dùng để render. Đây là build_pc trọn bộ, không phải tìm 1 linh kiện đơn lẻ.", "intent": "build_pc", "target_product": "none", "spec_detail": "none", "cpu": "none", "mainboard": "none", "gpu": "none", "budget_amount": 40000000, "category": "none"}'},
+
     # Nhánh 8b: budget_search — tìm 1 linh kiện theo giá (không phải cả bộ)
     {"role": "user", "content": "tư vấn em con card đồ họa tầm 8 triệu"},
     {"role": "assistant", "content": '{"reasoning": "Khách chỉ tìm MỘT linh kiện GPU trong tầm giá 8 triệu, không phải lắp nguyên bộ máy. Đây là budget_search.", "intent": "budget_search", "target_product": "none", "spec_detail": "none", "cpu": "none", "mainboard": "none", "gpu": "none", "budget_amount": 8000000, "category": "gpu"}'}

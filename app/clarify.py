@@ -22,6 +22,28 @@ _ASKING_PATTERNS = [
     "có thể cho em biết",
 ]
 
+_FALSE_COMPAT_PATTERNS = [
+    "đều là các sản phẩm tương thích",
+    "hai sản phẩm tương thích",
+    "sản phẩm tương thích với nhau",
+]
+
+_INCOMPAT_VERDICTS = [
+    "không tương thích",
+    "không phù hợp",
+]
+
+_BOTTLENECK_VERDICTS = [
+    "nghẽn",
+    "cpu yếu",
+    "gpu yếu",
+]
+
+_BANDWIDTH_VERDICTS = [
+    "băng thông",
+    "pcie",
+]
+
 
 def _is_context_valid(context: str) -> bool:
     """
@@ -51,6 +73,34 @@ def _is_asking_clarification(reply: str) -> bool:
     if r.count("?") >= 2:        # hỏi nhiều lần trong 1 reply
         return True
     return any(p in r for p in _ASKING_PATTERNS)
+
+
+def _is_compatibility_hallucination(raw: str, context: str) -> bool:
+    """
+    Kiểm tra ảo giác của LLM trong luồng compatibility:
+    - Báo tương thích khi dữ liệu ghi KHÔNG TƯƠNG THÍCH.
+    - Bỏ quên cảnh báo BOTTLENECK hoặc CẢNH BÁO BĂNG THÔNG.
+    """
+    r_low = raw.lower().strip()
+    if "KHÔNG TƯƠNG THÍCH" in context:
+        has_false_claim = any(p in r_low for p in _FALSE_COMPAT_PATTERNS)
+        has_incompat_verdict = any(v in r_low for v in _INCOMPAT_VERDICTS)
+        if has_false_claim or not has_incompat_verdict:
+            print("⚠️ [OUTPUT-GUARD] LLM trả lời sai KHÔNG TƯƠNG THÍCH → format trực tiếp")
+            return True
+
+    if "BOTTLENECK" in context:
+        if not any(v in r_low for v in _BOTTLENECK_VERDICTS):
+            print("⚠️ [OUTPUT-GUARD] LLM bỏ quên BOTTLENECK → format trực tiếp")
+            return True
+
+    if "CẢNH BÁO BĂNG THÔNG" in context:
+        if not any(v in r_low for v in _BANDWIDTH_VERDICTS):
+            print("⚠️ [OUTPUT-GUARD] LLM bỏ quên CẢNH BÁO BĂNG THÔNG → format trực tiếp")
+            return True
+
+    return False
+
 
 def _format_context_directly(context: str, intent: str) -> str:
     """Bypass LLM — format context thành reply đọc được."""
@@ -90,6 +140,10 @@ def chain_invoke(chain, context, format_hint, user_message_fixed, chat_history, 
             print(f"[RAW LLM OUTPUT - attempt {attempt}]: {raw}")
 
             if not _is_asking_clarification(raw):
+                # Kiểm tra ảo giác của LLM 1.5B trong luồng compatibility
+                if parsed_intent.intent == "compatibility" and _is_compatibility_hallucination(raw, context):
+                    reply = _format_context_directly(context, parsed_intent.intent)
+                    break
                 reply = raw     # ✅ hợp lệ
                 break
 

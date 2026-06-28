@@ -42,7 +42,7 @@ def get_basic_search_chain() -> RunnableSequence:
 def get_compat_check_chain() -> RunnableSequence:
     global _compat_check_chain
     if _compat_check_chain is None:
-        _compat_check_chain = COMPAT_CHECK_TEMPLATE | get_llm()
+        _compat_check_chain = COMPAT_CHECK_TEMPLATE | _get_strict_llm()
     return _compat_check_chain
 
 def get_suggestion_chain() -> RunnableSequence:

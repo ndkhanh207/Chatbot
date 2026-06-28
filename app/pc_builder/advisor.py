@@ -23,6 +23,7 @@ BUILD_PC_TRIGGERS = [
     'tiệm net', 'phòng máy', 'quán net', 'máy trạm',
     'workstation', 'bộ máy', 'máy chơi game',
     'bộ pc intel', 'bộ pc amd', 'pc intel', 'pc amd',
+    'bộ pc nvidia', 'pc nvidia', 'pc render', 'pc đồ họa', 'pc ai',
     'build 1 máy', 'build một máy', 'build máy', 'máy văn phòng',
 ]
 

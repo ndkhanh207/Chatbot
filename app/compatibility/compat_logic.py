@@ -26,11 +26,15 @@ CPU_LINE_TIER: Dict[str, int] = {
 
 # [BƯỚC ĐỘT PHÁ] - Điểm cộng trừ dựa trên hậu tố CPU
 # Hậu tố quyết định cực lớn đến lượng điện bú thêm khi Turbo.
+# ⚠️ Key dài hơn PHẢI đặt TRƯỚC key ngắn (VD: "X3D" trước "X")
+#    vì matching dùng longest-first để tránh "X" match nhầm "X3D".
 CPU_SUFFIX_MODIFIER: Dict[str, int] = {
-    "K": 1, "KS": 1, "KF": 1,            # Intel Unlocked: Ăn cực nhiều điện -> Ép lên 1 Tier Mainboard
-    "X": 1, "XT": 1, "3D": 1,            # AMD Extreme/X3D: Tương tự, cần main ngon -> Ép lên 1 Tier
+    "KS": 1, "KF": 1, "K": 1,            # Intel Unlocked: Ăn cực nhiều điện -> Ép lên 1 Tier Mainboard
+    "X3D": 0,                             # AMD 3D V-Cache: Tiết kiệm điện (120W), main B tầm trung gánh tốt -> Giữ nguyên
+    "XT": 1, "X": 1,                     # AMD Extreme: Ăn nhiều điện -> Ép lên 1 Tier
     "F": 0, "": 0,                       # Dòng tiêu chuẩn không iGPU hoặc bình thường -> Giữ nguyên Tier
-    "T": -1, "U": -1, "G": -1, "GE": -1  # Dòng tiết kiệm điện -> Hạ 1 Tier (Main rẻ hơn vẫn gánh tốt)
+    "GE": -1, "G": -1,                   # Dòng tiết kiệm điện (có iGPU) -> Hạ 1 Tier
+    "T": -1, "U": -1,                    # Dòng tiết kiệm điện -> Hạ 1 Tier (Main rẻ hơn vẫn gánh tốt)
 }
 
 # TDP bây giờ chỉ dùng làm phương án dự phòng (Fallback) nếu Regex gãy, không ưu tiên!
@@ -114,15 +118,25 @@ def parse_gpu_profile(text: str) -> Optional[Dict[str, Any]]:
     return None
 
 
+def _match_cpu_suffix(suffix: str) -> int:
+    """Match hậu tố CPU theo longest-key-first để tránh 'X' match nhầm 'X3D'."""
+    suffix = suffix.upper()
+    # Sắp xếp key dài nhất trước → match chính xác nhất
+    for key, mod in sorted(CPU_SUFFIX_MODIFIER.items(), key=lambda x: -len(x[0])):
+        if key and key in suffix:
+            return mod
+    return CPU_SUFFIX_MODIFIER.get("", 0)
+
+
 def parse_cpu_profile(name: str) -> Optional[Dict[str, Any]]:
-    """Tier chính từ dòng (i3=1...i9=4). Hậu tố G/T giảm 1 tier; K/KF/F/X/X3D giữ nguyên."""
+    """Tier chính từ dòng (i3=1...i9=4). Hậu tố X3D/G/T giảm hoặc giữ tier; K/KF/X ép lên."""
     if not name:
         return None
     for pattern, brand in ((_CPU_INTEL_PATTERN, "intel"), (_CPU_AMD_PATTERN, "amd")):
         m = pattern.search(name)
         if m:
             line, suffix = m.group(1), m.group(3).upper()
-            modifier = next((v for k, v in CPU_SUFFIX_MODIFIER.items() if k in suffix), 0)
+            modifier = _match_cpu_suffix(suffix)
             return {"brand": brand, "tier_rank": max(1, CPU_LINE_TIER[line] + modifier), "has_k_modifier": modifier > 0}
     return None
 
@@ -158,6 +172,10 @@ def check_cpu_main_compat(cpu: dict, main: dict) -> Dict[str, Any]:
         tier_source = f"CPU Tier {cpu_tier}"
         # Required tier clamp ở 3 vì Z/X (Tier 3) đủ cân hết các dòng Core i/Ryzen cao nhất.
         required_tier = min(3, cpu_tier)
+        # [BƯỚC ĐỘT PHÁ]: Nếu main là Tier 2 (dòng B) và CPU không có hậu tố K/X (has_k_modifier=False),
+        # dòng B hoàn toàn gánh tốt i7/Ryzen 7 non-K/X3D (cpu_tier=3) -> giảm required_tier xuống 2.
+        if main_tier == 2 and cpu_tier == 3 and not cpu_p.get("has_k_modifier"):
+            required_tier = 2
     else:
         cpu_tdp = float(_get_field(cpu, "tdp", default=0) or 0)
         required_tier = min(3, required_tier_for_tdp(cpu_tdp))
@@ -212,7 +230,7 @@ def check_cpu_gpu_compat(cpu: dict, gpu: dict) -> Dict[str, Any]:
 
     warning = None
     if cpu_tier is not None and gpu_tier is not None:
-        if gpu_tier < cpu_tier:
+        if gpu_tier < cpu_tier -1 :
             warning = "GPU khá yếu so với CPU — GPU có thể là điểm nghẽn hiệu năng."
         elif cpu_tier < gpu_tier - 1:
             warning = "GPU khá mạnh so với CPU — CPU có thể là điểm nghẽn hiệu năng."
