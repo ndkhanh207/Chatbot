@@ -22,6 +22,17 @@ _ASKING_PATTERNS = [
     "có thể cho em biết",
 ]
 
+_POLITE_CLOSINGS = [
+    "bạn có cần thêm thông tin gì khác không",
+    "bạn có cần thông tin gì khác không",
+    "bạn có cần hỗ trợ gì thêm không",
+    "bạn có câu hỏi nào khác không",
+    "bạn có muốn biết thêm",
+    "bạn cần hỗ trợ gì thêm",
+    "bạn cần thêm thông tin gì không",
+    "cần thêm thông tin gì khác không",
+]
+
 _FALSE_COMPAT_PATTERNS = [
     "đều là các sản phẩm tương thích",
     "hai sản phẩm tương thích",
@@ -68,6 +79,12 @@ def _is_clarification_rejection(text: str) -> bool:
 
 def _is_asking_clarification(reply: str) -> bool:
     r = reply.lower().strip()
+    
+    # Loại bỏ các câu hỏi lịch sự cuối câu trước khi đếm dấu hỏi
+    for polite in _POLITE_CLOSINGS:
+        if polite in r:
+            r = r.replace(polite + "?", "").replace(polite, "").strip()
+            
     if r.endswith("?"):          # kết thúc bằng dấu hỏi
         return True
     if r.count("?") >= 2:        # hỏi nhiều lần trong 1 reply

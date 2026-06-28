@@ -18,7 +18,7 @@ def _get_strict_llm() -> ChatOllama:
     return ChatOllama(
         model=get_ollama_model(),
         temperature=0,        # ← không sáng tạo, chỉ làm theo lệnh
-        request_timeout=30,
+        request_timeout=90,
         top_p=0.05,           # ← càng hẹp càng ít "phiêu"
         repeat_penalty=1.3,   # ← tránh lặp câu hỏi vặn
     )
@@ -27,7 +27,7 @@ def get_llm() -> ChatOllama:
     return ChatOllama(
         model=get_ollama_model(),
         temperature=0.1,
-        request_timeout=30,
+        request_timeout=90,
         top_p=0.1,
         num_predict=300,
         # repeat_penalty=1.2,

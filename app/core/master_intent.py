@@ -230,7 +230,20 @@ def parse_master_intent(user_msg: str) -> MasterIntentSchema:
                         parsed.category = "cpu"
                     else:
                         parsed.category = "unknown"
-                
+                        
+        # Guard: Chống LLM 1.5B bị sai (phân loại nhầm 'price_calculation' khi chỉ hỏi giá 1 món đơn lẻ)
+        if parsed.intent == "price_calculation":
+            named_items = [parsed.cpu, parsed.mainboard, parsed.gpu]
+            valid_named = [i for i in named_items if i and i.strip().lower() != "none"]
+            has_target = parsed.target_product and parsed.target_product.strip().lower() != "none"
+            total_items = len(valid_named) + (1 if has_target and not valid_named else 0)
+            
+            if total_items <= 1:
+                print(f"[INTENT-GUARD] LLM phân loại 'price_calculation' nhưng chỉ có 1 món. Ép về 'price_check'.")
+                parsed.intent = "price_check"
+                if not has_target and valid_named:
+                    parsed.target_product = valid_named[0]
+
         return parsed
     except Exception as e:
         print(f"[INTENT-LLM] Lỗi parse intent, fallback 'none': {e}")

@@ -52,6 +52,7 @@ def is_spec_range_query(user_message: str, matched_items: list) -> bool:
 
 # ──────────────────────────────────────────────
 # Phát hiện điều kiện khoảng giá trong câu hỏi
+# khong dung
 # ──────────────────────────────────────────────
 def parse_price_range_vnd(user_message: str) -> Optional[Tuple[float, float]]:
     """

@@ -1,10 +1,11 @@
 
 
-def filter_knowledge_base_by_price(knowledge_base, category, lo, hi, brand=None, model_query=None, top_k=10):
+def filter_knowledge_base_by_price(knowledge_base, category, lo, hi, brand=None, model_query=None, top_k=10, sort_order="none"):
     """
     Lọc TRỰC TIẾP trên toàn bộ knowledge_base (DataFrame) theo khoảng giá,
     hãng (brand), và/hoặc model cụ thể (model_query) — không phụ thuộc
     vào kết quả semantic search top_k.
+    Hỗ trợ sort_order ('asc' cho rẻ nhất, 'desc' cho đắt nhất, 'none' cho even sampling).
     Trả về (list[dict], total_count).
     """
     df = knowledge_base
@@ -35,12 +36,17 @@ def filter_knowledge_base_by_price(knowledge_base, category, lo, hi, brand=None,
         return [], 0
 
     total_count = len(full_match)
-    sorted_df = full_match.sort_values(by=price_col)
 
-    if total_count <= top_k:
-        sample = sorted_df
+    if sort_order == "asc":
+        sample = full_match.sort_values(by=price_col, ascending=True).head(top_k)
+    elif sort_order == "desc":
+        sample = full_match.sort_values(by=price_col, ascending=False).head(top_k)
     else:
-        step = max(1, total_count // top_k)
-        sample = sorted_df.iloc[::step].head(top_k)
+        sorted_df = full_match.sort_values(by=price_col, ascending=True)
+        if total_count <= top_k:
+            sample = sorted_df
+        else:
+            step = max(1, total_count // top_k)
+            sample = sorted_df.iloc[::step].head(top_k)
 
     return sample.to_dict(orient="records"), total_count

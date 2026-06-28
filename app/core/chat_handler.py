@@ -13,7 +13,7 @@ from app.core.search_engine import hybrid_search
 # Import các container xử lý context của từng line ý định
 from app.compatibility.compatibility import build_compatibility_context, build_suggestion_context
 from app.price.price_calculator import build_price_calculation_context
-from app.price.pricing import build_budget_search_context  
+from app.price.pricing import build_budget_search_context, build_price_check_context  
 from app.specification.specification import build_specification_context 
 
 from app.core.llm_chains import get_basic_search_chain, get_compat_check_chain, get_suggestion_chain
@@ -186,6 +186,13 @@ def handle_chat(user_message: str, knowledge_base,
         # 🔹 NHÁNH 4: HỎI THÔNG SỐ CỤ THỂ
         elif parsed_intent.intent == "specification":
             context, format_hint = build_specification_context(
+                parsed_intent, category, knowledge_base, vector_store, search_query
+            )
+            chain = get_basic_search_chain()
+
+        # 🔹 NHÁNH 4b: HỎI GIÁ CỦA 1 MÓN CỤ THỂ (price check)
+        elif parsed_intent.intent == "price_check":
+            context, format_hint = build_price_check_context(
                 parsed_intent, category, knowledge_base, vector_store, search_query
             )
             chain = get_basic_search_chain()

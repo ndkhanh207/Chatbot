@@ -226,3 +226,7 @@ open-db/
 
 # test
 test/reports/*.md
+
+
+# local planing with ai
+plan/*.md
