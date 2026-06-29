@@ -1,0 +1,157 @@
+tên,giá,số lõi,xung cơ bản,xung boost,kiến trúc,tdp,đồ họa,socket,image_url
+AMD Ryzen 7 9800X3D,10836000,8,4.7,5.2,Zen 5,120,Radeon,AM5,assets/images/cpu/cpu_amd_ryzen_7_9800x3d.png
+AMD Ryzen 7 7800X3D,8161200,8,4.2,5.0,Zen 4,120,Radeon,AM5,assets/images/cpu/cpu_amd_ryzen_7_7800x3d.png
+AMD Ryzen 5 7600X,4091760,6,4.7,5.3,Zen 4,105,Radeon,AM5,assets/images/cpu/cpu_amd_ryzen_5_7600x.png
+AMD Ryzen 5 9600X,4919760,6,3.9,5.4,Zen 5,65,Radeon,AM5,assets/images/cpu/cpu_amd_ryzen_5_9600x.png
+AMD Ryzen 7 7700X,5831520,8,4.5,5.4,Zen 4,105,Radeon,AM5,assets/images/cpu/cpu_amd_ryzen_7_7700x.png
+AMD Ryzen 9 9950X3D,15599760,16,4.3,5.7,Zen 5,170,Radeon,AM5,assets/images/cpu/cpu_amd_ryzen_9_9950x3d.png
+AMD Ryzen 7 9700X,7341360,8,3.8,5.5,Zen 5,65,Radeon,AM5,assets/images/cpu/cpu_amd_ryzen_7_9700x.png
+Intel Core i7-14700K,7132080,20,3.4,5.6,Raptor Lake Refresh,125,Intel UHD Graphics 770,LGA 1700,assets/images/cpu/cpu_intel_core_i7_14700k.png
+Intel Core i9-14900K,10536000,24,3.2,6.0,Raptor Lake Refresh,125,Intel UHD Graphics 770,LGA 1700,assets/images/cpu/cpu_intel_core_i9_14900k.png
+AMD Ryzen 5 7600,4727280,6,3.8,5.1,Zen 4,65,Radeon,AM5,assets/images/cpu/cpu_amd_ryzen_5_7600.png
+AMD Ryzen 9 7900X,7538640,12,4.7,5.6,Zen 4,170,Radeon,AM5,assets/images/cpu/cpu_amd_ryzen_9_7900x.png
+AMD Ryzen 9 9900X,8616000,12,4.4,5.6,Zen 5,120,Radeon,AM5,assets/images/cpu/cpu_amd_ryzen_9_9900x.png
+Intel Core i5-14600K,4559760,14,3.5,5.3,Raptor Lake Refresh,125,Intel UHD Graphics 770,LGA 1700,assets/images/cpu/cpu_intel_core_i5_14600k.png
+Intel Core Ultra 7 265K,6479760,20,3.9,5.5,Arrow Lake,125,Intel Xe,LGA 1851,assets/images/cpu/cpu_intel_core_ultra_7_265k.png
+AMD Ryzen 9 9950X,12811920,16,4.3,5.7,Zen 5,170,Radeon,AM5,assets/images/cpu/cpu_amd_ryzen_9_9950x.png
+Intel Core Ultra 9 285K,13439760,24,3.7,5.7,Arrow Lake,125,Intel Xe,LGA 1851,assets/images/cpu/cpu_intel_core_ultra_9_285k.png
+Intel Core i7-12700K,5139600,12,3.6,5.0,Alder Lake,125,Intel UHD Graphics 770,LGA 1700,assets/images/cpu/cpu_intel_core_i7_12700k.png
+AMD Ryzen 5 7600X3D,10404000,6,4.1,4.7,Zen 4,65,Radeon,AM5,assets/images/cpu/cpu_amd_ryzen_5_7600x3d.png
+AMD Ryzen 5 5600G,3239760,6,3.9,4.4,Zen 3,65,Radeon Vega 7,AM4,assets/images/cpu/cpu_amd_ryzen_5_5600g.png
+AMD Ryzen 7 7700,7055280,8,3.6,5.3,Zen 4,65,Radeon,AM5,assets/images/cpu/cpu_amd_ryzen_7_7700.png
+AMD Ryzen 5 8500G,3660000,6,4.1,5.0,Zen 4,65,Radeon 740M,AM5,assets/images/cpu/cpu_amd_ryzen_5_8500g.png
+Intel Core i5-12600K,3556560,10,3.7,4.9,Alder Lake,125,Intel UHD Graphics 770,LGA 1700,assets/images/cpu/cpu_intel_core_i5_12600k.png
+AMD Ryzen 7 5700G,4199280,8,3.8,4.6,Zen 3,65,Radeon Vega 8,AM4,assets/images/cpu/cpu_amd_ryzen_7_5700g.png
+AMD Ryzen 9 7950X,10799040,16,4.5,5.7,Zen 4,170,Radeon,AM5,assets/images/cpu/cpu_amd_ryzen_9_7950x.png
+AMD Ryzen 5 8600G,5395920,6,4.3,5.0,Zen 4,65,Radeon 760M,AM5,assets/images/cpu/cpu_amd_ryzen_5_8600g.png
+Intel Core i9-12900K,6863760,16,3.2,5.2,Alder Lake,125,Intel UHD Graphics 770,LGA 1700,assets/images/cpu/cpu_intel_core_i9_12900k.png
+AMD Ryzen 9 9900X3D,12959520,12,4.4,5.5,Zen 5,120,Radeon,AM5,assets/images/cpu/cpu_amd_ryzen_9_9900x3d.png
+AMD Ryzen 9 7950X3D,18462480,16,4.2,5.7,Zen 4,120,Radeon,AM5,assets/images/cpu/cpu_amd_ryzen_9_7950x3d.png
+AMD Ryzen 7 8700G,6696000,8,4.2,5.1,Zen 4,65,Radeon 780M,AM5,assets/images/cpu/cpu_amd_ryzen_7_8700g.png
+Intel Core i7-13700K,9367920,16,3.4,5.4,Raptor Lake,125,Intel UHD Graphics 770,LGA 1700,assets/images/cpu/cpu_intel_core_i7_13700k.png
+Intel Core i9-14900KS,15359280,24,3.2,6.2,Raptor Lake Refresh,150,Intel UHD Graphics 770,LGA 1700,assets/images/cpu/cpu_intel_core_i9_14900ks.png
+AMD Ryzen 5 5600GT,3240000,6,3.6,4.6,Zen 3,65,Radeon Vega 7,AM4,assets/images/cpu/cpu_amd_ryzen_5_5600gt.png
+AMD Ryzen 9 7900,8230560,12,3.7,5.4,Zen 4,65,Radeon,AM5,assets/images/cpu/cpu_amd_ryzen_9_7900.png
+Intel Core i7-9700K,5746320,8,3.6,4.9,Coffee Lake Refresh,95,Intel UHD Graphics 630,LGA 1151,assets/images/cpu/cpu_intel_core_i7_9700k.png
+Intel Core i7-8700K,4296000,6,3.7,4.7,Coffee Lake,95,Intel UHD Graphics 630,LGA 1151,assets/images/cpu/cpu_intel_core_i7_8700k.png
+AMD Ryzen 3 3200G,1762800,4,3.6,4.0,Zen+,65,Radeon Vega 8,AM4,assets/images/cpu/cpu_amd_ryzen_3_3200g.png
+AMD Ryzen 5 3400G,2041920,4,3.7,4.2,Zen+,65,Radeon Vega 11,AM4,assets/images/cpu/cpu_amd_ryzen_5_3400g.png
+Intel Core i9-13900K,10416000,24,3.0,5.8,Raptor Lake,125,Intel UHD Graphics 770,LGA 1700,assets/images/cpu/cpu_intel_core_i9_13900k.png
+Intel Core i5-12400,3445200,6,2.5,4.4,Alder Lake,65,Intel UHD Graphics 730,LGA 1700,assets/images/cpu/cpu_intel_core_i5_12400.png
+Intel Core i5-12400F,3445200,6,2.5,4.4,Alder Lake,65,,LGA 1700,assets/images/cpu/cpu_intel_core_i5_12400f.png
+Intel Core i9-9900K,9576000,8,3.6,5.0,Coffee Lake Refresh,95,Intel UHD Graphics 630,LGA 1151,assets/images/cpu/cpu_intel_core_i9_9900k.png
+Intel Core i5-13600K,7199760,14,3.5,5.1,Raptor Lake,125,Intel UHD Graphics 770,LGA 1700,assets/images/cpu/cpu_intel_core_i5_13600k.png
+Intel Core i7-7700K,3640560,4,4.2,4.5,Kaby Lake,91,Intel HD Graphics 630,LGA 1151,assets/images/cpu/cpu_intel_core_i7_7700k.png
+Intel Core Ultra 5 245K,6239760,14,4.2,5.2,Arrow Lake,125,Intel Xe,LGA 1851,assets/images/cpu/cpu_intel_core_ultra_5_245k.png
+Intel Core i7-10700K,8376000,8,3.8,5.1,Comet Lake,125,Intel UHD Graphics 630,LGA 1200,assets/images/cpu/cpu_intel_core_i7_10700k.png
+Intel Core i5-14400,4223520,10,2.5,4.7,Raptor Lake Refresh,65,Intel UHD Graphics 730,LGA 1700,assets/images/cpu/cpu_intel_core_i5_14400.png
+Intel Core i7-6700K,5495040,4,4.0,4.2,Skylake,91,Intel HD Graphics 530,LGA 1151,assets/images/cpu/cpu_intel_core_i7_6700k.png
+Intel Core i5-9600K,3984000,6,3.7,4.6,Coffee Lake Refresh,95,Intel UHD Graphics 630,LGA 1151,assets/images/cpu/cpu_intel_core_i5_9600k.png
+Intel Core i7-11700K,7055760,8,3.6,5.0,Rocket Lake,125,Intel UHD Graphics 750,LGA 1200,assets/images/cpu/cpu_intel_core_i7_11700k.png
+Intel Core i3-12100,2725920,4,3.3,4.3,Alder Lake,60,Intel UHD Graphics 730,LGA 1700,assets/images/cpu/cpu_intel_core_i3_12100.png
+Intel Core i5-10400,3359760,6,2.9,4.3,Comet Lake,65,Intel UHD Graphics 630,LGA 1200,assets/images/cpu/cpu_intel_core_i5_10400.png
+Intel Core i7-8700,4523280,6,3.2,4.6,Coffee Lake,65,Intel UHD Graphics 630,LGA 1151,assets/images/cpu/cpu_intel_core_i7_8700.png
+Intel Core i3-14100,2878800,4,3.5,4.7,Raptor Lake Refresh,60,Intel UHD Graphics 730,LGA 1700,assets/images/cpu/cpu_intel_core_i3_14100.png
+Intel Core i9-10900K,13175760,10,3.7,5.3,Comet Lake,125,Intel UHD Graphics 630,LGA 1200,assets/images/cpu/cpu_intel_core_i9_10900k.png
+Intel Core i5-13400,3937200,10,2.5,4.6,Raptor Lake,65,Intel UHD Graphics 730,LGA 1700,assets/images/cpu/cpu_intel_core_i5_13400.png
+Intel Core i7-7700,2460000,4,3.6,4.2,Kaby Lake,65,Intel HD Graphics 630,LGA 1151,assets/images/cpu/cpu_intel_core_i7_7700.png
+Intel Core i5-6500,2091120,4,3.2,3.6,Skylake,65,Intel HD Graphics 530,LGA 1151,assets/images/cpu/cpu_intel_core_i5_6500.png
+AMD Ryzen 5 5500GT,3406080,6,3.6,4.4,Zen 3,65,Radeon Vega 7,AM4,assets/images/cpu/cpu_amd_ryzen_5_5500gt.png
+AMD Ryzen 5 9600,11221200,6,3.8,5.2,Zen 5,65,Radeon,AM5,assets/images/cpu/cpu_amd_ryzen_5_9600.png
+Intel Core Ultra 5 235,6359760,14,3.4,5.0,Arrow Lake,65,Intel Xe,LGA 1851,assets/images/cpu/cpu_intel_core_ultra_5_235.png
+Intel Core i7-4790K,3132240,4,4.0,4.4,Haswell Refresh,88,Intel HD Graphics 4600,LGA 1150,assets/images/cpu/cpu_intel_core_i7_4790k.png
+Intel Core i5-8400,4293360,6,2.8,4.0,Coffee Lake,65,Intel UHD Graphics 630,LGA 1151,assets/images/cpu/cpu_intel_core_i5_8400.png
+Intel Core i7-6700,2952000,4,3.4,4.0,Skylake,65,Intel HD Graphics 530,LGA 1151,assets/images/cpu/cpu_intel_core_i7_6700.png
+Intel Core Ultra 5 225,5112240,10,3.3,4.9,Arrow Lake,65,Intel Xe,LGA 1851,assets/images/cpu/cpu_intel_core_ultra_5_225.png
+Intel Core i7-14700,7357200,20,2.1,5.4,Raptor Lake Refresh,65,Intel UHD Graphics 770,LGA 1700,assets/images/cpu/cpu_intel_core_i7_14700.png
+Intel Core i9-11900K,10776000,8,3.5,5.3,Rocket Lake,125,Intel UHD Graphics 750,LGA 1200,assets/images/cpu/cpu_intel_core_i9_11900k.png
+Intel Core i5-13500,5639760,14,2.5,4.8,Raptor Lake,65,Intel UHD Graphics 770,LGA 1700,assets/images/cpu/cpu_intel_core_i5_13500.png
+Intel Core i7-12700,6959280,12,2.1,4.9,Alder Lake,65,Intel UHD Graphics 770,LGA 1700,assets/images/cpu/cpu_intel_core_i7_12700.png
+Intel Core i5-10600K,4199760,6,4.1,4.8,Comet Lake,125,Intel UHD Graphics 630,LGA 1200,assets/images/cpu/cpu_intel_core_i5_10600k.png
+Intel Core i5-6600K,2159760,4,3.5,3.9,Skylake,91,Intel HD Graphics 530,LGA 1151,assets/images/cpu/cpu_intel_core_i5_6600k.png
+Intel Core Ultra 9 285,13919760,24,2.5,5.6,Arrow Lake,65,Intel Xe,LGA 1851,assets/images/cpu/cpu_intel_core_ultra_9_285.png
+Intel Core i7-4770K,2376000,4,3.5,3.9,Haswell,84,Intel HD Graphics 4600,LGA 1150,assets/images/cpu/cpu_intel_core_i7_4770k.png
+Intel Core i7-10700,9592560,8,2.9,4.8,Comet Lake,65,Intel UHD Graphics 630,LGA 1200,assets/images/cpu/cpu_intel_core_i7_10700.png
+Intel Core i5-7500,1512000,4,3.4,3.8,Kaby Lake,65,Intel HD Graphics 630,LGA 1151,assets/images/cpu/cpu_intel_core_i5_7500.png
+Intel Core i5-14500,5714160,14,2.6,5.0,Raptor Lake Refresh,65,Intel UHD Graphics 770,LGA 1700,assets/images/cpu/cpu_intel_core_i5_14500.png
+Intel Core i7-9700,7168320,8,3.0,4.7,Coffee Lake Refresh,65,Intel HD Graphics 630,LGA 1151,assets/images/cpu/cpu_intel_core_i7_9700.png
+Intel Core Ultra 7 265,8999760,20,2.4,5.3,Arrow Lake,65,Intel Xe,LGA 1851,assets/images/cpu/cpu_intel_core_ultra_7_265.png
+Intel Core i5-11400,3839760,6,2.6,4.4,Rocket Lake,65,Intel UHD Graphics 730,LGA 1200,assets/images/cpu/cpu_intel_core_i5_11400.png
+Intel Core i5-7400,4430400,4,3.0,3.5,Kaby Lake,65,Intel HD Graphics 630,LGA 1151,assets/images/cpu/cpu_intel_core_i5_7400.png
+Intel Core i9-13900KS,10296000,24,3.0,6.0,Raptor Lake,150,Intel UHD Graphics 770,LGA 1700,assets/images/cpu/cpu_intel_core_i9_13900ks.png
+Intel Core i7-4790,3598560,4,3.6,4.0,Haswell Refresh,84,Intel HD Graphics 4600,LGA 1150,assets/images/cpu/cpu_intel_core_i7_4790.png
+Intel Core i5-4690K,1296000,4,3.5,3.9,Haswell Refresh,88,Intel HD Graphics 4600,LGA 1150,assets/images/cpu/cpu_intel_core_i5_4690k.png
+Intel Core i9-12900KS,9119760,16,3.4,5.5,Alder Lake,150,Intel UHD Graphics 770,LGA 1700,assets/images/cpu/cpu_intel_core_i9_12900ks.png
+Intel Core i5-8600K,7853520,6,3.6,4.3,Coffee Lake,95,Intel UHD Graphics 630,LGA 1151,assets/images/cpu/cpu_intel_core_i5_8600k.png
+Intel Core i3-10100,2399760,4,3.6,4.3,Comet Lake,65,Intel UHD Graphics 630,LGA 1200,assets/images/cpu/cpu_intel_core_i3_10100.png
+AMD EPYC 4564P,16799760,16,4.5,5.7,Zen 4,170,Radeon,AM5,assets/images/cpu/cpu_amd_epyc_4564p.png
+AMD Ryzen 5 2400G,2760000,4,3.6,3.9,Zen,65,Radeon Vega 11,AM4,assets/images/cpu/cpu_amd_ryzen_5_2400g.png
+Intel Core i5-12500,4318080,6,3.0,4.6,Alder Lake,65,Intel UHD Graphics 770,LGA 1700,assets/images/cpu/cpu_intel_core_i5_12500.png
+Intel Core i5-8500,4080000,6,3.0,4.1,Coffee Lake,65,Intel UHD Graphics 630,LGA 1151,assets/images/cpu/cpu_intel_core_i5_8500.png
+Intel Core i5-7500T,1320000,4,2.7,3.3,Kaby Lake,35,Intel HD Graphics 630,LGA 1151,assets/images/cpu/cpu_intel_core_i5_7500t.png
+Intel Core i5-7600,1339200,4,3.5,4.1,Kaby Lake,65,Intel HD Graphics 630,LGA 1151,assets/images/cpu/cpu_intel_core_i5_7600.png
+Intel Core i7-4770,4248000,4,3.4,3.9,Haswell,84,Intel HD Graphics 4600,LGA 1150,assets/images/cpu/cpu_intel_core_i7_4770.png
+Intel Core i7-11700,9071760,8,2.5,4.9,Rocket Lake,65,Intel UHD Graphics 750,LGA 1200,assets/images/cpu/cpu_intel_core_i7_11700.png
+Intel Core i5-7600K,4389360,4,3.8,4.2,Kaby Lake,91,Intel HD Graphics 630,LGA 1151,assets/images/cpu/cpu_intel_core_i5_7600k.png
+Intel Core i3-13100,3006000,4,3.4,4.5,Raptor Lake,60,Intel UHD Graphics 730,LGA 1700,assets/images/cpu/cpu_intel_core_i3_13100.png
+Intel Core i7-13700,7678320,16,2.1,5.2,Raptor Lake,65,Intel UHD Graphics 770,LGA 1700,assets/images/cpu/cpu_intel_core_i7_13700.png
+Intel Core i5-9400,3598560,6,2.9,4.1,Coffee Lake Refresh,65,Intel UHD Graphics 630,LGA 1151,assets/images/cpu/cpu_intel_core_i5_9400.png
+Intel Core i3-10105,2376000,4,3.7,4.4,Comet Lake,65,Intel UHD Graphics 630,LGA 1200,assets/images/cpu/cpu_intel_core_i3_10105.png
+Intel Core i5-4460,1645440,4,3.2,3.4,Haswell Refresh,84,Intel HD Graphics 4600,LGA 1150,assets/images/cpu/cpu_intel_core_i5_4460.png
+Intel Core i3-9100,2613360,4,3.6,4.2,Coffee Lake Refresh,65,Intel UHD Graphics 630,LGA 1151,assets/images/cpu/cpu_intel_core_i3_9100.png
+Intel Core i9-14900,13724640,24,2.0,5.8,Raptor Lake Refresh,65,Intel UHD Graphics 770,LGA 1700,assets/images/cpu/cpu_intel_core_i9_14900.png
+Intel Core i9-9900KS,33336000,8,4.0,5.0,Coffee Lake Refresh,127,Intel UHD Graphics 630,LGA 1151,assets/images/cpu/cpu_intel_core_i9_9900ks.png
+Intel Core i5-9500,4768560,6,3.0,4.4,Coffee Lake Refresh,65,Intel UHD Graphics 630,LGA 1151,assets/images/cpu/cpu_intel_core_i5_9500.png
+Intel Core i5-10500,5518800,6,3.1,4.5,Comet Lake,65,Intel UHD Graphics 630,LGA 1200,assets/images/cpu/cpu_intel_core_i5_10500.png
+Intel Core i5-4690,1248000,4,3.5,3.9,Haswell Refresh,84,Intel HD Graphics 4600,LGA 1150,assets/images/cpu/cpu_intel_core_i5_4690.png
+AMD EPYC 4244P,4543920,6,3.8,5.1,Zen 4,65,Radeon,AM5,assets/images/cpu/cpu_amd_epyc_4244p.png
+Intel Core i9-13900,9959760,24,2.0,5.6,Raptor Lake,65,Intel UHD Graphics 770,LGA 1700,assets/images/cpu/cpu_intel_core_i9_13900.png
+Intel Core i5-8500T,3000000,6,2.1,3.5,Coffee Lake,35,Intel UHD Graphics 630,LGA 1151,assets/images/cpu/cpu_intel_core_i5_8500t.png
+Intel Core i5-12600,5999760,6,3.3,4.8,Alder Lake,65,Intel UHD Graphics 770,LGA 1700,assets/images/cpu/cpu_intel_core_i5_12600.png
+Intel Core i9-10900,9378480,10,2.8,5.2,Comet Lake,65,Intel UHD Graphics 630,LGA 1200,assets/images/cpu/cpu_intel_core_i9_10900.png
+Intel Core i5-11600,3360000,6,2.8,4.8,Rocket Lake,65,Intel UHD Graphics 750,LGA 1200,assets/images/cpu/cpu_intel_core_i5_11600.png
+Intel Core i7-8086K,8234880,6,4.0,5.0,Coffee Lake,95,Intel UHD Graphics 630,LGA 1151,assets/images/cpu/cpu_intel_core_i7_8086k.png
+AMD EPYC 4464P,10319760,12,3.7,5.4,Zen 4,65,Radeon,AM5,assets/images/cpu/cpu_amd_epyc_4464p.png
+Intel Core i5-11500,3840000,6,2.7,4.6,Rocket Lake,65,Intel UHD Graphics 750,LGA 1200,assets/images/cpu/cpu_intel_core_i5_11500.png
+Intel Core i9-9900,10072560,8,3.1,5.0,Coffee Lake Refresh,65,Intel UHD Graphics 630,LGA 1151,assets/images/cpu/cpu_intel_core_i9_9900.png
+Intel Core i9-12900,9393600,16,2.4,5.1,Alder Lake,65,Intel UHD Graphics 770,LGA 1700,assets/images/cpu/cpu_intel_core_i9_12900.png
+Intel Core i5-8600,4536000,6,3.1,4.3,Coffee Lake,65,Intel UHD Graphics 630,LGA 1151,assets/images/cpu/cpu_intel_core_i5_8600.png
+Intel Core i5-4440,2400000,4,3.1,3.3,Haswell,84,Intel HD Graphics 4600,LGA 1150,assets/images/cpu/cpu_intel_core_i5_4440.png
+Intel Core i5-9600,5128560,6,3.1,4.6,Coffee Lake Refresh,65,Intel UHD Graphics 630,LGA 1151,assets/images/cpu/cpu_intel_core_i5_9600.png
+Intel Core i5-10600,12718800,6,3.3,4.8,Comet Lake,65,Intel UHD Graphics 630,LGA 1200,assets/images/cpu/cpu_intel_core_i5_10600.png
+Intel Core i9-9900K (Standard Folding Box),13560000,8,3.6,5.0,Coffee Lake Refresh,95,Intel UHD Graphics 630,LGA 1151,assets/images/cpu/cpu_intel_core_i9_9900k_standard_folding_box.png
+AMD A4-6300,1122960,2,3.7,3.9,Piledriver,65,Radeon HD 8370D,AM3+,assets/images/cpu/cpu_amd_a4_6300.png
+Intel Core i9-11900,9383760,8,2.5,5.2,Rocket Lake,65,Intel UHD Graphics 750,LGA 1200,assets/images/cpu/cpu_intel_core_i9_11900.png
+AMD EPYC 4344P,8303760,8,3.8,5.3,Zen 4,65,Radeon,AM5,assets/images/cpu/cpu_amd_epyc_4344p.png
+AMD EPYC 4364P,9359760,8,4.5,5.4,Zen 4,105,Radeon,AM5,assets/images/cpu/cpu_amd_epyc_4364p.png
+Intel Core i7-8700T,6718800,6,2.4,4.0,Coffee Lake,35,Intel UHD Graphics 630,LGA 1151,assets/images/cpu/cpu_intel_core_i7_8700t.png
+AMD A8-7600,1893360,4,3.1,3.8,Steamroller,65,Radeon R7 (on-die),FM2+,assets/images/cpu/cpu_amd_a8_7600.png
+Intel Core i5-7400T,1549440,4,2.4,3.0,Kaby Lake,35,Intel HD Graphics 630,LGA 1151,assets/images/cpu/cpu_intel_core_i5_7400t.png
+AMD A10-7700K,3072480,4,3.4,3.8,Steamroller,95,Radeon R7 (on-die),FM2+,assets/images/cpu/cpu_amd_a10_7700k.png
+Intel Core i5-8400T,2720880,6,1.7,3.3,Coffee Lake,35,Intel UHD Graphics 630,LGA 1151,assets/images/cpu/cpu_intel_core_i5_8400t.png
+Intel Core i7-7700T,11974800,4,2.9,3.8,Kaby Lake,35,Intel HD Graphics 630,LGA 1151,assets/images/cpu/cpu_intel_core_i7_7700t.png
+AMD A10-7850K,3356160,4,3.7,4.0,Steamroller,95,Radeon R7 (on-die),FM2+,assets/images/cpu/cpu_amd_a10_7850k.png
+Intel Core i5-6402P,2847840,4,2.8,3.4,Skylake,65,Intel HD Graphics 510,LGA 1151,assets/images/cpu/cpu_intel_core_i5_6402p.png
+AMD A10-9700,3065040,4,3.5,3.8,Excavator,65,Radeon R7 (on-die),AM4,assets/images/cpu/cpu_amd_a10_9700.png
+Intel Core i5-6500T,5518800,4,2.5,3.1,Skylake,35,Intel HD Graphics 530,LGA 1151,assets/images/cpu/cpu_intel_core_i5_6500t.png
+Intel Core i7-10700K Avengers Collector's Edition,17784000,8,3.8,5.1,Comet Lake,125,Intel UHD Graphics 630,LGA 1200,assets/images/cpu/cpu_intel_core_i7_10700k_avengers_collector_s_edition.png
+Intel Core i3-10320,2880000,4,3.8,4.6,Comet Lake,65,Intel UHD Graphics 630,LGA 1200,assets/images/cpu/cpu_intel_core_i3_10320.png
+Intel Xeon E3-1245 V6,2880000,4,3.7,4.1,Kaby Lake,73,Intel HD Graphics P630,LGA 2011,assets/images/cpu/cpu_intel_xeon_e3_1245_v6.png
+Intel Xeon E-2286G,15062640,6,4.0,4.9,Coffee Lake Refresh,95,Intel HD Graphics P630,LGA 2011,assets/images/cpu/cpu_intel_xeon_e_2286g.png
+AMD A6-7400K,2159520,2,3.5,3.9,Steamroller,65,Radeon R5 (on die),FM2+,assets/images/cpu/cpu_amd_a6_7400k.png
+Intel Core i3-9300,5763120,4,3.7,4.3,Coffee Lake Refresh,62,Intel UHD Graphics 630,LGA 1151,assets/images/cpu/cpu_intel_core_i3_9300.png
+Intel Core i5-3340,6672480,4,3.1,3.3,Ivy Bridge,77,Intel HD Graphics 2500,LGA 1155,assets/images/cpu/cpu_intel_core_i5_3340.png
+Intel Xeon E3-1285 V6,23758800,4,4.1,4.5,Kaby Lake,79,Intel HD Graphics 630,LGA 2011,assets/images/cpu/cpu_intel_xeon_e3_1285_v6.png
+Intel Core i5-6600T,4318800,4,2.7,3.5,Skylake,35,Intel HD Graphics 530,LGA 1151,assets/images/cpu/cpu_intel_core_i5_6600t.png
+Intel Xeon E-2176G,13998960,6,3.7,4.7,Coffee Lake,80,Intel HD Graphics P630,LGA 2011,assets/images/cpu/cpu_intel_xeon_e_2176g.png
+AMD A10-9700E,3185040,4,3.0,3.5,Excavator,35,Radeon R7 (on-die),AM4,assets/images/cpu/cpu_amd_a10_9700e.png
+Intel Xeon E-2274G,26374800,4,4.0,4.9,Coffee Lake Refresh,83,Intel HD Graphics P630,LGA 2011,assets/images/cpu/cpu_intel_xeon_e_2274g.png
+Intel Xeon E3-1265L V3,9574800,4,2.5,3.7,Haswell,45,Intel HD Graphics,LGA 2011,assets/images/cpu/cpu_intel_xeon_e3_1265l_v3.png
+Intel Core i5-3330S,3598560,4,2.7,3.2,Ivy Bridge,65,Intel HD Graphics 2500,LGA 1155,assets/images/cpu/cpu_intel_core_i5_3330s.png
+Intel Xeon E-2174G,15598800,4,3.8,4.7,Coffee Lake,71,Intel HD Graphics P630,LGA 2011,assets/images/cpu/cpu_intel_xeon_e_2174g.png
+AMD A4-6300B,1198800,2,3.7,3.9,Piledriver,65,Radeon HD 8370D,AM3+,assets/images/cpu/cpu_amd_a4_6300b.png
+Intel Xeon E-2124G,6503760,4,3.4,4.5,Coffee Lake,71,Intel HD Graphics P630,LGA 2011,assets/images/cpu/cpu_intel_xeon_e_2124g.png
+Intel Core i5-7600T,5518800,4,2.8,3.7,Kaby Lake,35,Intel HD Graphics 630,LGA 1151,assets/images/cpu/cpu_intel_core_i5_7600t.png
+Intel Xeon E3-1275 V6,12106560,4,3.8,4.2,Kaby Lake,73,Intel HD Graphics P630,LGA 2011,assets/images/cpu/cpu_intel_xeon_e3_1275_v6.png
+AMD Pro A10-7850B,3552480,4,3.7,4.0,Steamroller,95,Radeon R7 (on-die),FM2+,assets/images/cpu/cpu_amd_pro_a10_7850b.png
+Intel Xeon E3-1225 V6,8526960,4,3.3,3.7,Kaby Lake,73,Intel HD Graphics P630,LGA 2011,assets/images/cpu/cpu_intel_xeon_e3_1225_v6.png

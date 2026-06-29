@@ -1,0 +1,40 @@
+import '../models/pc_build.dart';
+
+final List<PcBuild> mockPcBuilds = [
+  PcBuild(
+    buildId: 'BUILD-001',
+    cpuModel: 'Intel Core i9-14900K',
+    cpuPrice: 15490000,
+    motherboardModel: 'Gigabyte Z790 AORUS ELITE',
+    motherboardPrice: 7290000,
+    gpuModel: 'ASUS ROG Strix RTX 4090 OC',
+    gpuPrice: 59990000,
+    assemblyFee: 300000,
+    buildNotes: 'Cấu hình gaming/đồ họa cao cấp, tản nhiệt nước AIO khuyến nghị.',
+    totalPrice: 83070000,
+  ),
+  PcBuild(
+    buildId: 'BUILD-002',
+    cpuModel: 'AMD Ryzen 7 7800X3D',
+    cpuPrice: 9990000,
+    motherboardModel: 'MSI B650 Tomahawk',
+    motherboardPrice: 4690000,
+    gpuModel: 'RTX 4070 Super',
+    gpuPrice: 16990000,
+    assemblyFee: 250000,
+    buildNotes: '',
+    totalPrice: 31920000,
+  ),
+  PcBuild(
+    buildId: 'BUILD-003',
+    cpuModel: 'AMD Ryzen 5 7600',
+    cpuPrice: 4690000,
+    motherboardModel: 'ASRock B650M-HDV',
+    motherboardPrice: 2390000,
+    gpuModel: 'RTX 4060',
+    gpuPrice: 8490000,
+    assemblyFee: 200000,
+    buildNotes: 'Phù hợp gaming 1080p/1440p mượt mà, tiết kiệm chi phí.',
+    totalPrice: 15770000,
+  ),
+];
