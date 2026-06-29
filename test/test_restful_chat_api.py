@@ -14,6 +14,7 @@ from app.api.chat import router as chat_router
 
 API_CHAT = "http://127.0.0.1:8000/chat"
 API_SESSIONS = "http://127.0.0.1:8000/sessions"
+API_KB = "http://127.0.0.1:8000/test-knowledge-base"
 REPORT_FILE = "test/reports/report_restful_chat_api.md"
 
 # Khởi tạo TestClient nội bộ để mock giả lập lỗi 500 và 504 mà không phụ thuộc server ngoài
@@ -35,7 +36,7 @@ def _update_md_report():
 
     md_content = f"""# 🚀 Báo Cáo Kiểm Thử Tích Hợp RESTful Chat API
 
-Kiểm thử toàn diện các tình huống thực tế (Thành công 201, Lỗi 400 Validation, Lỗi 500 System, Lỗi 504 Timeout, Delete Session) cho hệ thống AI Chatbot.
+Kiểm thử toàn diện các tình huống thực tế (Thành công 201, Lỗi 400 Validation, Lỗi 500 System, Lỗi 504 Timeout, Tra cứu KB, Delete Session) cho hệ thống AI Chatbot.
 
 ## 📊 Thống kê chung
 - **Tổng số Test Cases:** {total}

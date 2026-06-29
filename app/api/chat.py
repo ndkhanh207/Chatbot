@@ -7,7 +7,6 @@ from app.api.model.chat_models import ChatRequest, ChatResponse, ErrorResponse
 from app.api.api_handler.chat_services import (
     process_chat_message,
     search_knowledge_base,
-    trigger_stop_event,
 )
 
 router = APIRouter()
@@ -33,13 +32,6 @@ def test_kb(request: Request, q: str = None, category: str = None, top_k: int = 
 )
 async def chat_with_bot(request: Request, data: ChatRequest):
     return await process_chat_message(request, data)
-
-@router.post("/chat/{session_id}/stop")
-def stop_chat_generation(session_id: str):
-    """Nhận tín hiệu từ UI để bật cờ dừng (Cooperative Cancellation) cho session tương ứng."""
-    if trigger_stop_event(session_id):
-        return {"status": "success", "message": f"Đã gửi tín hiệu dừng cho session '{session_id}'"}
-    return {"status": "not_found", "message": f"Session '{session_id}' không chạy hoặc đã kết thúc"}
 
 @router.get("/calculate")
 def calculate(value: float, from_unit: str, to_unit: str):
