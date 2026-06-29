@@ -2,7 +2,7 @@ import re
 from app.core.query_parser import detect_brand
 from app.specification.context_builder import build_product_context
 from app.price.price_logic import filter_knowledge_base_by_price
-from app.utils.response_formatter import build_range_summary
+from app.guard.response_formatter import build_range_summary
 from app.core.search_engine import hybrid_search
 from app.compatibility.compat_logic import _get_field
 from app.price.pricing_util import format_currency_vietnam

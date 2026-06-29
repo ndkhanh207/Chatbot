@@ -4,8 +4,8 @@ Chat endpoint logic — dùng LangChain ChatOllama + ChatPromptTemplate.
 
 import re
 import json
-from app.utils.response_formatter import word_filter, build_range_summary
-from app.clarify import chain_invoke, chain_stream, _format_context_directly, _session_context_cache, _is_clarification_rejection
+from app.guard.response_formatter import word_filter, build_range_summary
+from app.guard.clarify import chain_invoke, chain_stream, _format_context_directly, _session_context_cache, _is_clarification_rejection
 from app.core.master_intent import parse_master_intent
 from app.core.query_parser import normalize_text, normalize_user_message, get_category
 from app.memory.memory_store import get_trimmed_history, save_message
@@ -26,7 +26,7 @@ from app.pc_builder.flow import handle_pc_build_flow
 # ──────────────────────────────────────────────
 # Prompt Injection Guard & Security
 # ──────────────────────────────────────────────
-from app.core.injection_guard import sanitize_input
+from app.guard.injection_guard import sanitize_input
 
 MAX_INPUT_LENGTH = 500  # Ký tự tối đa
 

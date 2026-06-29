@@ -6,6 +6,7 @@ import pandas as pd
 import anyio
 import ollama  # Import để check status
 from fastapi import FastAPI, HTTPException, status
+from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from config.config import EMBEDDING_MODEL as EMBEDDING_MODEL_NAME, EMBEDDING_DEVICE, Config
 from langchain_chroma import Chroma
@@ -116,4 +117,19 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+
+# Cấu hình CORS để cho phép frontend (Flutter/React/Postman) gọi API
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "https://customer-outskirts-blubber.ngrok-free.dev",  # Bắt buộc KHÔNG có dấu '/' ở cuối
+        "http://localhost:8000",
+        "http://127.0.0.1:8000",
+        "http://10.0.2.2:8000",  # Domain chuẩn cho Android Emulator
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],  # Cho phép tất cả các method (GET, POST, OPTIONS, DELETE,...)
+    allow_headers=["*"],
+)
+
 app.include_router(chat_router)
