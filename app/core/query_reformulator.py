@@ -63,7 +63,7 @@ def _strip_ai_prefix(text: str) -> str:
 
 
 _HARDWARE_ENTITY_PATTERN = re.compile(
-    r'\b(i3|i5|i7|i9|ryzen|rtx|gtx|rx\s*\d+|b760|b850|z790|h610|x670|b650|prime|tuf|gaming|mortar|ventus|gigabyte|msi|asus|asrock|intel|amd|nvidia)\b', 
+    r'\b(cpu|gpu|main|card|vga|ram|ssd|bo mạch|pc|máy tính|i3|i5|i7|i9|ryzen|rtx|gtx|rx\s*\d+|b760|b850|z790|h610|x670|b650|prime|tuf|gaming|mortar|ventus|gigabyte|msi|asus|asrock|intel|amd|nvidia)\b', 
     re.IGNORECASE
 )
 

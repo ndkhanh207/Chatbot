@@ -1,4 +1,5 @@
 # ── Thêm vào đầu file, sau các import ──────────────────────
+import threading
 from app.core.llm_chains import get_emergency_chain
 from app.memory.memory_store import get_trimmed_history
 from langchain_core.runnables import RunnableSequence
@@ -176,3 +177,76 @@ def chain_invoke(chain, context, format_hint, user_message_fixed, chat_history, 
                 print("🚨 [OUTPUT-GUARD] Retry thất bại → format trực tiếp")
                 reply = _format_context_directly(context, parsed_intent.intent)
     return reply
+
+
+def chain_stream(chain, context, format_hint, user_message_fixed, chat_history, parsed_intent, stop_event: threading.Event):
+    """
+    Sinh token từng phần (streaming) kết hợp kiểm tra cờ dừng (stop_event)
+    và Pre-Stream Output Guard để ngăn chặn ảo giác (hallucination guard).
+    """
+    if not _is_context_valid(context):
+        print("⚠️ [CONTEXT-GUARD] Context không hợp lệ → bypass LLM stream")
+        yield (
+            "Dạ em chưa tìm thấy thông tin chính xác về sản phẩm này ạ. "
+            "Bạn có thể cho em biết rõ hơn tên model không ạ?"
+        )
+        return
+
+    inputs = {
+        "context":      context,
+        "format_hint":  format_hint,
+        "user_message": user_message_fixed,
+        "chat_history": chat_history,
+    }
+
+    buffer = ""
+    stream_generator = chain.stream(inputs)
+    
+    try:
+        # Tích lũy khoảng 35 ký tự đầu tiên để kiểm duyệt (Pre-Stream Output Guard)
+        for chunk in stream_generator:
+            if stop_event.is_set():
+                print("[STOP] Tiến trình sinh token bị ngắt bởi user (Cooperative Cancellation).")
+                return
+            content = chunk.content if hasattr(chunk, "content") else str(chunk)
+            buffer += content
+            if len(buffer) >= 35 or any(punc in content for punc in [".", "\n", ";", "?"]):
+                break
+
+        if stop_event.is_set():
+            return
+
+        # Kiểm tra hỏi vặn hoặc ảo giác trong đoạn mở đầu
+        if _is_asking_clarification(buffer) or (parsed_intent.intent == "compatibility" and _is_compatibility_hallucination(buffer, context)):
+            print(f"⚠️ [PRE-STREAM GUARD] Phát hiện trả lời sai/hỏi vặn ('{buffer.strip()}...') → Chuyển sang Emergency Stream!")
+            if parsed_intent.intent == "compatibility":
+                yield _format_context_directly(context, parsed_intent.intent)
+                return
+            else:
+                emergency_chain = get_emergency_chain()
+                for chunk in emergency_chain.stream(inputs):
+                    if stop_event.is_set():
+                        break
+                    yield chunk.content if hasattr(chunk, "content") else str(chunk)
+                return
+
+        # Nếu mở đầu hợp lệ, xả buffer và tiếp tục stream bình thường
+        yield buffer
+        buffer = ""
+
+        for chunk in stream_generator:
+            if stop_event.is_set():
+                print("[STOP] Tiến trình sinh token bị ngắt bởi user (Cooperative Cancellation).")
+                break
+            content = chunk.content if hasattr(chunk, "content") else str(chunk)
+            buffer += content
+            if any(punc in content for punc in [".", "\n", ";", ","]) or len(buffer) > 25:
+                yield buffer
+                buffer = ""
+
+        if buffer and not stop_event.is_set():
+            yield buffer
+
+    except Exception as e:
+        print(f"[STREAM ERROR]: {e}")
+        yield "\n[Lỗi kết nối khi đang stream]"

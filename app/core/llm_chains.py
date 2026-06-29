@@ -26,10 +26,10 @@ def _get_strict_llm() -> ChatOllama:
 def get_llm() -> ChatOllama:
     return ChatOllama(
         model=get_ollama_model(),
-        temperature=0.1,
+        temperature=0,
         request_timeout=90,
-        top_p=0.1,
-        num_predict=300,
+        top_p=0.05,
+        num_predict=2048,
         # repeat_penalty=1.2,
     )
 

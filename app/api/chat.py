@@ -1,13 +1,16 @@
 import re
+import threading
 from fastapi import APIRouter, Request
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from app.core.chat_handler import handle_chat
+from app.core.chat_handler import handle_chat, handle_chat_stream
 from app.core.search_engine import hybrid_search
 from app.utils.unit_converter import convert_unit
 from app.memory.memory_store import clear_session
 
 router = APIRouter()
+_stop_events: dict[str, threading.Event] = {}
 
 def _validate_session_id(session_id: str) -> bool:
     """Chỉ cho phép chữ, số, gạch ngang/dưới, tối đa 64 ký tự."""
@@ -51,6 +54,39 @@ def chat_with_bot(request: Request, data: ChatRequest):
         vector_store,
         session_id=data.session_id,
         build_df=build_df,
+    )
+
+@router.post("/chat/{session_id}/stop")
+def stop_chat_generation(session_id: str):
+    """Nhận tín hiệu từ UI để bật cờ dừng (Cooperative Cancellation) cho session tương ứng."""
+    if session_id in _stop_events:
+        _stop_events[session_id].set()
+        return {"status": "success", "message": f"Đã gửi tín hiệu dừng cho session '{session_id}'"}
+    return {"status": "not_found", "message": f"Session '{session_id}' không chạy hoặc đã kết thúc"}
+
+@router.post("/chat/stream")
+def chat_stream_endpoint(request: Request, data: ChatRequest):
+    """API chatbot hỗ trợ sinh token trực tiếp (Streaming) kết hợp cờ ngắt hợp tác."""
+    if not _validate_session_id(data.session_id):
+        return {"chatbot_reply": "Session ID không hợp lệ. Chỉ dùng chữ, số, '-', '_' (tối đa 64 ký tự)."}
+
+    kb = getattr(request.app.state, "knowledge_base", None)
+    vector_store = getattr(request.app.state, "vector_store", None)
+    build_df = getattr(request.app.state, "build_data", None)
+
+    stop_event = threading.Event()
+    _stop_events[data.session_id] = stop_event
+
+    return StreamingResponse(
+        handle_chat_stream(
+            data.user_message,
+            kb,
+            vector_store,
+            session_id=data.session_id,
+            build_df=build_df,
+            stop_event=stop_event,
+        ),
+        media_type="text/event-stream"
     )
 
 @router.get("/calculate")
