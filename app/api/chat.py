@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Request, status
+from fastapi import APIRouter, Request, status, Depends
 from app.utils.unit_converter import convert_unit
 from app.memory.memory_store import clear_session
 
@@ -8,6 +8,8 @@ from app.api.api_handler.chat_services import (
     process_chat_message,
     search_knowledge_base,
 )
+from app.api.auth.firebase_auth import verify_firebase_token
+from app.guard.security import limiter
 
 router = APIRouter()
 
@@ -30,8 +32,10 @@ def test_kb(request: Request, q: str = None, category: str = None, top_k: int = 
     summary="Gửi tin nhắn tới AI Chatbot (Non-streaming)",
     description="Xử lý câu hỏi của người dùng, kiểm tra tương thích linh kiện và trả về câu trả lời trọn vẹn theo chuẩn RESTful."
 )
-async def chat_with_bot(request: Request, data: ChatRequest):
-    return await process_chat_message(request, data)
+@limiter.limit("20/minute")
+async def chat_with_bot(request: Request, data: ChatRequest, current_user: dict = Depends(verify_firebase_token)):
+    user_uid = current_user["uid"]
+    return await process_chat_message(request, data, user_uid)
 
 @router.get("/calculate")
 def calculate(value: float, from_unit: str, to_unit: str):
@@ -49,7 +53,8 @@ def calculate(value: float, from_unit: str, to_unit: str):
 
 @router.delete("/sessions/{session_id}")
 @router.delete("/chat/history/{session_id}")
-def delete_history(session_id: str):
+def delete_history(session_id: str, current_user: dict = Depends(verify_firebase_token)):
     """Xóa lịch sử hội thoại của một user."""
-    clear_session(session_id)
+    user_uid = current_user["uid"]
+    clear_session(user_uid, session_id)
     return {"status": "ok", "message": f"Đã xóa lịch sử session '{session_id}'"}

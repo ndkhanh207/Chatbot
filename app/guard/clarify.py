@@ -138,7 +138,7 @@ def chain_invoke(chain, context, format_hint, user_message_fixed, chat_history, 
     """
     MAX_RETRY = 1
     reply = None
-    if not _is_context_valid(context):
+    if parsed_intent.intent != "none" and not _is_context_valid(context):
             print("⚠️ [CONTEXT-GUARD] Context không hợp lệ → bypass LLM")
             reply = (
                 "Dạ em chưa tìm thấy thông tin chính xác về sản phẩm này ạ. "
@@ -184,7 +184,7 @@ def chain_stream(chain, context, format_hint, user_message_fixed, chat_history, 
     Sinh token từng phần (streaming) kết hợp kiểm tra cờ dừng (stop_event)
     và Pre-Stream Output Guard để ngăn chặn ảo giác (hallucination guard).
     """
-    if not _is_context_valid(context):
+    if parsed_intent.intent != "none" and not _is_context_valid(context):
         print("⚠️ [CONTEXT-GUARD] Context không hợp lệ → bypass LLM stream")
         yield (
             "Dạ em chưa tìm thấy thông tin chính xác về sản phẩm này ạ. "

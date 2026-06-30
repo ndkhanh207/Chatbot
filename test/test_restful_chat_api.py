@@ -3,28 +3,31 @@ import sys
 import asyncio
 import json
 import pytest
-import requests
 from unittest.mock import patch
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-# Thêm đường dẫn gốc của project vào sys.path để tránh lỗi ModuleNotFoundError khi chạy lệnh pytest trực tiếp
+# Thêm đường dẫn gốc của project vào sys.path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from app.api.chat import router as chat_router
+from app.api.auth.firebase_auth import verify_firebase_token
 
-API_CHAT = "http://127.0.0.1:8000/chat"
-API_SESSIONS = "http://127.0.0.1:8000/sessions"
-API_KB = "http://127.0.0.1:8000/test-knowledge-base"
 REPORT_FILE = "test/reports/report_restful_chat_api.md"
 
-# Khởi tạo TestClient nội bộ để mock giả lập lỗi 500 và 504 mà không phụ thuộc server ngoài
+# Khởi tạo TestClient nội bộ để kiểm thử API độc lập không cần chạy Uvicorn
 mock_app = FastAPI()
 mock_app.include_router(chat_router)
 mock_app.state.knowledge_base = []
 mock_app.state.vector_store = None
 mock_app.state.build_data = None
-client = TestClient(mock_app)
 
+# Mock Firebase Auth Dependency để vượt qua 401 Unauthorized
+def mock_verify_firebase_token():
+    return {"uid": "mock_firebase_uid_12345", "email": "test@gmail.com"}
+
+mock_app.dependency_overrides[verify_firebase_token] = mock_verify_firebase_token
+
+client = TestClient(mock_app)
 _test_results = []
 
 def _update_md_report():
@@ -34,9 +37,9 @@ def _update_md_report():
     failed = total - passed
     pass_rate = (passed / total * 100) if total > 0 else 0
 
-    md_content = f"""# 🚀 Báo Cáo Kiểm Thử Tích Hợp RESTful Chat API
+    md_content = f"""# 🚀 Báo Cáo Kiểm Thử Tích Hợp RESTful Chat API (Có bảo mật Firebase Auth)
 
-Kiểm thử toàn diện các tình huống thực tế (Thành công 201, Lỗi 400 Validation, Lỗi 500 System, Lỗi 504 Timeout, Tra cứu KB, Delete Session) cho hệ thống AI Chatbot.
+Kiểm thử toàn diện các tình huống thực tế (Thành công 201, Lỗi 400 Validation, Lỗi 500 System, Lỗi 504 Timeout, Delete Session) cho hệ thống AI Chatbot, có áp dụng Mock Firebase JWT.
 
 ## 📊 Thống kê chung
 - **Tổng số Test Cases:** {total}
@@ -57,18 +60,16 @@ Kiểm thử toàn diện các tình huống thực tế (Thành công 201, Lỗ
     with open(REPORT_FILE, "w", encoding="utf-8") as f:
         f.write(md_content)
 
-
 def setup_module(module):
     _test_results.clear()
     _update_md_report()
-
 
 def test_empty_message_validation():
     """Tình huống 1: Người dùng gửi tin nhắn rỗng -> Kỳ vọng lỗi 400 EMPTY_MESSAGE."""
     payload = {"user_message": "   ", "session_id": "test_session_1"}
     resp_body = ""
     try:
-        response = requests.post(API_CHAT, json=payload, timeout=10)
+        response = client.post("/chat", json=payload)
         data = response.json()
         resp_body = json.dumps(data, ensure_ascii=False)
         passed = (response.status_code == 400 and data.get("code") == "EMPTY_MESSAGE")
@@ -90,13 +91,12 @@ def test_empty_message_validation():
     _update_md_report()
     assert passed, f"Lỗi test_empty_message_validation: {err}"
 
-
 def test_invalid_session_id_validation():
     """Tình huống 2: Session ID chứa ký tự đặc biệt không hợp lệ -> Kỳ vọng lỗi 400 INVALID_SESSION_ID."""
     payload = {"user_message": "Cho tôi hỏi về CPU RTX 4090", "session_id": "invalid@session#id!!!"}
     resp_body = ""
     try:
-        response = requests.post(API_CHAT, json=payload, timeout=10)
+        response = client.post("/chat", json=payload)
         data = response.json()
         resp_body = json.dumps(data, ensure_ascii=False)
         passed = (response.status_code == 400 and data.get("code") == "INVALID_SESSION_ID")
@@ -118,24 +118,29 @@ def test_invalid_session_id_validation():
     _update_md_report()
     assert passed, f"Lỗi test_invalid_session_id_validation: {err}"
 
-
 def test_valid_chat_request():
     """Tình huống 3: Gửi tin nhắn hợp lệ -> Kỳ vọng mã 201 Created (hoặc 200) kèm chatbot_reply."""
     payload = {"user_message": "Xin chào, bạn có thể giúp gì cho tôi?", "session_id": "test_valid_session"}
     resp_body = ""
     try:
-        response = requests.post(API_CHAT, json=payload, timeout=60)
-        data = response.json()
-        resp_body = json.dumps(data, ensure_ascii=False)
-        passed = (response.status_code in [200, 201] and "chatbot_reply" in data)
-        err = "None" if passed else f"Unexpected response: {data}"
-        status_code = response.status_code
+        # Gọi thẳng hàm handle_chat vì TestClient đồng bộ và database chưa kết nối sẽ lỗi. 
+        # Chúng ta mock handle_chat cho API test
+        def mock_handle_chat_success(*args, **kwargs):
+            return {"chatbot_reply": "Dạ em chào bạn!"}
+            
+        with patch("app.api.api_handler.chat_services.handle_chat", side_effect=mock_handle_chat_success):
+            response = client.post("/chat", json=payload)
+            data = response.json()
+            resp_body = json.dumps(data, ensure_ascii=False)
+            passed = (response.status_code in [200, 201] and "chatbot_reply" in data)
+            err = "None" if passed else f"Unexpected response: {data}"
+            status_code = response.status_code
     except Exception as e:
         passed, err, status_code = False, str(e), 0
 
     _test_results.append({
         "name": "test_valid_chat_request",
-        "description": "Gửi tin nhắn hợp lệ tới AI Bot",
+        "description": "Gửi tin nhắn hợp lệ tới AI Bot (Bypass DB)",
         "input": str(payload),
         "expected_status": "201/200",
         "actual_status": status_code,
@@ -145,7 +150,6 @@ def test_valid_chat_request():
     })
     _update_md_report()
     assert passed, f"Lỗi test_valid_chat_request: {err}"
-
 
 def test_llm_generation_timeout_504():
     """Tình huống 4: Mô phỏng AI xử lý quá lâu (Timeout) -> Kỳ vọng mã 504 LLM_GENERATION_TIMEOUT."""
@@ -179,7 +183,6 @@ def test_llm_generation_timeout_504():
     _update_md_report()
     assert passed, f"Lỗi test_llm_generation_timeout_504: {err}"
 
-
 def test_internal_server_error_500():
     """Tình huống 5: Mô phỏng lỗi hệ thống nội bộ (Exception) -> Kỳ vọng mã 500 INTERNAL_SERVER_ERROR."""
     payload = {"user_message": "Tư vấn cấu hình PC chi tiết", "session_id": "test_500_session"}
@@ -212,25 +215,26 @@ def test_internal_server_error_500():
     _update_md_report()
     assert passed, f"Lỗi test_internal_server_error_500: {err}"
 
-
 def test_delete_session_history():
     """Tình huống 6: Xóa lịch sử phiên hội thoại -> Kỳ vọng mã 200 OK."""
     session_id = "test_valid_session"
-    url = f"{API_SESSIONS}/{session_id}"
+    url = f"/sessions/{session_id}"
     resp_body = ""
     try:
-        response = requests.delete(url, timeout=10)
-        data = response.json()
-        resp_body = json.dumps(data, ensure_ascii=False)
-        passed = (response.status_code == 200 and data.get("status") == "ok")
-        err = "None" if passed else f"Unexpected response: {data}"
-        status_code = response.status_code
+        # Mock clear_session để tránh kết nối MySQL trong TestClient
+        with patch("app.api.chat.clear_session"):
+            response = client.delete(url)
+            data = response.json()
+            resp_body = json.dumps(data, ensure_ascii=False)
+            passed = (response.status_code == 200 and data.get("status") == "ok")
+            err = "None" if passed else f"Unexpected response: {data}"
+            status_code = response.status_code
     except Exception as e:
         passed, err, status_code = False, str(e), 0
 
     _test_results.append({
         "name": "test_delete_session_history",
-        "description": "Xóa lịch sử phiên hội thoại",
+        "description": "Xóa lịch sử phiên hội thoại (Mock DB)",
         "input": url,
         "expected_status": 200,
         "actual_status": status_code,

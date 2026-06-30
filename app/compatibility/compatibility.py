@@ -71,6 +71,27 @@ def build_suggestion_context(intent: MasterIntentSchema, knowledge_base, vector_
         return ""  # LLM trả nhiều/không linh kiện nào — không đủ rõ để gợi ý
 
     have_type, have_name = owned[0]
+    
+    # Bắt lỗi logic: Không thể ghép 2 linh kiện cùng loại (VD: Mainboard + Mainboard)
+    if intent.category and intent.category.strip().lower() == have_type:
+        type_display = {"cpu": "CPU", "mainboard": "Mainboard", "gpu": "Card màn hình"}.get(have_type, have_type.capitalize())
+        return (
+            f"[LỖI LOGIC TỪ NGƯỜI DÙNG]\n"
+            f"Khách hàng đang yêu cầu tìm '{type_display}' để lắp chung với '{have_name}' (cũng là {type_display}).\n"
+            f"=> Điều này là vô lý vì một bộ PC thông thường chỉ sử dụng 1 {type_display}.\n"
+            f"Nhiệm vụ: Hãy từ chối khéo léo và giải thích rằng không thể lắp 2 {type_display} cùng nhau."
+        )
+
+    # Bắt lỗi Out of Scope: Yêu cầu tìm linh kiện ngoài danh mục hỗ trợ (RAM, SSD, Nguồn...)
+    supported_categories = ["cpu", "mainboard", "gpu", "vga", "none"]
+    if intent.category and intent.category.strip().lower() not in supported_categories:
+        cat_name = intent.category.strip()
+        return (
+            f"[THÔNG BÁO TỪ HỆ THỐNG]\n"
+            f"Khách hàng đang yêu cầu tìm linh kiện loại '{cat_name}'.\n"
+            f"Hiện tại, hệ thống kiểm tra tương thích tự động CHỈ HỖ TRỢ các linh kiện: CPU, Mainboard, và VGA (Card màn hình).\n"
+            f"Nhiệm vụ: Hãy lịch sự thông báo cho khách rằng tính năng gợi ý/kiểm tra tương thích cho '{cat_name}' chưa được hỗ trợ và đang trong quá trình cập nhật."
+        )
     have_item = _resolve_item(have_name, CATEGORY_MAP[have_type], knowledge_base, vector_store)
     if not have_item:
         return (

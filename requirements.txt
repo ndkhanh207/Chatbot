@@ -50,3 +50,5 @@ pymysql
 sqlalchemy
 asyncio
 pytest
+firebase-admin
+slowapi

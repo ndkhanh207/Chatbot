@@ -5,7 +5,7 @@ from pathlib import Path
 import pandas as pd
 import anyio
 import ollama  # Import để check status
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, HTTPException, status, Request
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from config.config import EMBEDDING_MODEL as EMBEDDING_MODEL_NAME, EMBEDDING_DEVICE, Config
@@ -14,6 +14,21 @@ from langchain_huggingface import HuggingFaceEmbeddings
 
 from app.core.data_loader import load_knowledge_base, initialize_vector_db
 from app.api.chat import router as chat_router
+from app.guard.security import limiter
+
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import Response
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response: Response = await call_next(request)
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        response.headers["Content-Security-Policy"] = "default-src 'self'"
+        return response
 
 # ──────────────────────────────────────────────
 # DEPENDENCY HEALTH CHECKS
@@ -96,10 +111,17 @@ async def lifespan(app: FastAPI):
 
         # Nạp Chroma DB vào RAM
         print(f"=== [SYSTEM] Loading Embedding Model '{Config.EMBEDDING_MODEL}' to {Config.EMBEDDING_DEVICE}... ===")
+        import torch
+        if Config.EMBEDDING_DEVICE == 'cuda' and torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
         embeddings = HuggingFaceEmbeddings(
             model_name=Config.EMBEDDING_MODEL,
-            model_kwargs={"device": Config.EMBEDDING_DEVICE}
+            model_kwargs={"device": Config.EMBEDDING_DEVICE},
+            encode_kwargs={"batch_size": 8} # Tránh spike RAM khi search
         )
+        # Test thử gọi hàm chạy embedding xem có nổ VRAM không
+        embeddings.embed_query("test")
         print("=== [SYSTEM] Embedding Model ready. Loading Chroma DB... ===")
         app.state.vector_store = Chroma(
             persist_directory=Config.VECTOR_DB_DIR, 
@@ -117,15 +139,20 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SecurityHeadersMiddleware)
 
 # Cấu hình CORS để cho phép frontend (Flutter/React/Postman) gọi API
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "https://customer-outskirts-blubber.ngrok-free.dev",  # Bắt buộc KHÔNG có dấu '/' ở cuối
+        "https://customer-outskirts-blubber.ngrok-free.dev",
         "http://localhost:8000",
         "http://127.0.0.1:8000",
-        "http://10.0.2.2:8000",  # Domain chuẩn cho Android Emulator
+        "http://10.0.2.2:8000",
+        "http://localhost:8080",
+        "http://127.0.0.1:8080",
     ],
     allow_credentials=True,
     allow_methods=["*"],  # Cho phép tất cả các method (GET, POST, OPTIONS, DELETE,...)

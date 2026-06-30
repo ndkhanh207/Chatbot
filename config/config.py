@@ -1,10 +1,11 @@
 import os
+# Tối ưu hóa bộ nhớ PyTorch cho GPU 4GB VRAM: ĐẶT TRƯỚC KHI IMPORT TORCH ĐỂ CÓ TÁC DỤNG
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True,garbage_collection_threshold:0.8,max_split_size_mb:128"
+
 from pathlib import Path
 from typing import Optional
 
 import torch
-
-
 def _load_dotenv(dotenv_path: Path) -> None:
     if not dotenv_path.exists():
         return
@@ -67,6 +68,7 @@ class Config:
     MYSQL_USER = MYSQL_USER
     MYSQL_PASSWORD = MYSQL_PASSWORD
     MYSQL_DB = MYSQL_DB
+    FIREBASE_CREDENTIALS_PATH = _env('FIREBASE_CREDENTIALS_PATH', 'firebase-adminsdk.json')
 
 all = [
     'EMBEDDING_MODEL',

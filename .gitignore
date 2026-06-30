@@ -224,9 +224,15 @@ open-db/
 # claude
 .claude/
 
+# agent
+.agents
+
 # test
 test/reports/*.md
 
 
 # local planing with ai
 plan/*.md
+
+# admin sdk
+firebase-adminsdk.json

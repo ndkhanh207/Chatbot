@@ -20,8 +20,8 @@ def search_knowledge_base(request: Request, q: str = None, category: str = None,
 
     return hybrid_search(q, category, top_k, kb, vector_store)
 
-async def process_chat_message(request: Request, data: ChatRequest):
-    """Xử lý toàn bộ logic nghiệp vụ cho Chat API (Validate, chạy LLM, xử lý Timeout 30s)."""
+async def process_chat_message(request: Request, data: ChatRequest, user_uid: str):
+    """Xử lý toàn bộ logic nghiệp vụ cho Chat API (Validate, chạy LLM, xử lý Timeout 90s)."""
     if not data.user_message.strip():
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -54,10 +54,11 @@ async def process_chat_message(request: Request, data: ChatRequest):
                 data.user_message,
                 kb,
                 vector_store,
+                user_uid=user_uid,
                 session_id=data.session_id,
                 build_df=build_df,
             ),
-            timeout=30.0
+            timeout=90.0
         )
         return result
     except asyncio.TimeoutError:
@@ -70,11 +71,12 @@ async def process_chat_message(request: Request, data: ChatRequest):
             ).model_dump()
         )
     except Exception as e:
+        print(f"❌ [INTERNAL ERROR] {str(e)}") # Log lỗi chi tiết ở Backend
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content=ErrorResponse(
                 error="Internal Server Error",
-                message=f"Lỗi hệ thống: {str(e)}",
+                message="Đã xảy ra lỗi hệ thống. Vui lòng thử lại sau.", # Che giấu lỗi thật
                 code="INTERNAL_SERVER_ERROR"
             ).model_dump()
         )

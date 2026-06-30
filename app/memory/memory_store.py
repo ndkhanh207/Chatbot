@@ -23,6 +23,7 @@ class ChatMessage(Base):
     __tablename__ = "chat_history"
 
     id         = Column(Integer,     primary_key=True, autoincrement=True)
+    user_uid   = Column(String(255), nullable=False,   index=True)   # Firebase UID để phân biệt user
     session_id = Column(String(255), nullable=False,   index=True)
     role       = Column(String(10),  nullable=False)   # "human" | "ai"
     content    = Column(Text(length=65535), nullable=False)
@@ -77,7 +78,7 @@ def _count_chars(messages: list[BaseMessage]) -> int:
     return sum(len(str(m.content)) for m in messages)
 
 
-def _load_messages(session_id: str) -> list[BaseMessage]:
+def _load_messages(user_uid: str, session_id: str) -> list[BaseMessage]:
     """Đọc tất cả messages của session từ MySQL."""
     db = _get_session()
     if db is None:
@@ -85,7 +86,7 @@ def _load_messages(session_id: str) -> list[BaseMessage]:
     try:
         rows = (
             db.query(ChatMessage)
-            .filter(ChatMessage.session_id == session_id)
+            .filter(ChatMessage.user_uid == user_uid, ChatMessage.session_id == session_id)
             .order_by(ChatMessage.id.asc())
             .all()
         )
@@ -103,9 +104,9 @@ def _load_messages(session_id: str) -> list[BaseMessage]:
 # ──────────────────────────────────────────────
 # Public API — giữ nguyên interface cũ
 # ──────────────────────────────────────────────
-def get_trimmed_history(session_id: str) -> list[BaseMessage]:
+def get_trimmed_history(user_uid: str, session_id: str) -> list[BaseMessage]:
     """Trả về lịch sử đã trim theo MAX_CHARS."""
-    messages = _load_messages(session_id)
+    messages = _load_messages(user_uid, session_id)
 
     if not messages:
         return []
@@ -138,7 +139,7 @@ def _summarize_for_history(ai_msg: str) -> str:
     return truncated.strip()
 
 
-def save_message(session_id: str, user_msg: str, ai_msg: str) -> None:
+def save_message(user_uid: str, session_id: str, user_msg: str, ai_msg: str) -> None:
     """Lưu một lượt hội thoại vào MySQL.
     AI reply được rút gọn để tránh ngộ độc history cho reformulate.
     """
@@ -148,11 +149,13 @@ def save_message(session_id: str, user_msg: str, ai_msg: str) -> None:
     try:
         ai_short = _summarize_for_history(ai_msg)
         db.add(ChatMessage(
+            user_uid=user_uid,
             session_id=session_id,
             role="human",
             content=user_msg,
         ))
         db.add(ChatMessage(
+            user_uid=user_uid,
             session_id=session_id,
             role="ai",
             content=ai_short,
@@ -162,14 +165,14 @@ def save_message(session_id: str, user_msg: str, ai_msg: str) -> None:
         db.close()
 
 
-def clear_session(session_id: str) -> None:
-    """Xóa toàn bộ lịch sử của một session."""
+def clear_session(user_uid: str, session_id: str) -> None:
+    """Xóa toàn bộ lịch sử của một session theo Firebase UID."""
     db = _get_session()
     if db is None:
         return
     try:
         db.query(ChatMessage)\
-          .filter(ChatMessage.session_id == session_id)\
+          .filter(ChatMessage.user_uid == user_uid, ChatMessage.session_id == session_id)\
           .delete()
         db.commit()
     finally:

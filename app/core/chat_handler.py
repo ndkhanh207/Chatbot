@@ -35,6 +35,7 @@ MAX_INPUT_LENGTH = 500  # Ký tự tối đa
 # ──────────────────────────────────────────────
 def handle_chat(user_message: str, knowledge_base,
                 vector_store,
+                user_uid: str,
                 session_id: str = "default",
                 build_df=None) -> dict:
 
@@ -90,7 +91,7 @@ def handle_chat(user_message: str, knowledge_base,
         category = get_category(msg_lower)
 
         # 2. Lấy lịch sử TRƯỚC khi search (để reformulate)
-        chat_history = get_trimmed_history(session_id)
+        chat_history = get_trimmed_history(user_uid, session_id)
 
         # 3. Reformulate query mơ hồ → rõ ràng trước khi search
         search_query = reformulate_query(user_message_fixed, chat_history)
@@ -108,7 +109,7 @@ def handle_chat(user_message: str, knowledge_base,
                 })
                 reply = response.content
                 clean_reply = word_filter(reply)
-                save_message(session_id, user_message_fixed, clean_reply)
+                save_message(user_uid, session_id, user_message_fixed, clean_reply)
                 return {"chatbot_reply": clean_reply}
 
         # 3.5. Bóc tách ý định bằng LLM sớm để lấy chính xác loại linh kiện khách cần tìm
@@ -189,7 +190,11 @@ def handle_chat(user_message: str, knowledge_base,
             chain = get_basic_search_chain()
         
         if not context or parsed_intent.intent == "none":
-            if parsed_intent.intent != "budget_search": # Giữ nguyên cơ chế thông báo trống của budget
+            if parsed_intent.intent == "none":
+                print(f"⚠️ [ROUTER-FALLBACK] Intent là NONE -> Bỏ qua Vector Search để tránh rò rỉ (leak) Context.")
+                context = ""
+                chain = get_basic_search_chain()
+            elif parsed_intent.intent not in ["budget_search", "compatibility", "suggestion"]: # Chặn lưới cứu vớt mù quáng
                 print(f"⚠️ [ROUTER-FALLBACK] Kích hoạt lưới cứu vớt diện rộng cho intent: {parsed_intent.intent.upper()}")
                 matched_items = hybrid_search(q_clean, category, 4, knowledge_base, vector_store) or []
                 if matched_items:
@@ -197,9 +202,11 @@ def handle_chat(user_message: str, knowledge_base,
                     if not chain:
                         chain = get_basic_search_chain()
                         
-        if not context:
+        if not context and parsed_intent.intent != "none":
             if parsed_intent.intent == "budget_search":
                 return {"chatbot_reply": "Dạ hiện tại cửa hàng chưa có sản phẩm nào trong khoảng giá này ạ."}
+            elif parsed_intent.intent in ["compatibility", "suggestion"]:
+                return {"chatbot_reply": "Dạ thông tin linh kiện anh/chị cung cấp chưa đủ rõ ràng hoặc không có trong kho. Xin vui lòng cung cấp đúng tên linh kiện (VD: CPU Core i5 12400F, Mainboard H610) để em kiểm tra tương thích ạ."}
             return {
                 "chatbot_reply": "Dạ hiện tại em chưa tìm thấy mã sản phẩm này trong kho ạ."
             }
@@ -234,7 +241,7 @@ def handle_chat(user_message: str, knowledge_base,
             response = _format_context_directly(context, parsed_intent.intent)
 
         clean_reply = word_filter(response)
-        save_message(session_id, user_message_fixed, clean_reply)
+        save_message(user_uid, session_id, user_message_fixed, clean_reply)
 
         print(f"[HISTORY SAVED] AI reply lưu vào DB ({len(clean_reply)} ký tự gốc)")
         return {"chatbot_reply": clean_reply}
@@ -242,11 +249,13 @@ def handle_chat(user_message: str, knowledge_base,
     except Exception as e:
         import traceback
         traceback.print_exc()
-        return {"chatbot_reply": f"❌ Lỗi hệ thống: {str(e)}"}
+        print(f"❌ [INTERNAL ERROR - chat_handler] Lỗi xử lý LLM (Non-Stream): {str(e)}")
+        return {"chatbot_reply": "❌ Đã xảy ra lỗi khi xử lý câu trả lời. Vui lòng thử lại sau."}
 
 
 def handle_chat_stream(user_message: str, knowledge_base,
                        vector_store,
+                       user_uid: str,
                        session_id: str = "default",
                        build_df=None,
                        stop_event=None):
@@ -308,7 +317,7 @@ def handle_chat_stream(user_message: str, knowledge_base,
         msg_lower          = normalize_text(user_message_fixed)
         category = get_category(msg_lower)
 
-        chat_history = get_trimmed_history(session_id)
+        chat_history = get_trimmed_history(user_uid, session_id)
         search_query = reformulate_query(user_message_fixed, chat_history)
         q_clean = search_query.replace("\n", " ").strip()
 
@@ -329,7 +338,7 @@ def handle_chat_stream(user_message: str, knowledge_base,
                     full_text += content
                     yield f"data: {json.dumps({'chunk': content}, ensure_ascii=False)}\n\n"
                 clean_reply = word_filter(full_text)
-                save_message(session_id, user_message_fixed, clean_reply)
+                save_message(user_uid, session_id, user_message_fixed, clean_reply)
                 return
 
         parsed_intent = parse_master_intent(search_query)
@@ -395,7 +404,11 @@ def handle_chat_stream(user_message: str, knowledge_base,
             chain = get_basic_search_chain()
         
         if not context or parsed_intent.intent == "none":
-            if parsed_intent.intent != "budget_search":
+            if parsed_intent.intent == "none":
+                print(f"⚠️ [ROUTER-FALLBACK-STREAM] Intent là NONE -> Bỏ qua Vector Search để tránh rò rỉ (leak) Context.")
+                context = ""
+                chain = get_basic_search_chain()
+            elif parsed_intent.intent not in ["budget_search", "compatibility", "suggestion"]:
                 print(f"⚠️ [ROUTER-FALLBACK-STREAM] Kích hoạt lưới cứu vớt diện rộng cho intent: {parsed_intent.intent.upper()}")
                 matched_items = hybrid_search(q_clean, category, 4, knowledge_base, vector_store) or []
                 if matched_items:
@@ -403,9 +416,12 @@ def handle_chat_stream(user_message: str, knowledge_base,
                     if not chain:
                         chain = get_basic_search_chain()
                         
-        if not context:
+        if not context and parsed_intent.intent != "none":
             if parsed_intent.intent == "budget_search":
                 yield f"data: {json.dumps({'chunk': 'Dạ hiện tại cửa hàng chưa có sản phẩm nào trong khoảng giá này ạ.'}, ensure_ascii=False)}\n\n"
+                return
+            elif parsed_intent.intent in ["compatibility", "suggestion"]:
+                yield f"data: {json.dumps({'chunk': 'Dạ thông tin linh kiện anh/chị cung cấp chưa đủ rõ ràng hoặc không có trong kho. Xin vui lòng cung cấp đúng tên linh kiện (VD: CPU Core i5 12400F, Mainboard H610) để em kiểm tra tương thích ạ.'}, ensure_ascii=False)}\n\n"
                 return
             yield f"data: {json.dumps({'chunk': 'Dạ hiện tại em chưa tìm thấy mã sản phẩm này trong kho ạ.'}, ensure_ascii=False)}\n\n"
             return
@@ -435,10 +451,11 @@ def handle_chat_stream(user_message: str, knowledge_base,
             yield f"data: {json.dumps({'chunk': chunk_text}, ensure_ascii=False)}\n\n"
 
         clean_reply = word_filter(full_reply)
-        save_message(session_id, user_message_fixed, clean_reply)
+        save_message(user_uid, session_id, user_message_fixed, clean_reply)
         print(f"[HISTORY SAVED STREAM] AI reply lưu vào DB ({len(clean_reply)} ký tự gốc)")
 
     except Exception as e:
         import traceback
         traceback.print_exc()
-        yield f"data: {json.dumps({'chunk': f'❌ Lỗi hệ thống: {str(e)}'}, ensure_ascii=False)}\n\n"
+        print(f"❌ [INTERNAL ERROR - chat_handler] Lỗi xử lý LLM (Stream): {str(e)}")
+        yield f"data: {json.dumps({'chunk': '❌ Đã xảy ra lỗi khi xử lý câu trả lời. Vui lòng thử lại sau.'}, ensure_ascii=False)}\n\n"
