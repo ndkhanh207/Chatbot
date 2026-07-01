@@ -236,3 +236,7 @@ plan/*.md
 
 # admin sdk
 firebase-adminsdk.json
+
+# get token
+.postman_token.txt
+get_token.py

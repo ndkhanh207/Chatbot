@@ -6,6 +6,9 @@ from app.core.search_engine import hybrid_search
 from app.core.chat_handler import handle_chat
 from app.api.model.chat_models import ChatRequest, ErrorResponse
 
+# Bộ nhớ lưu các Session đang xử lý (Khóa Session chống Spam)
+PROCESSING_SESSIONS = set()
+
 def validate_session_id(session_id: str) -> bool:
     """Chỉ cho phép chữ, số, gạch ngang/dưới, tối đa 64 ký tự."""
     return bool(re.match(r'^[a-zA-Z0-9_\-]{1,64}$', session_id))
@@ -42,7 +45,22 @@ async def process_chat_message(request: Request, data: ChatRequest, user_uid: st
             ).model_dump()
         )
 
+    # 1. KIỂM TRA KHÓA SESSION (Chống Spam / Nhồi Request)
+    if data.session_id in PROCESSING_SESSIONS:
+        return JSONResponse(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            content=ErrorResponse(
+                error="Too Many Requests",
+                message="Bot đang suy nghĩ câu hỏi trước của bạn, vui lòng đợi chút nhé!",
+                code="SESSION_LOCKED"
+            ).model_dump()
+        )
+
+    # Khóa session này lại
+    PROCESSING_SESSIONS.add(data.session_id)
+
     kb = getattr(request.app.state, "knowledge_base", None)
+
     vector_store = getattr(request.app.state, "vector_store", None)
     build_df = getattr(request.app.state, "build_data", None)
 
@@ -58,7 +76,7 @@ async def process_chat_message(request: Request, data: ChatRequest, user_uid: st
                 session_id=data.session_id,
                 build_df=build_df,
             ),
-            timeout=90.0
+            timeout=60.0  #   ép chết tác vụ nếu quá lâu
         )
         return result
     except asyncio.TimeoutError:
@@ -66,7 +84,7 @@ async def process_chat_message(request: Request, data: ChatRequest, user_uid: st
             status_code=status.HTTP_504_GATEWAY_TIMEOUT,
             content=ErrorResponse(
                 error="Timeout Error",
-                message="Hệ thống AI xử lý quá lâu. Vui lòng thử lại sau.",
+                message="Xin lỗi, câu hỏi này hơi phức tạp nên Bot suy nghĩ lâu quá. Bạn có thể hỏi lại ngắn gọn hơn được không?",
                 code="LLM_GENERATION_TIMEOUT"
             ).model_dump()
         )
@@ -80,3 +98,6 @@ async def process_chat_message(request: Request, data: ChatRequest, user_uid: st
                 code="INTERNAL_SERVER_ERROR"
             ).model_dump()
         )
+    finally:
+        # Mở khóa session dù thành công hay thất bại
+        PROCESSING_SESSIONS.discard(data.session_id)

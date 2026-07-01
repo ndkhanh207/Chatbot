@@ -11,7 +11,6 @@ TEST_MODULES = [
     "test/test_compatibility.py",
     "test/test_pc_builder_api.py",
     "test/test_price_check.py",
-    "test/test_cosine_similarity.py",
     "test/test_knowledge_base_api.py",
     "test/test_restful_chat_api.py"
 ]
@@ -27,8 +26,16 @@ def test_master_submodule_execution(test_file):
     # Kích hoạt tiến trình pytest độc lập cho từng module bằng sys.executable
     cmd = [sys.executable, "-m", "pytest", full_path, "-v", "-s"]
     
+    if hasattr(sys.stdout, 'reconfigure'):
+        sys.stdout.reconfigure(encoding='utf-8')
+    if hasattr(sys.stderr, 'reconfigure'):
+        sys.stderr.reconfigure(encoding='utf-8')
+
+    env = os.environ.copy()
+    env["PYTHONIOENCODING"] = "utf-8"
+
     print(f"\n=== [MASTER SUITE] Khởi chạy kiểm thử: {test_file} ===")
-    result = subprocess.run(cmd, cwd=root_dir, capture_output=True, text=True)
+    result = subprocess.run(cmd, cwd=root_dir, capture_output=True, text=True, encoding='utf-8', env=env)
     
     # In toàn bộ log của sub-test ra console
     print(result.stdout)

@@ -1,3 +1,7 @@
+import sys
+import os
+sys.path.insert(0, os.path.dirname(__file__))
+from utils import get_auth_headers
 import pytest
 import requests
 import threading
@@ -19,7 +23,7 @@ def test_chat_stream_and_stop():
 
     def run_stream():
         try:
-            with requests.post(API_STREAM, json=payload, stream=True, timeout=10) as r:
+            with requests.post(API_STREAM, json=payload, stream=True, timeout=10, headers=get_auth_headers()) as r:
                 for chunk in r.iter_content(chunk_size=1024):
                     if chunk:
                         chunks.append(chunk.decode("utf-8", errors="replace"))
@@ -36,7 +40,7 @@ def test_chat_stream_and_stop():
     # Gửi tín hiệu stop
     stop_url = f"{API_STOP_BASE}/{session_id}/stop"
     try:
-        res = requests.post(stop_url, timeout=5)
+        res = requests.post(stop_url, timeout=5, headers=get_auth_headers())
         stop_response["status_code"] = res.status_code
         stop_response["json"] = res.json()
     except Exception as e:

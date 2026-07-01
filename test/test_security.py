@@ -1,3 +1,7 @@
+import sys
+import os
+sys.path.insert(0, os.path.dirname(__file__))
+from utils import get_auth_headers
 import os
 import sys
 import pytest
@@ -63,7 +67,7 @@ def test_security_headers():
     raw_req = "GET /test-knowledge-base"
     raw_res = ""
     try:
-        response = client.get("/test-knowledge-base")
+        response = client.get("/test-knowledge-base", headers=get_auth_headers())
         raw_res = f"HTTP {response.status_code}\n" + "\n".join([f"{k}: {v}" for k, v in response.headers.items() if k.lower() in ['x-frame-options', 'x-content-type-options', 'strict-transport-security']])
         headers = response.headers
         assert headers.get("x-frame-options") == "DENY", "Thiếu X-Frame-Options"
@@ -97,7 +101,7 @@ def test_prompt_injection_silent_drop(mock_process):
     
     try:
         mock_process.return_value = ChatResponse(chatbot_reply="Mock reply")
-        response = client.post("/chat", json=payload_hack)
+        response = client.post("/chat", json=payload_hack, headers=get_auth_headers())
         raw_res = f"HTTP {response.status_code}\n{response.text}"
         assert response.status_code == 201, f"Status code không phải 201, nhận được {response.status_code}"
         
@@ -129,7 +133,7 @@ def test_message_length_limit():
     raw_res = ""
     
     try:
-        response = client.post("/chat", json=payload_long)
+        response = client.post("/chat", json=payload_long, headers=get_auth_headers())
         raw_res = f"HTTP {response.status_code}\n{response.text}"
         assert response.status_code == 422, f"Không trả về 422, nhận được {response.status_code}"
         passed = True
@@ -161,7 +165,7 @@ def test_rate_limiting():
         success_count = 0
         blocked_count = 0
         for _ in range(25):
-            resp = client.post("/chat", json=payload_normal)
+            resp = client.post("/chat", json=payload_normal, headers=get_auth_headers())
             if resp.status_code == 429:
                 blocked_count += 1
                 raw_res = f"HTTP {resp.status_code}\n{resp.text}"

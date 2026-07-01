@@ -1,3 +1,7 @@
+import sys
+import os
+sys.path.insert(0, os.path.dirname(__file__))
+from utils import get_auth_headers
 """
 Test riêng cho tính năng kiểm tra/gợi ý tương thích linh kiện
 (CPU-MAINBOARD, GPU-MAINBOARD, CPU-GPU).
@@ -91,7 +95,7 @@ def _ensure_clean_session(session_id: str):
     if session_id in _cleared_sessions:
         return
     try:
-        requests.delete(f"{SESSION_API_BASE}/{session_id}", timeout=10)
+        requests.delete(f"{SESSION_API_BASE}/{session_id}", timeout=10, headers=get_auth_headers())
     except requests.RequestException:
         pass
     _cleared_sessions.add(session_id)
@@ -117,9 +121,9 @@ def test_compatibility(label, question, expected_keywords):
     _ensure_clean_session(session_id)
 
     payload = {"user_message": question, "session_id": session_id}
-    response = requests.post(API_URL, json=payload, timeout=30)
+    response = requests.post(API_URL, json=payload, timeout=30, headers=get_auth_headers())
 
-    assert response.status_code == 200, (
+    assert response.status_code in (200, 201), (
         f"HTTP {response.status_code} cho câu hỏi '{question}': {response.text}"
     )
 

@@ -1,3 +1,7 @@
+import sys
+import os
+sys.path.insert(0, os.path.dirname(__file__))
+from utils import get_auth_headers
 import os
 import sys
 import json
@@ -53,7 +57,7 @@ def test_kb_search_valid_query():
     params = {"q": "RTX 3080", "top_k": 3}
     resp_body = ""
     try:
-        response = requests.get(API_KB, params=params, timeout=10)
+        response = requests.get(API_KB, params=params, timeout=10, headers=get_auth_headers())
         data = response.json()
         resp_body = json.dumps(data, ensure_ascii=False)
         passed = (response.status_code == 200)
@@ -81,7 +85,7 @@ def test_kb_search_category_filter():
     params = {"q": "RTX", "category": "GPU", "top_k": 2}
     resp_body = ""
     try:
-        response = requests.get(API_KB, params=params, timeout=10)
+        response = requests.get(API_KB, params=params, timeout=10, headers=get_auth_headers())
         data = response.json()
         resp_body = json.dumps(data, ensure_ascii=False)
         passed = (response.status_code == 200)
@@ -109,7 +113,7 @@ def test_kb_search_empty_query():
     params = {"top_k": 5}
     resp_body = ""
     try:
-        response = requests.get(API_KB, params=params, timeout=10)
+        response = requests.get(API_KB, params=params, timeout=10, headers=get_auth_headers())
         data = response.json()
         resp_body = json.dumps(data, ensure_ascii=False)
         passed = (response.status_code == 200)

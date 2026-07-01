@@ -1,3 +1,7 @@
+import sys
+import os
+sys.path.insert(0, os.path.dirname(__file__))
+from utils import get_auth_headers
 from langchain_chroma import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
 from config.config import Config

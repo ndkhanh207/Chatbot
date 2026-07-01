@@ -157,6 +157,11 @@ def chain_invoke(chain, context, format_hint, user_message_fixed, chat_history, 
             raw = response.content
             print(f"[RAW LLM OUTPUT - attempt {attempt}]: {raw}")
 
+            # nếu là giao tiếp thông thường thì không chặn lại
+            if parsed_intent.intent == "none":
+                reply = raw
+                break
+
             if not _is_asking_clarification(raw):
                 # Kiểm tra ảo giác của LLM 1.5B trong luồng compatibility
                 if parsed_intent.intent == "compatibility" and _is_compatibility_hallucination(raw, context):
@@ -249,4 +254,4 @@ def chain_stream(chain, context, format_hint, user_message_fixed, chat_history, 
 
     except Exception as e:
         print(f"[STREAM ERROR]: {e}")
-        yield "\n[Lỗi kết nối khi đang stream]"
+        yield "\n[Lỗi kết nối khi đang stream]"
