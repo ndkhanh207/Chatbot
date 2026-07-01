@@ -129,6 +129,9 @@ def _summarize_for_history(ai_msg: str) -> str:
     Chỉ giữ phần đầu (~200 ký tự) để reformulate LLM không bị
     nhiễm data sản phẩm/giá cả từ reply cũ (ngộ độc history).
     """
+    if "[GỢI Ý BỘ PC TỐI ƯU]" in ai_msg:
+        return ai_msg
+    
     if len(ai_msg) <= MAX_AI_SAVE_LEN:
         return ai_msg
     # Cắt tại ranh giới câu gần nhất (dấu chấm, xuống dòng)
