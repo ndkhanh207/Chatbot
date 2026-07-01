@@ -2,6 +2,7 @@ import re
 from app.memory.memory_store import save_message
 from app.pc_builder.advisor import (
     extract_budget, extract_quantity, extract_brand_filter, extract_component_filter,
+    extract_explicit_build_id,                      # ← thêm
     PURPOSE_KEYWORD_MAP, find_best_build, format_build_context, _format_approx_million,
 )
 
@@ -64,15 +65,25 @@ def handle_pc_build_flow(
     build_df,
     is_build_pc: bool,
 ) -> dict | None:
-    """
-    Xử lý toàn bộ logic liên quan đến PC Build:
-    - Bẻ lái intent (Context-aware follow-up)
-    - Xử lý "rẻ nhất / tốt nhất"
-    - Kế thừa ngân sách, điều chỉnh (+/- 30%), số âm
-    - Xử lý số lượng bộ (tiệm net)
-    - Filter theo brand (Intel/AMD/NVIDIA) và model cụ thể
-    - Báo rõ nếu component không có trong DB
-    """
+
+    # ── ƯU TIÊN CAO NHẤT: User nhắc thẳng mã BuildID cụ thể ──
+    explicit_build_id = extract_explicit_build_id(user_message)
+    if explicit_build_id:
+        if build_df is not None and not build_df.empty:
+            rows = build_df[build_df['BuildID'].str.upper() == explicit_build_id.upper()]
+        else:
+            rows = None
+
+        if rows is not None and not rows.empty:
+            matched_build = rows.iloc[0].to_dict()
+            return _answer_about_specific_build(user_uid, session_id, user_message, matched_build)
+        else:
+            reply = (
+                f"Dạ, em không tìm thấy bộ PC nào có mã **{explicit_build_id}** "
+                "trong hệ thống ạ. Bạn kiểm tra lại mã giúp em nhé!"
+            )
+            save_message(user_uid, session_id, user_message, reply)
+            return {'chatbot_reply': reply}
 
     wants_cheapest = any(kw in msg_lower for kw in CHEAPEST_KEYWORDS)
     wants_best     = any(kw in msg_lower for kw in BEST_KEYWORDS)
@@ -464,3 +475,31 @@ def _answer_about_current_build(user_uid: str, session_id: str, user_message: st
     save_message(user_uid, session_id, user_message, reply)
     return {'chatbot_reply': reply}
 
+def _answer_about_specific_build(user_uid: str, session_id: str, user_message: str, build: dict) -> dict:
+    """Trả lời câu hỏi về một bộ PC cụ thể mà user chỉ định mã Build."""
+    from app.utils.model_utils import get_ollama_model
+    from langchain_ollama import ChatOllama
+    from langchain_core.prompts import ChatPromptTemplate
+
+    build_context = format_build_context(build)
+
+    prompt = ChatPromptTemplate.from_messages([
+        ("system",
+         "Bạn là chuyên gia tư vấn linh kiện máy tính tại cửa hàng. "
+         "Dưới đây là thông số của bộ PC mà khách đang hỏi tới:\n\n{build_context}\n\n"
+         "Hãy trả lời câu hỏi của khách hàng về bộ PC này thật ngắn gọn, chính xác, "
+         "súc tích và thân thiện, dựa hoàn toàn vào thông số trên. "
+         "Không được tự bịa ra thông số không có trong bộ PC."),
+        ("human", "{user_message}")
+    ])
+    llm = ChatOllama(model=get_ollama_model(), temperature=0.1)
+    chain = prompt | llm
+
+    try:
+        res = chain.invoke({"build_context": build_context, "user_message": user_message})
+        reply = res.content.strip()
+    except Exception:
+        reply = build_context + "\n\nBạn có muốn em tư vấn thêm về bộ PC này không ạ?"
+
+    save_message(user_uid, session_id, user_message, reply)
+    return {'chatbot_reply': reply}
