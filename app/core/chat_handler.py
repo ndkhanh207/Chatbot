@@ -4,6 +4,7 @@ Chat endpoint logic — dùng LangChain ChatOllama + ChatPromptTemplate.
 
 import re
 import json
+import traceback
 from app.guard.response_formatter import word_filter, build_range_summary
 from app.guard.clarify import chain_invoke, chain_stream, _format_context_directly, _session_context_cache, _is_clarification_rejection
 from app.core.master_intent import parse_master_intent
@@ -226,6 +227,13 @@ def handle_chat(user_message: str, knowledge_base,
             }
 
         # 7. Lưu context vào cache để dùng khi user từ chối khi bot hỏi lại thông tin
+        # Centralize injecting the original question to help LLM understand context better
+        if format_hint:
+            if "Câu hỏi gốc:" not in format_hint:
+                format_hint += f"\nCâu hỏi gốc: '{user_message}'"
+        else:
+            format_hint = f"Câu hỏi gốc: '{user_message}'"
+
         if context and len(context) > 50 and chain is not None:
             _session_context_cache[session_id] = {
                 "context":     context,
@@ -261,7 +269,6 @@ def handle_chat(user_message: str, knowledge_base,
         return {"chatbot_reply": clean_reply}
 
     except Exception as e:
-        import traceback
         traceback.print_exc()
         print(f"❌ [INTERNAL ERROR - chat_handler] Lỗi xử lý LLM (Non-Stream): {str(e)}")
         return {"chatbot_reply": "Dạ hiện tại hệ thống AI của em đang gặp chút trục trặc hoặc quá tải nên em chưa thể trả lời ngay được. Bạn thông cảm đợi một chút rồi hỏi lại em nhé! 😊"}

@@ -60,6 +60,7 @@ def build_compatibility_context(intent: MasterIntentSchema, knowledge_base, vect
             "về một trong các linh kiện khách nhắc đến. Không thể trích xuất Socket/PCIe để kiểm tra.\n"
             "Nhiệm vụ: Lịch sự báo cho khách biết cửa hàng không có linh kiện này."
         )
+        
     return context
 
 

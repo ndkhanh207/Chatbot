@@ -16,7 +16,7 @@ def normalize_user_message(user_message: str) -> str:
     msg = re.sub(r'\bmainboard\b', 'bo mạch chủ', msg)
     msg = re.sub(r'\bmain\b',      'bo mạch chủ', msg)
     # card 
-    msg = msg.replace(r'\bchip\b',          "cpu")
+    msg = re.sub(r'\bchip\b', 'cpu', msg)
     msg = msg.replace("card đồ họa",   "gpu")
     msg = msg.replace("vga",           "gpu")
     msg = msg.replace("đồ họa",        "gpu")

@@ -322,18 +322,18 @@ def find_best_build(
     user_msg_lower = user_message.lower()
 
     # Tính điểm mục đích
-    filtered = filtered.copy()
-    filtered['_purpose_score'] = filtered['Build_Notes'].fillna('').apply(
+    filtered.loc[:, '_purpose_score'] = filtered['Build_Notes'].fillna('').apply(
         lambda notes: _score_purpose(notes, user_msg_lower)
     )
 
     # Tính điểm gần budget (càng gần budget gốc càng tốt)
-    filtered['_budget_score'] = 1.0 - (
-        (filtered['Total_Price'] - budget).abs() / budget
+    safe_budget = max(budget, 1)
+    filtered.loc[:, '_budget_score'] = 1.0 - (
+        (filtered['Total_Price'] - budget).abs() / safe_budget
     ).clip(upper=1.0)
 
     # Điểm tổng hợp: mục đích ưu tiên cao hơn, budget là tiebreaker
-    filtered['_combined_score'] = (
+    filtered.loc[:, '_combined_score'] = (
         filtered['_purpose_score'] * 2.0 +
         filtered['_budget_score'] * 1.0
     )

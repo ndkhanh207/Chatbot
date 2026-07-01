@@ -166,12 +166,23 @@ def build_range_summary(user_message: str, matched_items: list) -> str:
 # ──────────────────────────────────────────────
 # Hậu xử lý — chặn cụm từ máy móc / lộ reasoning còn sót lại
 # ──────────────────────────────────────────────
+# Compile robot phrases at module level
+_ROBOT_PHRASES_PATTERN = re.compile(
+    r'\b(Trong danh sách sản phẩm|Vì vậy,|Tuy nhiên,|Lý do:|Do đó,|Có thể là)\b', 
+    re.IGNORECASE
+)
+
+_PARAGRAPH_CUTOFF_PATTERN = re.compile(
+    r'\b(giải thích|lý do)\s*:', re.IGNORECASE
+)
+
+_UNSOLICITED_SUGGESTION_PATTERN = re.compile(
+    r'\b(nếu cần thiết kế|để tối ưu hóa|nếu muốn đảm bảo|bạn có thể thay thế|hoặc sử dụng gpu|tóm lại:?)\b', re.IGNORECASE
+)
+
 def word_filter(reply: str) -> str:
     # lọc không giải thích leak system promt
-    paragraph_cutoff_pattern = re.compile(
-        r'\b(giải thích|lý do)\s*:', re.IGNORECASE
-    )
-    m = paragraph_cutoff_pattern.search(reply)
+    m = _PARAGRAPH_CUTOFF_PATTERN.search(reply)
     if m:
         reply = reply[:m.start()]
 
@@ -208,18 +219,10 @@ def word_filter(reply: str) -> str:
     )
     reply = re.sub(meta_commentary_pattern, '', reply, flags=re.IGNORECASE)
 
-    robot_phrases = [
-        "Trong danh sách sản phẩm", "Vì vậy,", "Tuy nhiên,",
-        "Lý do:", "Do đó,", "Có thể là",
-    ]
-    for phrase in robot_phrases:
-        reply = re.compile(re.escape(phrase), re.IGNORECASE).sub('', reply)
+    reply = _ROBOT_PHRASES_PATTERN.sub('', reply)
 
     # Chặn triệt để phần LLM tự ý bịa gợi ý thay thế / hạ cấp linh kiện ngớ ngẩn
-    unsolicited_suggestion_pattern = re.compile(
-        r'\b(nếu cần thiết kế|để tối ưu hóa|nếu muốn đảm bảo|bạn có thể thay thế|hoặc sử dụng gpu|tóm lại:?)\b', re.IGNORECASE
-    )
-    m_sub = unsolicited_suggestion_pattern.search(reply)
+    m_sub = _UNSOLICITED_SUGGESTION_PATTERN.search(reply)
     if m_sub:
         reply = reply[:m_sub.start()].strip()
 

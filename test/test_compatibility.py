@@ -38,8 +38,8 @@ COMPAT_TEST_CASES = [
 
     # ─── GPU - MAINBOARD: PCIe gen lệch → vẫn tương thích, có cảnh báo băng thông ───
     ("compat_gpu_main_pcie_warning",
-     "GPU GIGABYTE GeForce RTX 5070 Ti GAMING 16G lắp với main ASUS B760M-AYW WIFI D4 có sao không",
-     ["tương thích", ("băng thông", "pcie 4.0", "không phát huy")]),
+     "GPU GIGABYTE GeForce RTX 5070 Ti GAMING 16G lắp với main ASUS PRIME H610M-K D4 có sao không",
+     ["tương thích", ("băng thông", "pcie 4.0", "không phát huy", "thấp hơn")]),
 
     # ─── CPU - GPU: tier cân đối → không cảnh báo nghẽn ───
     ("compat_cpu_gpu_balanced",

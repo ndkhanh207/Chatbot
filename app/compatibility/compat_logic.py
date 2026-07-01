@@ -78,7 +78,7 @@ def extract_chipset_code(name: str) -> Optional[str]:
 def chipset_tier(chipset_code: Optional[str]) -> Optional[int]:
     """Tier theo CHỮ CÁI ĐẦU mã chipset (quy ước Intel/AMD), None nếu
     không nhận diện được — không đoán bừa."""
-    return CHIPSET_PREFIX_TIER.get(chipset_code[0].upper()) if chipset_code else None
+    return CHIPSET_PREFIX_TIER.get(chipset_code.strip()[0].upper()) if chipset_code and chipset_code.strip() else None
 
 
 def required_tier_for_tdp(tdp: float) -> int:

@@ -32,7 +32,7 @@ def test_kb(request: Request, q: str = None, category: str = None, top_k: int = 
     summary="Gửi tin nhắn tới AI Chatbot (Non-streaming)",
     description="Xử lý câu hỏi của người dùng, kiểm tra tương thích linh kiện và trả về câu trả lời trọn vẹn theo chuẩn RESTful."
 )
-@limiter.limit("20/minute")
+@limiter.limit("40/minute")
 async def chat_with_bot(request: Request, data: ChatRequest, current_user: dict = Depends(verify_firebase_token)):
     user_uid = current_user["uid"]
     return await process_chat_message(request, data, user_uid)

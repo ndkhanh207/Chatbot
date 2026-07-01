@@ -13,16 +13,38 @@ def build_price_check_context(parsed_intent, category, knowledge_base, vector_st
     Container xử lý riêng cho luồng kiểm tra giá bán của 1 linh kiện cụ thể (price check).
     Trả về: (context, format_hint)
     """
-    query = parsed_intent.target_product if parsed_intent.target_product != "none" else search_query
-    matched_items = hybrid_search(query, category, 3, knowledge_base, vector_store) or []
+    lookup_term = parsed_intent.target_product
+    if not lookup_term or lookup_term.strip().lower() == "none":
+        for fallback in [parsed_intent.cpu, parsed_intent.gpu, parsed_intent.mainboard]:
+            if fallback and fallback.strip().lower() != "none":
+                lookup_term = fallback
+                break
+        else:
+            lookup_term = search_query
+
+    matched_items = hybrid_search(lookup_term, category, 3, knowledge_base, vector_store) or []
     
+    if not matched_items and lookup_term != search_query:
+        matched_items = hybrid_search(search_query, category, 3, knowledge_base, vector_store) or []
+
+    # Re-rank: ưu tiên sản phẩm có tên chứa nhiều token của lookup_term nhất
+    if matched_items and len(matched_items) > 1:
+        lookup_clean = lookup_term.replace('-', ' ').lower()
+        lookup_tokens = [w for w in lookup_clean.split() if len(w) > 1]
+        def name_match_score(item):
+            name = (item.get('tên') or item.get('name') or '').replace('-', ' ').lower()
+            exact_bonus = 100 if lookup_clean in name or all(t in name for t in lookup_tokens) else 0
+            return exact_bonus + sum(1 for t in lookup_tokens if t in name)
+        matched_items.sort(key=name_match_score, reverse=True)
+        matched_items = matched_items[:2]
+        
     context = build_product_context(search_query, category, matched_items, include_all_fields=True)
     
     format_hint = ""
     if matched_items:
         item = matched_items[0]
         price_raw = _get_field(item, "giá", "price", default=0)
-        name_disp = _get_field(item, "tên", "name", default=query)
+        name_disp = _get_field(item, "tên", "name", default=lookup_term)
         price_str = format_currency_vietnam(price_raw)
         format_hint = (
             f"\nThông tin giá chính xác từ kho cho '{name_disp}': {price_str} VNĐ.\n"

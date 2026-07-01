@@ -3,7 +3,29 @@ import threading
 from app.core.llm_chains import get_emergency_chain
 from app.memory.memory_store import get_trimmed_history
 from langchain_core.runnables import RunnableSequence
-_session_context_cache: dict[str, dict] = {}
+from collections import OrderedDict
+
+class LRUCache(OrderedDict):
+    """
+    LRUCache caps memory limit. Keeps 100 newest items. Drops oldest item when full.
+     Stops memory leak from infinite _session_context_cache growth.
+    """
+    def __init__(self, capacity=100):
+        super().__init__()
+        self.capacity = capacity
+
+    def __setitem__(self, key, value):
+        super().__setitem__(key, value)
+        self.move_to_end(key)
+        if len(self) > self.capacity:
+            self.popitem(last=False)
+
+    def __getitem__(self, key):
+        value = super().__getitem__(key)
+        self.move_to_end(key)
+        return value
+
+_session_context_cache = LRUCache(100)
 
 _REJECTION_PATTERNS = [
     "không cần", "cứ tìm", "cứ đưa", "thôi được",

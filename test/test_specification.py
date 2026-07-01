@@ -94,7 +94,7 @@ TEST_CASES = [
     ("main_msi_b850", "Bo mạch chủ MSI B850 PRO B850M-VC này có màu gì vậy shop", ["đen"]),
     ("main_msi_b850", "Con main MSI dòng B850 PRO này bắt buộc chạy RAM thế hệ nào", ["ddr5"]),
     ("main_msi_b850", "Giao tiếp ổ cứng SSD M.2 trên main MSI B850M-VC này chạy tốc độ nào", ["pcie", "4.0", "x4"]),
-    ("main_msi_b850", "Thông số cổng lưu trữ mở rộng SATA của main MSI B850 PRO này như thế nào", ["chưa được cập nhật"]),
+    ("main_msi_b850", "Thông số cổng lưu trữ mở rộng SATA của main MSI B850 PRO này như thế nào", [("không có", "chưa có", "chưa được cập nhật")]),
     ("main_msi_b850", "Khe cắm PCIe chính mở rộng trên chiếc mainboard MSI B850 PRO AM5 này chạy băng thông bao nhiêu", ["pcie", "4.0", "x16"]),
 ]
 

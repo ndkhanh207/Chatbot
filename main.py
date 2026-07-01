@@ -136,7 +136,23 @@ async def lifespan(app: FastAPI):
 
     yield
     print("=== [SYSTEM] Shutting down Server... ===")
-
+    try:
+        # Xóa reference tới Chroma và Embeddings model
+        if hasattr(app.state, "vector_store"):
+            del app.state.vector_store
+        
+        # Ép Python dọn rác bộ nhớ
+        import gc
+        gc.collect()
+        
+        # Ép PyTorch giải phóng VRAM đã cấp phát nhưng không dùng
+        import torch
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            torch.cuda.ipc_collect()
+            print("=== [SYSTEM] Đã dọn dẹp và giải phóng hoàn toàn VRAM (CUDA). ===")
+    except Exception as e:
+        print(f"⚠️ [SYSTEM] Lỗi khi dọn dẹp bộ nhớ: {e}")
 
 app = FastAPI(lifespan=lifespan)
 app.state.limiter = limiter

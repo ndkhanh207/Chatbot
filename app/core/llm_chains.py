@@ -30,7 +30,7 @@ def get_llm() -> ChatOllama:
         request_timeout=85.0,
         top_p=0.05,
         num_predict=2048,
-        # repeat_penalty=1.2,
+        repeat_penalty=1.2,
     )
 
 def get_basic_search_chain() -> RunnableSequence:
