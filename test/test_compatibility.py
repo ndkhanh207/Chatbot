@@ -22,12 +22,12 @@ REPORT_FILE = "test/reports/report_compatibility.md"
 COMPAT_TEST_CASES = [
     # ─── CPU - MAINBOARD: socket khớp + tier đủ → tương thích ───
     ("compat_cpu_main_match",
-     "AMD Ryzen 7 9800X3D có lắp được với main MSI B850 PRO B850M-VC AM5 không",
+     "AMD Ryzen 7 9800X3D có lắp được với main MSI B850 PRO không",
      [("tương thích", "phù hợp", "lắp được", "lắp vừa")]),
 
     # ─── CPU - MAINBOARD: socket KHÔNG khớp (LGA1700 vs AM5) ───
     ("compat_cpu_main_socket_mismatch",
-     "Intel Core i9-14900K có lắp được với main MSI B850 PRO B850M-VC AM5 không",
+     "Intel Core i9-14900K có lắp được với main MSI B850 PRO không",
      [("không tương thích", "không phù hợp", "không lắp được", "khác socket")]),
 
     # ─── CPU - MAINBOARD: socket KHỚP (cả 2 LGA1700) nhưng tier KHÔNG đủ ─── không cấp đủ điện

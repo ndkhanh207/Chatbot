@@ -39,12 +39,17 @@ def resolve_data_path(filename):
 def load_csv(filename, category):
     data_dir = Path(Config.PC_STORE_DATA)
     path = data_dir / filename
-    if not path.exists():
-        raise FileNotFoundError(f'Không tìm thấy file dữ liệu: {path}')
-    
-    df = pd.read_csv(path, keep_default_na=True)
-    df['category'] = category
-    return df
+    try:
+        if not path.exists():
+            print(f"⚠️ [DATA] Cảnh báo: Không tìm thấy file dữ liệu {path}. Đang sử dụng dữ liệu rỗng.")
+            return pd.DataFrame()
+        
+        df = pd.read_csv(path, keep_default_na=True)
+        df['category'] = category
+        return df
+    except Exception as e:
+        print(f"❌ [DATA] Lỗi khi đọc file {filename}: {e}. Đang sử dụng dữ liệu rỗng.")
+        return pd.DataFrame()
 
 def normalize_dataframe(df):
     for column in DEFAULT_INT_COLS:
@@ -151,35 +156,39 @@ def initialize_vector_db():
     This function is used by ``main.py`` during startup and can also be called
     directly from scripts (e.g., ``test_cosine.py``) to ensure the DB is ready.
     """
-    # Prepare embedding function using the same model/device as the rest of the app
-    embeddings = HuggingFaceEmbeddings(
-        model_name=Config.EMBEDDING_MODEL,
-        model_kwargs={"device": Config.EMBEDDING_DEVICE}
-    )
+    try:
+        # Prepare embedding function using the same model/device as the rest of the app
+        embeddings = HuggingFaceEmbeddings(
+            model_name=Config.EMBEDDING_MODEL,
+            model_kwargs={"device": Config.EMBEDDING_DEVICE}
+        )
 
-    # Ensure the persistence directory exists
-    if not os.path.exists(Config.VECTOR_DB_DIR):
-        os.makedirs(Config.VECTOR_DB_DIR, exist_ok=True)
+        # Ensure the persistence directory exists
+        if not os.path.exists(Config.VECTOR_DB_DIR):
+            os.makedirs(Config.VECTOR_DB_DIR, exist_ok=True)
 
-    # If the directory is empty, build the DB from the knowledge base
-    if not os.listdir(Config.VECTOR_DB_DIR):
-        try:
-            print("=== [HỆ THỐNG] Vector DB chưa tồn tại, đang tạo mới... ===\n")
-            kb = load_knowledge_base()
-            docs = convert_to_documents(kb, num_workers=4)
-            
-            print(f"\n🔄 Adding {len(docs)} documents to vector store...")
-            vector_store = Chroma(persist_directory=Config.VECTOR_DB_DIR, embedding_function=embeddings)
-            
-            # Add documents in larger batches for faster indexing
-            batch_size = 500
-            for i in tqdm(range(0, len(docs), batch_size), desc="💾 Indexing documents", unit="batch"):
-                batch = docs[i:i + batch_size]
-                vector_store.add_documents(batch)
+        # If the directory is empty, build the DB from the knowledge base
+        if not os.listdir(Config.VECTOR_DB_DIR):
+            try:
+                print("=== [HỆ THỐNG] Vector DB chưa tồn tại, đang tạo mới... ===\n")
+                kb = load_knowledge_base()
+                docs = convert_to_documents(kb, num_workers=4)
+                
+                print(f"\n🔄 Adding {len(docs)} documents to vector store...")
+                vector_store = Chroma(persist_directory=Config.VECTOR_DB_DIR, embedding_function=embeddings)
+                
+                # Add documents in larger batches for faster indexing
+                batch_size = 500
+                for i in tqdm(range(0, len(docs), batch_size), desc="💾 Indexing documents", unit="batch"):
+                    batch = docs[i:i + batch_size]
+                    vector_store.add_documents(batch)
 
-            print("\n=== [HỆ THỐNG] Đã tạo và lưu Vector DB thành công. ===\n")
-        except Exception as e:
-            print(f"❌ LỖI TẠO VECTOR DB trong data_loader: {e}")
-            raise
-    else:
-        print("=== [HỆ THỐNG] Vector DB đã tồn tại, không tạo lại. ===")
+                print("\n=== [HỆ THỐNG] Đã tạo và lưu Vector DB thành công. ===\n")
+            except Exception as e:
+                print(f"❌ [VECTOR DB] LỖI TẠO VECTOR DB: {e}. Hệ thống sẽ chạy ở chế độ dự phòng không có VectorDB.")
+                return None
+        else:
+            print("=== [HỆ THỐNG] Vector DB đã tồn tại, không tạo lại. ===")
+    except Exception as e:
+        print(f"❌ [VECTOR DB] LỖI KHỞI TẠO HỆ THỐNG NHÚNG (EMBEDDING): {e}. Cảnh báo: Tìm kiếm bằng Vector sẽ không khả dụng.")
+        return None

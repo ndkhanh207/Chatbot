@@ -97,9 +97,12 @@ def handle_chat(user_message: str, knowledge_base,
 
         # Xây dựng search_query thông minh từ các linh kiện LLM đã nhận diện được trong ngữ cảnh
         q_parts = []
+        msg_l_fixed = user_message_fixed.lower()
         for field in [parsed_intent.cpu, parsed_intent.gpu, parsed_intent.mainboard, parsed_intent.target_product]:
             if field and field.lower() != "none":
-                q_parts.append(field)
+                # Chỉ nối thêm nếu từ khoá này chưa tồn tại trong câu gốc (chống duplicate ngớ ngẩn)
+                if field.lower() not in msg_l_fixed:
+                    q_parts.append(field)
                 
         if q_parts:
             search_query = " ".join(q_parts) + " " + user_message_fixed
@@ -261,5 +264,5 @@ def handle_chat(user_message: str, knowledge_base,
         import traceback
         traceback.print_exc()
         print(f"❌ [INTERNAL ERROR - chat_handler] Lỗi xử lý LLM (Non-Stream): {str(e)}")
-        return {"chatbot_reply": "❌ Đã xảy ra lỗi khi xử lý câu trả lời. Vui lòng thử lại sau."}
+        return {"chatbot_reply": "Dạ hiện tại hệ thống AI của em đang gặp chút trục trặc hoặc quá tải nên em chưa thể trả lời ngay được. Bạn thông cảm đợi một chút rồi hỏi lại em nhé! 😊"}
 

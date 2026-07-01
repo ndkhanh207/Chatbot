@@ -97,6 +97,9 @@ def _load_messages(user_uid: str, session_id: str) -> list[BaseMessage]:
             elif row.role == "ai":
                 messages.append(AIMessage(content=row.content))
         return messages
+    except Exception as e:
+        print(f"❌ [MEMORY ERROR] Lỗi khi đọc dữ liệu từ Database: {e}")
+        return []
     finally:
         db.close()
 
@@ -161,6 +164,9 @@ def save_message(user_uid: str, session_id: str, user_msg: str, ai_msg: str) -> 
             content=ai_short,
         ))
         db.commit()
+    except Exception as e:
+        db.rollback()
+        print(f"❌ [MEMORY ERROR] Lỗi khi ghi lịch sử chat vào Database: {e}")
     finally:
         db.close()
 
@@ -175,5 +181,8 @@ def clear_session(user_uid: str, session_id: str) -> None:
           .filter(ChatMessage.user_uid == user_uid, ChatMessage.session_id == session_id)\
           .delete()
         db.commit()
+    except Exception as e:
+        db.rollback()
+        print(f"❌ [MEMORY ERROR] Lỗi khi xóa session trong Database: {e}")
     finally:
         db.close()
