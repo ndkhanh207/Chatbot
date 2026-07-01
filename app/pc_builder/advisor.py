@@ -392,3 +392,13 @@ def format_build_context(build: dict) -> str:
         f"- Tổng cộng : {total_price}\n"
         f"- Phù hợp cho: {build.get('Build_Notes', '')}\n"
     )
+def extract_explicit_build_id(msg: str) -> str | None:
+    """
+    Phát hiện nếu user nhắc thẳng một mã BuildID cụ thể trong câu hỏi.
+    Ví dụ: "bộ pc BUILD-12345 có chơi được aaa không" -> "BUILD-12345"
+            "build-03909 chơi game được không"        -> "BUILD-03909"
+    """
+    m = re.search(r'\bbuild[-_\s]?(\d+)\b', msg, re.IGNORECASE)
+    if m:
+        return f"BUILD-{m.group(1)}"
+    return None
