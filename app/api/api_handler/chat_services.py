@@ -23,7 +23,7 @@ def search_knowledge_base(request: Request, q: str = None, category: str = None,
 
     return hybrid_search(q, category, top_k, kb, vector_store)
 
-async def process_chat_message(request: Request, data: ChatRequest, user_uid: str):
+async def process_chat_message(request: Request, data: ChatRequest, user_uid: str, include_contexts: bool = False):
     """Xử lý toàn bộ logic nghiệp vụ cho Chat API (Validate, chạy LLM, xử lý Timeout 90s)."""
     if not data.user_message.strip():
         return JSONResponse(
@@ -78,6 +78,10 @@ async def process_chat_message(request: Request, data: ChatRequest, user_uid: st
             ),
             timeout=60.0  #   ép chết tác vụ nếu quá lâu
         )
+
+        if not include_contexts and "contexts" in result:
+            del result["contexts"]
+
         return result
     except asyncio.TimeoutError:
         return JSONResponse(

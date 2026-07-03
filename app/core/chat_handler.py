@@ -135,11 +135,16 @@ def handle_chat(user_message: str, knowledge_base,
             tp = parsed_intent.target_product.lower()
             if any(k in tp for k in ['i3', 'i5', 'i7', 'i9', 'ryzen', 'core']):
                 category = 'CPU'
+                print(f"⚠️ [FALLBACK OVERRIDE] category được suy luận thành CPU do LLM trả về none")
             elif any(k in tp for k in ['rtx', 'gtx', 'rx', 'radeon', 'geforce']):
                 category = 'GPU'
+                print(f"⚠️ [FALLBACK OVERRIDE] category được suy luận thành GPU do LLM trả về none")
 
         # ── XỬ LÝ NHÁNH BUILD PC TRỌN BỘ ──
-        is_build_pc = (parsed_intent.intent == "build_pc") or detect_build_pc_intent(user_message_fixed)
+        is_build_pc = (parsed_intent.intent == "build_pc")
+        if not is_build_pc and detect_build_pc_intent(user_message_fixed):
+            print(f"⚠️ [FALLBACK OVERRIDE] LLM nhận diện sai intent ({parsed_intent.intent}), nhưng detect_build_pc_intent (Keyword) ép luồng BUILD_PC.")
+            is_build_pc = True
         pc_build_result = handle_pc_build_flow(
             user_uid=user_uid,
             session_id=session_id,
@@ -266,10 +271,16 @@ def handle_chat(user_message: str, knowledge_base,
         save_message(user_uid, session_id, user_message_fixed, clean_reply)
 
         print(f"[HISTORY SAVED] AI reply lưu vào DB ({len(clean_reply)} ký tự gốc)")
-        return {"chatbot_reply": clean_reply}
+        return {
+            "chatbot_reply": clean_reply,
+            "contexts": [context] if context else []
+        }
 
     except Exception as e:
         traceback.print_exc()
         print(f"❌ [INTERNAL ERROR - chat_handler] Lỗi xử lý LLM (Non-Stream): {str(e)}")
-        return {"chatbot_reply": "Dạ hiện tại hệ thống AI của em đang gặp chút trục trặc hoặc quá tải nên em chưa thể trả lời ngay được. Bạn thông cảm đợi một chút rồi hỏi lại em nhé! 😊"}
+        return {
+            "chatbot_reply": "Dạ hiện tại hệ thống AI của em đang gặp chút trục trặc hoặc quá tải nên em chưa thể trả lời ngay được. Bạn thông cảm đợi một chút rồi hỏi lại em nhé! 😊",
+            "contexts": []
+        }
 

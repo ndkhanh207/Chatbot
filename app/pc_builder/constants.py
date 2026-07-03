@@ -19,6 +19,8 @@ BUILD_PC_TRIGGERS = [
     'bộ pc intel', 'bộ pc amd', 'pc intel', 'pc amd',
     'bộ pc nvidia', 'pc nvidia', 'pc render', 'pc đồ họa', 'pc ai',
     'build 1 máy', 'build một máy', 'build máy', 'máy văn phòng',
+    'nâng cấp', 'upgrade', 'đang có', 'tôi có sẵn', 'tôi đang có', 'tôi có',
+    'build phần còn lại', 'phần còn lại', 'giữ lại', 'tận dụng'
 ]
 
 # ──────────────────────────────────────────────
@@ -29,21 +31,21 @@ PURPOSE_KEYWORD_MAP = {
         'game aaa', 'triple aaa', 'chơi game aaa', '4k/2k',
         'chơi game 4k', 'game nặng', 'chơi game ở 4k',
     ],
-    'game':    ['chơi game', 'game', 'esports', 'gaming', 'stream game'],
+    'game':    ['chơi game', 'game', 'esports', 'gaming', 'stream game', 'valorant', 'cs2', 'counter-strike', 'black myth', 'wukong', 'gta', 'gta vi', 'gta 6', 'fortnite', 'lol', 'league of legends', 'dota', 'pubg', 'minecraft', 'overwatch'],
     'render':  ['render 3d', 'render', 'dựng phim', 'blender', 'maya'],
-    'đồ họa': ['render 3d', 'dựng phim', 'đồ họa kỹ thuật', 'autodesk'],
-    'lập trình': ['lập trình', 'máy ảo', 'data science', 'xử lý dữ liệu', 'code', 'dev'],
+    'đồ họa': ['render 3d', 'dựng phim', 'đồ họa kỹ thuật', 'autodesk', 'photoshop', 'illustrator', 'lightroom'],
+    'lập trình': ['lập trình', 'máy ảo', 'data science', 'xử lý dữ liệu', 'code', 'dev', 'java', 'spring', 'spring boot', 'android studio', 'android', 'kotlin', 'flutter', 'mobile', 'backend', 'frontend', 'node.js', 'react', 'nextjs'],
     'văn phòng': [
         'văn phòng', 'word', 'excel', 'học tập', 'lướt web', 'cơ bản', 'tiệm net', 'quán net',
         'chung chung', 'bình thường', 'giải trí nhẹ', 'không có nhu cầu đặc biệt', 'đa dụng'
     ],
-    # FEATURE: Bổ sung từ khóa AI/Deep Learning
     'ai': [
         'deep learning', 'huấn luyện ai', 'ai', 'machine learning',
         'ml', 'dl', 'train model', 'training model',
         'data science', 'xử lý dữ liệu nặng', 'workstation ai',
         'neural network', 'pytorch', 'tensorflow',
     ],
+    'video editing': ['premiere', 'edit video', 'davinci', 'after effects', 'video editing', '4k edit', 'cut video', 'chỉnh sửa video'],
     'stream':  ['stream game', 'stream đa nền tảng', 'stream'],
 }
 
@@ -58,6 +60,13 @@ GPU_BRAND_MAP = {
     'nvidia': 'Nvidia',
     'amd':    'AMD',
     'intel':  'Intel',  # Intel Arc
+}
+
+PERIPHERAL_BRAND_MAP = {
+    'asus': 'ASUS',
+    'msi': 'MSI',
+    'gigabyte': 'Gigabyte',
+    'corsair': 'Corsair'
 }
 
 # ──────────────────────────────────────────────

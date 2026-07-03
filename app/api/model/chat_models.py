@@ -21,8 +21,12 @@ class ChatRequest(BaseModel):
             
         return v.strip()
 
+class EvalChatRequest(ChatRequest):
+    magic_key: str = Field(..., description="Khóa bí mật dùng cho Rag evaluation")
+
 class ChatResponse(BaseModel):
     chatbot_reply: str = Field(..., description="Nội dung phản hồi chính thức từ AI Chatbot")
+    contexts: list[str] | None = Field(None, description="Danh sách context thô (chỉ trả về khi có magic_key hợp lệ)")
 
 class ErrorResponse(BaseModel):
     error: str = Field(..., description="Phân loại lỗi (VD: Validation Error, Timeout Error, Internal Server Error)")

@@ -111,7 +111,8 @@ def find_best_build(
         if any_brand:
             filtered = filtered[
                 (filtered['CPU_Brand'].str.lower() == any_brand.lower()) |
-                (filtered['GPU_Brand'].str.lower() == any_brand.lower())
+                (filtered['GPU_Brand'].str.lower() == any_brand.lower()) |
+                (filtered['Mainboard_Model'].str.lower().str.contains(any_brand.lower(), na=False))
             ]
         
         if filtered.empty:

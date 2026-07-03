@@ -1,16 +1,18 @@
-from fastapi import APIRouter, Request, status, Depends
+from fastapi import APIRouter, Request, status, Depends, HTTPException
 from app.utils.unit_converter import convert_unit
 from app.memory.memory_store import clear_session
 
 # Import từ các module đã tách bạch
-from app.api.model.chat_models import ChatRequest, ChatResponse, ErrorResponse
+from app.api.model.chat_models import ChatRequest, EvalChatRequest, ChatResponse, ErrorResponse
 from app.api.api_handler.chat_services import (
     process_chat_message,
     search_knowledge_base,
 )
 from app.api.auth.firebase_auth import verify_firebase_token
+import os
 from app.guard.security import limiter
 
+from tests.utils import RAG_MAGIC_KEY
 router = APIRouter()
 
 @router.get('/test-knowledge-base')
@@ -35,7 +37,24 @@ def test_kb(request: Request, q: str = None, category: str = None, top_k: int = 
 @limiter.limit("40/minute")
 async def chat_with_bot(request: Request, data: ChatRequest, current_user: dict = Depends(verify_firebase_token)):
     user_uid = current_user["uid"]
-    return await process_chat_message(request, data, user_uid)
+    return await process_chat_message(request, data, user_uid, include_contexts=False)
+
+@router.post(
+    "/chat/eval",
+    status_code=status.HTTP_201_CREATED,
+    response_model=ChatResponse,
+    summary="Đánh giá RAG (Trả về cả Context thô)",
+    description="Endpoint dành riêng cho Ragas evaluation, yêu cầu cung cấp magic_key."
+)
+@limiter.limit("40/minute")
+async def chat_with_bot_eval(request: Request, data: EvalChatRequest, current_user: dict = Depends(verify_firebase_token)):
+    if data.magic_key != RAG_MAGIC_KEY:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Forbidden: Invalid Magic Key"
+        )
+    user_uid = current_user["uid"]
+    return await process_chat_message(request, data, user_uid, include_contexts=True)
 
 @router.get("/calculate")
 def calculate(value: float, from_unit: str, to_unit: str):

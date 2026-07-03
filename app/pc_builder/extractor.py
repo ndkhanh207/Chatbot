@@ -1,6 +1,5 @@
-# app/pc_builder/extractor.py
 import re
-from .constants import BUILD_PC_TRIGGERS, PURPOSE_KEYWORD_MAP
+from .constants import BUILD_PC_TRIGGERS, PURPOSE_KEYWORD_MAP, PERIPHERAL_BRAND_MAP
 
 # ──────────────────────────────────────────────
 # Intent detection
@@ -91,6 +90,11 @@ def extract_brand_filter(msg: str) -> dict:
             gpu_brand = 'NVIDIA'
         elif re.search(r'\bamd\b', msg_lower):
             any_brand = 'AMD'
+        else:
+            for kw, brand in PERIPHERAL_BRAND_MAP.items():
+                if kw in msg_lower:
+                    any_brand = brand
+                    break
 
     return {'cpu_brand': cpu_brand, 'gpu_brand': gpu_brand, 'any_brand': any_brand}
 
@@ -114,6 +118,25 @@ def extract_component_filter(msg: str) -> dict:
         cpu_model = cpu_m.group(0).strip()
 
     return {'gpu_model': gpu_model, 'cpu_model': cpu_model}
+
+def extract_upgrade_component(msg: str) -> dict:
+    """
+    Phát hiện kịch bản nâng cấp: user đã có sẵn CPU/GPU và muốn build phần còn lại.
+    Trả về: {'cpu_model': str, 'gpu_model': str, 'is_upgrade': bool}
+    """
+    msg_lower = msg.lower()
+    is_upgrade = bool(re.search(r'\b(đã có|đang có|có sẵn|tôi có|giữ lại|tận dụng)\b', msg_lower))
+    
+    if not is_upgrade:
+        return {'cpu_model': None, 'gpu_model': None, 'is_upgrade': False}
+        
+    comp = extract_component_filter(msg)
+    return {
+        'cpu_model': comp.get('cpu_model'),
+        'gpu_model': comp.get('gpu_model'),
+        'is_upgrade': True
+    }
+
 
 def extract_explicit_build_id(msg: str) -> str | None:
     """

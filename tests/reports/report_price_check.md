@@ -1,0 +1,21 @@
+# 🚀 Báo Cáo Kiểm Thử Tích Hợp API - Price Check & Calculation
+
+Kiểm thử tự động phản hồi của LLM Vi-Qwen 1.5B qua API HTTP POST `/chat` cho các luồng giá.
+
+## 📊 Thống kê chung
+- **Tổng số Test Cases:** 7
+- **Thành công (PASS):** 7
+- **Thất bại (FAIL):** 0
+- **Tỷ lệ thành công:** 100.0%
+
+## 📋 Chi tiết kết quả kiểm thử
+
+| # | Nhóm / Label | Session ID | Câu hỏi (Input) | Phản hồi từ Bot (LLM Reply) | Từ khóa mong đợi | Kết quả |
+|---|---|---|---|---|---|---|
+| 1 | `price_check_rtx4080` | `test_price_price_check_rtx4080` | RTX 4080 Super giá bao nhiêu | Dạ, Giá của GPU MSI SUPRIM X GeForce RTX 4080 SUPER 16GB GDDR6X Silver / Black là 43.175.760 VNĐ. Đây là mức giá chính xác từ kho và đã được báo cáo cho khách hàng. | `vnđ, giá hoặc khoảng, rtx 4080 super` | ✅ PASS |
+| 2 | `price_check_cpu` | `test_price_price_check_cpu` | cho mình xin giá i9 14900k | Dạ, giá của CPU Intel Core i9-14900K tại cửa hàng là 10.536.000 VNĐ. Đây là phiên bản có cấu hình cao nhất trong danh sách linh kiện hiện có. Bạn có cần thêm thông tin gì khác không? | `vnđ, giá hoặc khoảng, 10.536.000 hoặc 10 triệu hoặc 10,5 hoặc 10.536` | ✅ PASS |
+| 3 | `price_check_mainboard` | `test_price_price_check_mainboard` | main msi b850 pro giá sao shop | Dạ, Chắc chắn, đây là danh sách các linh kiện được cung cấp:<br>[MAINBOARD] MSI B850 PRO B850VCI WIFI6E AM5 DDR5 ATX \| Giá: 6.452.944 VNĐ<br>[MAINBOARD] MSI B850 PRO B850M-VI WiFi6E AM5 DDR5 MicroATX \| Giá: 4.992.114 VNĐ<br>[MAINBOARD] ASRock B850 Pro RS Wifi AM5 DDR5 ATX \| Giá: 5.268.737 VNĐ | `vnđ, giá hoặc khoảng, msi b850 pro` | ✅ PASS |
+| 4 | `price_calc_multiple` | `test_price_price_calc_multiple` | i5 12400f với main h610m tổng bao nhiêu tiền | Dạ, CPU của bạn là Intel Core i5-12400F và mainboard (bo mạch chủ) là Gigabyte H610M S2H V2 LGA1700 DDR5 Micro ATX. Tổng giá dự kiến cho 2 linh kiện này là 7.665.406 VNĐ. | `tổng, vnđ, i5 12400f hoặc i5-12400f hoặc i5, h610m` | ✅ PASS |
+| 5 | `price_budget_search` | `test_price_price_budget_search` | tư vấn em con card đồ họa tầm 8 triệu | Dạ, bạn cung cấp, tôi có thể đề xuất một số GPU phù hợp với yêu cầu của bạn:<br><br>1. **Asus TUF Gaming OC Radeon RX 6500 XT 4GB GDDR6 Black**<br>Giá: 3.839.760 VNĐ<br><br>2. **Sapphire PULSE OC Radeon RX 6500 XT 8GB GDDR6 Black / Red**<br>Giá: 5.862.240 VNĐ<br><br>Cả hai sản phẩm này đều có giá khoảng 8 triệu và đáp ứng yêu cầu của bạn về GPU tầm trung.<br><br>Nếu bạn cần thêm bất kỳ thông tin hoặc tư vấn nào khác, hãy cho tôi biết! | `vnđ, lọc hoặc dưới hoặc khoảng, rtx hoặc gtx hoặc rx hoặc vga hoặc card` | ✅ PASS |
+| 6 | `price_top_cheapest` | `test_price_price_top_cheapest` | top 5 CPU giá rẻ nhất dưới 5 triệu | Dạ, Dưới đây là danh sách top 5 CPU có giá rẻ nhất dưới 5 triệu:<br><br>1. Intel Core Ultra 5 235 (Giá: 6.359.760 VNĐ)<br>2. Intel Core Ultra 5 245K (Giá: 6.239.760 VNĐ)<br>3. AMD Ryzen 5 5600G (Giá: 3.239.760 VNĐ)<br>4. Intel Core Ultra 5 225 (Giá: 5.112.240 VNĐ)<br>5. Intel Core Ultra 5 245 (Giá: 6.239.760 VNĐ)<br><br>Lưu ý rằng giá cả có thể thay đổi tùy theo thời điểm bạn đọc câu trả lời này. | `vnđ, rẻ hoặc thấp, core, ryzen` | ✅ PASS |
+| 7 | `price_top_expensive` | `test_price_price_top_expensive` | top 3 card đồ họa đắt nhất từ 10 đến 20 triệu | Dạ, đây là top 3 GPU đắt nhất trong khoảng giá từ 10 đến 20 triệu:<br><br>1. **MSI GAMING TRIO CLASSIC Radeon RX 7900 XT 20GB GDDR6 Black / Silver**<br>Giá: 23.924.880 VNĐ<br>Xung cơ bản: 2000.0 MHz<br>Xung boost: 2400.0 MHz<br>TDP: 315 W<br>Màu: BLACK<br>Chipset: Radeon RX 7900 XT<br>Bộ nhớ: 20 GB<br>Chiều dài: 325.0 mm<br>Interface: PCIe x16<br><br>2. **Asus RX7900XT-20G Radeon RX 7900 XT 20GB GDDR6 Black**<br>Giá: 23.924.880 VNĐ<br>Xung cơ bản: 2000.0 MHz<br>Xung boost: 2400.0 MHz<br>TDP: 300 W<br>Màu: BLACK<br>Chipset: Radeon RX 7900 XT<br>Bộ nhớ: 20 GB<br>Chiều dài: 276.0 mm<br>Interface: PCIe x16<br><br>3. **NVIDIA GeForce RTX 2060 SUPER Founders Edition 8GB GDDR6**<br>Giá: 13.800.000 VNĐ<br>Xung cơ bản: 1470.0 MHz<br>Xung boost: 1650.0 MHz<br>TDP: 175 W<br>Màu: GREY<br>Chipset: GeForce RTX 2060 SUPER<br>Bộ nhớ: 8 GB<br>Chiều dài: 229.0 mm<br>Interface: PCIe 3.0 x16<br><br>Đây là những GPU có giá cao nhất trong khoảng từ 10 đến 20 triệu VNĐ, . | `vnđ, đắt hoặc cao, rtx hoặc rx` | ✅ PASS |
