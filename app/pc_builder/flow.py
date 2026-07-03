@@ -60,12 +60,17 @@ def handle_pc_build_flow(
         asked_budget = ai_asked_for_budget(chat_history)
         asked_purpose = ai_asked_for_purpose(chat_history)
         
-        if asked_budget and (extract_budget(user_message) is not None or wants_cheapest):
-            is_build_pc = True
+        if asked_budget:
+            # Dùng context_aware=True để nhận dạng cả số thuần (VD: "20" → 20 triệu)
+            budget_from_ctx = extract_budget(user_message, context_aware=True)
+            if budget_from_ctx is not None or wants_cheapest:
+                is_build_pc = True
         elif asked_purpose:
             has_purpose = any(kw in msg_lower for kw_list in PURPOSE_KEYWORD_MAP.values() for kw in kw_list)
             if has_purpose:
                 is_build_pc = True
+    else:
+        budget_from_ctx = None  # không ở trong context asked_budget
 
     # Context-Aware Follow-up chung: đang trong mạch tư vấn PC
     if not is_build_pc and chat_history:
@@ -74,7 +79,7 @@ def handle_pc_build_flow(
         for msg in reversed(chat_history):
             if getattr(msg, 'type', '') == 'ai':
                 ai_msg_count += 1
-                if '[GỢI Ý BỘ PC TỐI ƯU]' in msg.content:
+                if '- Mã bộ: BUILD-' in msg.content:
                     recent_build_context = True
                     break
                 if ai_msg_count >= 3:
@@ -142,7 +147,13 @@ def handle_pc_build_flow(
         budget = inherited_budget
 
     else:
-        budget = extract_budget(user_message)
+        # Kiểm tra xem AI vừa hỏi ngân sách không → dùng context_aware nếu có
+        # Nếu đã có budget_from_ctx từ bước context-aware phía trên, tái sử dụng luôn
+        if 'budget_from_ctx' in dir() and budget_from_ctx is not None:  # type: ignore
+            budget = budget_from_ctx
+        else:
+            _asked_budget = ai_asked_for_budget(chat_history) if chat_history else False
+            budget = extract_budget(user_message, context_aware=_asked_budget)
         if budget is None:
             budget = inherit_budget(msg_lower, chat_history)
 
@@ -312,10 +323,32 @@ def handle_pc_build_flow(
 
 def _build_reply(user_uid: str, session_id: str, user_message: str, best_build: dict,
                  budget: int, purpose_str: str, quantity: int = 1) -> dict:
-    """Build và lưu câu trả lời hoàn chỉnh."""
-    reply = format_reply_body(best_build, budget, purpose_str, quantity)
-    save_message(user_uid, session_id, user_message, reply)
-    return {'chatbot_reply': reply}
+    """Build và lưu câu trả lời hoàn chỉnh bằng cách gọi LLM."""
+    from app.utils.model_utils import get_ollama_model
+    from langchain_ollama import ChatOllama
+    from app.templates.prompt_templates import PC_BUILD_TEMPLATE
+    
+    # 1. Lấy dữ liệu thô (context)
+    build_context = format_reply_body(best_build, budget, purpose_str, quantity)
+    
+    # 2. Gọi LLM sinh câu trả lời tự nhiên
+    llm = ChatOllama(model=get_ollama_model(), temperature=0.3)
+    prompt = PC_BUILD_TEMPLATE.invoke({
+        "user_message": user_message,
+        "build_context": build_context
+    })
+    
+    try:
+        response = llm.invoke(prompt)
+        # Ép cứng mã bộ lên đầu câu trả lời một cách tự nhiên
+        build_id = best_build.get('BuildID', 'N/A')
+        final_reply = f"- Mã bộ: {build_id}\n\n" + response.content
+    except Exception as e:
+        print(f"❌ [LLM Error] Lỗi khi sinh reply: {e}")
+        final_reply = f"- Mã bộ: {best_build.get('BuildID', 'N/A')}\n" + build_context
+        
+    save_message(user_uid, session_id, user_message, final_reply)
+    return {'chatbot_reply': final_reply}
 
 def _answer_about_current_build(user_uid: str, session_id: str, user_message: str, chat_history: list) -> dict:
     """Trả lời các câu hỏi follow-up về bộ PC vừa được build bằng cách gửi thẳng context cho LLM."""
@@ -325,12 +358,12 @@ def _answer_about_current_build(user_uid: str, session_id: str, user_message: st
     
     last_build_msg = ""
     for msg in reversed(chat_history):
-        if getattr(msg, 'type', '') == 'ai' and '[GỢI Ý BỘ PC TỐI ƯU]' in msg.content:
+        if getattr(msg, 'type', '') == 'ai' and '- Mã bộ: BUILD-' in msg.content:
             last_build_msg = msg.content
             break
             
     prompt = ChatPromptTemplate.from_messages([
-        ("system", "Bạn là chuyên gia tư vấn linh kiện máy tính tại cửa hàng. Dưới đây là thông số bộ PC mà bạn vừa gợi ý cho khách:\n\n{last_build}\n\nHãy trả lời câu hỏi của khách hàng về bộ PC này một cách thật ngắn gọn, chính xác, súc tích và thân thiện. Không được tự bịa ra thông số không có trong bộ PC."),
+        ("system", "Bạn là chuyên gia tư vấn máy tính. Dưới đây là thông số bộ PC bạn vừa gợi ý:\n\n{last_build}\n\nHãy trả lời câu hỏi của khách về bộ PC này thật ngắn gọn, chính xác.\n[QUY TẮC BẮT BUỘC]\n1. TUYỆT ĐỐI KHÔNG in lại 'Mã bộ' trong câu trả lời.\n2. Bắt đầu câu trả lời trực tiếp vào vấn đề.\n3. Không bịa thông số không có trong bộ PC."),
         ("human", "{user_message}")
     ])
     llm = ChatOllama(model=get_ollama_model(), temperature=0.1)

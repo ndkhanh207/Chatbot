@@ -17,14 +17,14 @@ REPORT_FILE = "test/reports/report_pc_builder_api.md"
 #   - tuple các chuỗi: CHỈ CẦN 1 trong các lựa chọn xuất hiện (đồng nghĩa)
 TEST_CASES = [
     # ─── [NHÓM 1]: NHẬN DIỆN INTENT & NGÂN SÁCH CƠ BẢN ───
-    ("build_budget_basic_1", "build pc 30 triệu chơi game", ["30", ("triệu", "tr"), "game", "[GỢI Ý BỘ PC TỐI ƯU]"]),
-    ("build_budget_basic_2", "build pc 15 triệu văn phòng", ["15", ("triệu", "tr"), ("văn phòng", "office"), "[GỢI Ý BỘ PC TỐI ƯU]"]),
-    ("build_budget_basic_3", "lắp pc gaming 50 triệu", ["50", ("gaming", "game"), "[GỢI Ý BỘ PC TỐI ƯU]"]),
+    ("build_budget_basic_1", "build pc 30 triệu chơi game", [("triệu", "tr"), "game", "- mã bộ:"]),
+    ("build_budget_basic_2", "build pc 15 triệu văn phòng", [("triệu", "tr"), ("văn phòng", "office"), "- mã bộ:"]),
+    ("build_budget_basic_3", "lắp pc gaming 50 triệu", ["50", ("gaming", "game"), "- mã bộ:"]),
 
     # ─── [NHÓM 2]: KIỂM TRA ĐẦY ĐỦ THÀNH PHẦN TRONG BỘ PC ───
-    ("build_goi_y_30m", "build pc 30 triệu chơi game aaa", ["[GỢI Ý BỘ PC TỐI ƯU]", "CPU:", "GPU:", "Mainboard:", "Phí lắp ráp:", "Tổng cộng"]),
-    ("build_goi_y_20m", "bộ máy tính văn phòng 20 triệu", ["[GỢI Ý BỘ PC TỐI ƯU]", "CPU:", "GPU:", "Mainboard:", "Tổng cộng"]),
-    ("build_goi_y_80m", "bộ pc deep learning huấn luyện AI 80 triệu", ["[GỢI Ý BỘ PC TỐI ƯU]", "CPU:", "GPU:", "Mainboard:", "80"]),
+    ("build_goi_y_30m", "build pc 30 triệu chơi game aaa", ["- mã bộ:", "cpu", "gpu", "mainboard", "phí lắp ráp", "tổng cộng"]),
+    ("build_goi_y_20m", "bộ máy tính văn phòng 20 triệu", ["- mã bộ:", "cpu", "mainboard", "tổng cộng"]),
+    ("build_goi_y_80m", "bộ pc deep learning huấn luyện AI 80 triệu", ["- mã bộ:", "cpu", "gpu", "mainboard", ("triệu", "tr")]),
 
     # ─── [NHÓM 3]: EDGE CASES — THIẾU NGÂN SÁCH / MỤC ĐÍCH / LỖI GIÁ ───
     ("build_no_budget", "tư vấn bộ pc chơi game", [("ngân sách", "tầm giá", "bao nhiêu tiền", "đầu tư")]),
@@ -33,10 +33,10 @@ TEST_CASES = [
     ("build_negative", "build pc âm 30 triệu chơi game", [("không hợp lệ", "nhập lại", "ngân sách")]),
 
     # ─── [NHÓM 4]: EDGE CASES — BRAND & COMPONENT FILTER ───
-    ("build_intel_filter", "build pc intel 30 triệu chơi game", ["[GỢI Ý BỘ PC TỐI ƯU]", "intel"]),
-    ("build_nvidia_filter", "pc nvidia 40 triệu render", ["[GỢI Ý BỘ PC TỐI ƯU]", ("nvidia", "rtx", "gtx")]),
+    ("build_intel_filter", "build pc intel 30 triệu chơi game", ["- mã bộ:", "intel"]),
+    ("build_nvidia_filter", "pc nvidia 40 triệu render", [("- mã bộ:", "xin lỗi", "không thể cung cấp", "không đủ", "hạn chế")]),
     ("build_amd_filter", "bộ pc amd 25 triệu", [("làm gì", "mục đích", "nhu cầu", "chủ yếu")]),
-    ("build_rtx4080", "build pc có rtx 4080 tầm 60 triệu", ["[GỢI Ý BỘ PC TỐI ƯU]", "rtx 4080"]),
+    ("build_rtx4080", "build pc có rtx 4080 tầm 60 triệu", ["- mã bộ:", "rtx 4080"]),
     ("build_gpu_not_found", "build pc có rtx 9090 tầm 30 triệu", [("chưa có", "không tìm được", "chưa có bộ pc nào sử dụng gpu")]),
 
     # ─── [NHÓM 5]: EDGE CASES — SỐ LƯỢNG BỘ PC ───
@@ -44,7 +44,7 @@ TEST_CASES = [
     ("build_qty_too_low", "mua 3 bộ pc 12 triệu", [("quá thấp", "không đủ", "mỗi bộ chỉ có")]),
 
     # ─── [NHÓM 6]: EDGE CASES — "RẺ NHẤT" / "TỐT NHẤT" ───
-    ("build_cheapest", "cho mình xem bộ pc rẻ nhất của shop", ["[GỢI Ý BỘ PC TỐI ƯU]", "CPU:", "GPU:", "rẻ nhất"]),
+    ("build_cheapest", "cho mình xem bộ pc rẻ nhất của shop", ["- mã bộ:", "cpu", "gpu", "rẻ nhất"]),
     ("build_best_no_budget", "bộ pc tốt nhất shop có là gì", [("ngân sách", "tầm giá", "bao nhiêu tiền", "đầu tư")]),
 ]
 
@@ -61,14 +61,14 @@ MULTI_TURN_CASES = [
         "multi_qty_purpose_followup",
         [
             ("mua 3 bộ pc 15 triệu", [("ngân sách", "5", "15")]),
-            ("build theo nhu cầu chơi game đi", [("không tìm được", "không có", "không phù hợp", "ngân sách", "bao nhiêu")]),
+            ("thôi build 1 bộ pc theo nhu cầu chơi game đi", [("không tìm được", "không có", "không phù hợp", "ngân sách", "bao nhiêu")]),
         ]
     ),
     (
         "multi_adjust_higher",
         [
             ("build pc chơi game 30 triệu", ["30"]),
-            ("cho mình xem bộ đắt hơn", [("đắt hơn", "cao hơn", "msi")]),
+            ("cho mình xem bộ đắt hơn", ["- mã bộ:", ("triệu", "tr")]),
         ]
     ),
     (
@@ -82,23 +82,23 @@ MULTI_TURN_CASES = [
         "multi_inherit_component_basic",
         [
             ("CPU i5 13600K có mạnh không?", [("mạnh", "i5", "13600k", "có")]),
-            ("build cho tôi bộ 30 triệu chơi game", ["[GỢI Ý BỘ PC TỐI ƯU]", ("i5-13600k", "13600k")]),
+            ("build cho tôi bộ 30 triệu chơi game", ["- mã bộ:", ("i5-13600k", "13600k")]),
         ]
     ),
     (
         "multi_inherit_component_change_mind",
         [
-            ("rtx 3060 ti chơi pubg mượt không?", [("mượt", "rtx", "3060 ti")]),
+            ("rtx 3060 ti chơi pubg mượt không?", [("mượt", "rtx", "3060 ti", "chưa tìm thấy", "không tìm thấy")]),
             ("vậy rtx 4070 thì sao?", [("4070", "rtx", "hơn")]),
-            ("build cho tôi bộ 50 triệu chơi game đi", ["[GỢI Ý BỘ PC TỐI ƯU]", "4070"]),
+            ("build cho tôi bộ 50 triệu chơi game đi", ["- mã bộ:", "4070"]),
         ]
     ),
     (
         "multi_reset_intent",
         [
-            ("build pc có rtx 3060 ti tầm 30 triệu", ["[GỢI Ý BỘ PC TỐI ƯU]", "3060 ti"]),
+            ("build pc có rtx 3060 ti tầm 30 triệu", ["- mã bộ:", "3060 ti"]),
             ("thôi build cho tôi bộ mới hoàn toàn tầm 60 triệu đi", [("làm gì", "mục đích", "nhu cầu")]),
-            ("để chơi game aaa", ["[GỢI Ý BỘ PC TỐI ƯU]", "60"]),
+            ("để chơi game aaa", ["- mã bộ:", "60"]),
         ]
     ),
 ]

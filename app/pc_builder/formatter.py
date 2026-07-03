@@ -27,7 +27,6 @@ def format_build_context(build: dict) -> str:
     assembly_fee = format_approx_million(build.get('Assembly_Fee', 0))
 
     return (
-        f"[GỢI Ý BỘ PC TỐI ƯU]\n"
         f"- Mã bộ     : {build.get('BuildID', 'N/A')}\n"
         f"- CPU       : {build.get('CPU_Model', 'N/A')} | Giá: {cpu_price}\n"
         f"- GPU       : {build.get('GPU_Model', 'N/A')} | Giá: {gpu_price}\n"
@@ -54,14 +53,14 @@ def format_reply_body(best_build: dict, budget: int, purpose_str: str, quantity:
                if quantity > 1 else ""
 
     return (
-        f"[GỢI Ý BỘ PC TỐI ƯU]\n"
-        f"- Mã bộ: {build_id}\n\n"
-        f"Xin chào, tôi rất vui được giúp bạn xây dựng một máy tính để {purpose_str} hiệu quả! "
-        f"Bạn muốn sử dụng bộ PC này cho {purpose_str} và có ngân sách khoảng {budget_str}.\n\n"
-        f"Bộ PC của bạn sẽ bao gồm các thành phần sau:\n\n"
-        f"- CPU: {cpu_model}, giá {cpu_price}\n"
-        f"- GPU: {gpu_model}, giá {gpu_price}\n"
-        f"- Mainboard: {main_model}, giá {main_price}\n"
-        f"- Phí lắp ráp: {assembly_price}\n\n"
-        f"Tổng cộng chi phí cho các thành phần này là khoảng {total_price}{qty_note}."
+        f"- Mã bộ: {build_id}\n"
+        f"- Ngân sách khách muốn: {budget_str}\n"
+        f"- Mục đích sử dụng: {purpose_str}\n"
+        f"- Số lượng: {quantity} bộ\n"
+        f"--- CHI TIẾT BỘ PC ---\n"
+        f"- CPU: {cpu_model} (Giá: {cpu_price})\n"
+        f"- GPU: {gpu_model} (Giá: {gpu_price})\n"
+        f"- Mainboard: {main_model} (Giá: {main_price})\n"
+        f"- Phí lắp ráp: {assembly_price}\n"
+        f"- Tổng cộng: {total_price}{qty_note}"
     )

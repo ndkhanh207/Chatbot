@@ -1,17 +1,34 @@
 # app/pc_builder/history_utils.py
 import re
-from .constants import AI_BUDGET_KEYWORDS, AI_PURPOSE_KEYWORDS, AI_BUILD_CONTEXT_KEYWORDS
+from .constants import (
+    AI_BUDGET_KEYWORDS, AI_BUDGET_REGEX_PATTERNS,
+    AI_PURPOSE_KEYWORDS, AI_BUILD_CONTEXT_KEYWORDS
+)
 from .extractor import extract_budget, extract_quantity, extract_component_filter, extract_brand_filter, is_reset_intent
 
+# ──────────────────────────────────────────────
+# Compiled regex (biên dịch 1 lần, dùng nhiều lần — hiệu năng tốt hơn)
+# ──────────────────────────────────────────────
+_BUDGET_REGEX_COMPILED = [re.compile(p, re.IGNORECASE) for p in AI_BUDGET_REGEX_PATTERNS]
+
+
 def ai_asked_for_budget(chat_history: list) -> bool:
-    """Kiểm tra xem AI vừa hỏi ngân sách ở tin nhắn trước không."""
+    """
+    Kiểm tra xem AI vừa hỏi ngân sách ở tin nhắn trước không.
+    Dùng kết hợp: keyword cứng (nhanh) + regex (linh hoạt).
+    """
     for msg in reversed(chat_history):
         if getattr(msg, 'type', '') == 'ai':
             content = msg.content.lower()
+            # Kiểm tra keyword cứng trước (nhanh)
             if any(kw in content for kw in AI_BUDGET_KEYWORDS):
+                return True
+            # Kiểm tra regex (bắt thêm biến thể tự nhiên)
+            if any(rx.search(content) for rx in _BUDGET_REGEX_COMPILED):
                 return True
             return False  # Tin AI gần nhất không hỏi budget
     return False
+
 
 def ai_asked_for_purpose(chat_history: list) -> bool:
     """Kiểm tra xem AI vừa hỏi nhu cầu/mục đích ở tin nhắn trước không."""
@@ -22,6 +39,7 @@ def ai_asked_for_purpose(chat_history: list) -> bool:
                 return True
             return False
     return False
+
 
 def is_build_context_active(chat_history: list) -> bool:
     """Kiểm tra xem lịch sử gần nhất có đang trong luồng tư vấn PC không."""
@@ -38,6 +56,7 @@ def is_build_context_active(chat_history: list) -> bool:
                 break
     return False
 
+
 def get_exclude_builds(chat_history: list) -> list:
     """Lấy danh sách BuildID đã gợi ý để tránh lặp."""
     exclude = []
@@ -49,6 +68,7 @@ def get_exclude_builds(chat_history: list) -> list:
                     exclude.append(m.group(1).strip())
     return exclude
 
+
 def get_last_build_id(chat_history: list) -> str | None:
     """Lấy BuildID gần nhất từ lịch sử."""
     for msg in reversed(chat_history):
@@ -58,10 +78,16 @@ def get_last_build_id(chat_history: list) -> str | None:
                 return m.group(1).strip()
     return None
 
+
 def inherit_budget(msg_lower: str, chat_history: list) -> int | None:
-    """Kế thừa ngân sách từ lịch sử, điều chỉnh nếu có từ khóa cao/thấp hơn."""
+    """
+    Kế thừa ngân sách từ lịch sử, điều chỉnh nếu có từ khóa cao/thấp hơn.
+    Tìm trong cả tin nhắn human (user nhập) và AI (AI đã đề cập).
+    """
     if not chat_history:
         return None
+
+    # Ưu tiên tìm trong lịch sử người dùng nhập (chính xác hơn)
     for msg in reversed(chat_history):
         if getattr(msg, 'type', '') == 'human':
             hist_budget = extract_budget(msg.content)
@@ -72,6 +98,7 @@ def inherit_budget(msg_lower: str, chat_history: list) -> int | None:
                     return int(hist_budget * 0.7)
                 return hist_budget
     return None
+
 
 def inherit_quantity(chat_history: list) -> int:
     """Kế thừa số lượng bộ PC từ lịch sử chat."""
@@ -84,6 +111,7 @@ def inherit_quantity(chat_history: list) -> int:
                 return hist_qty
     return 1
 
+
 def inherit_component_intent(chat_history: list, max_turns: int = 4) -> dict:
     """
     Quét N lượt chat gần nhất để kế thừa linh kiện user đã nhắc tới.
@@ -91,7 +119,7 @@ def inherit_component_intent(chat_history: list, max_turns: int = 4) -> dict:
     """
     result = {'cpu_model': None, 'gpu_model': None, 'cpu_brand': None, 'gpu_brand': None}
     turns_scanned = 0
-    
+
     for msg in reversed(chat_history):
         if getattr(msg, 'type', '') == 'human':
             if is_reset_intent(msg.content):
@@ -101,7 +129,7 @@ def inherit_component_intent(chat_history: list, max_turns: int = 4) -> dict:
             turns_scanned += 1
             comp = extract_component_filter(msg.content)
             brand = extract_brand_filter(msg.content)
-            
+
             # Lấy lần đầu tìm thấy mỗi loại (gần nhất = ưu tiên nhất)
             if not result['cpu_model'] and comp.get('cpu_model'):
                 result['cpu_model'] = comp['cpu_model']
@@ -111,5 +139,5 @@ def inherit_component_intent(chat_history: list, max_turns: int = 4) -> dict:
                 result['cpu_brand'] = brand['cpu_brand']
             if not result['gpu_brand'] and brand.get('gpu_brand'):
                 result['gpu_brand'] = brand['gpu_brand']
-    
+
     return result

@@ -138,8 +138,15 @@ def handle_chat(user_message: str, knowledge_base,
             elif any(k in tp for k in ['rtx', 'gtx', 'rx', 'radeon', 'geforce']):
                 category = 'GPU'
 
-        # ── XỬ LÝ NHÁNH BUILD PC TRỌN BỘ ──
-        is_build_pc = (parsed_intent.intent == "build_pc") or detect_build_pc_intent(user_message_fixed)
+        # ── Xử LÝ NÁNH BUILD PC TRỌN BỘ ──
+        # Ưu tiên: tin tưởng LLM (Pass-1). Regex đóng vai trò safety-net.
+        is_build_pc = (parsed_intent.intent == "build_pc")
+        if not is_build_pc and parsed_intent.intent in ["none", "budget_search", "general_search"]:
+            # LLM bị nhầm lẫn giữa budget_search và build_pc, dùng regex cứu vớt
+            is_build_pc = detect_build_pc_intent(user_message_fixed)
+            if is_build_pc:
+                print(f"[BUILD-PC-SAFETY-NET] Regex bắt được build intent mà LLM bỏ sót (Intent LLM cũ: {parsed_intent.intent}).")
+                parsed_intent.intent = "build_pc"  # Ghi đè intent để luồng chạy đúng
         pc_build_result = handle_pc_build_flow(
             user_uid=user_uid,
             session_id=session_id,
