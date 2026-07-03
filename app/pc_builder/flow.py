@@ -19,9 +19,7 @@ from .formatter import format_approx_million, format_build_context, format_reply
 from app.pc_builder.advisor import find_best_build
 from app.pc_builder.preset.presets import get_preset_reply
 
-
 BUILD_REPLY_HEADER = '[GỢI Ý BỘ PC TỐI ƯU]'
-
 
 def _apply_upgrade_to_filter(component_filter: dict, upgrade_info: dict) -> None:
     """Merge upgrade CPU/GPU vào component_filter nếu chưa có."""
@@ -30,7 +28,6 @@ def _apply_upgrade_to_filter(component_filter: dict, upgrade_info: dict) -> None
             component_filter['cpu_model'] = upgrade_info['cpu_model']
         if upgrade_info.get('gpu_model') and not component_filter.get('gpu_model'):
             component_filter['gpu_model'] = upgrade_info['gpu_model']
-
 
 def _resolve_context_override(is_build_pc: bool, user_message: str, user_message_fixed: str, msg_lower: str, chat_history: list) -> tuple[bool, bool, dict | None]:
     """
@@ -43,6 +40,7 @@ def _resolve_context_override(is_build_pc: bool, user_message: str, user_message
     asked_budget = ai_asked_for_budget(chat_history)
     asked_purpose = ai_asked_for_purpose(chat_history)
     wants_cheapest = any(kw in msg_lower for kw in CHEAPEST_KEYWORDS)
+    wants_best = any(kw in msg_lower for kw in BEST_KEYWORDS)
     has_purpose = any(kw in msg_lower for kw_list in PURPOSE_KEYWORD_MAP.values() for kw in kw_list)
     
     if asked_budget and (extract_budget(user_message) is not None or wants_cheapest):
@@ -68,8 +66,7 @@ def _resolve_context_override(is_build_pc: bool, user_message: str, user_message
         budget_current = extract_budget(user_message_fixed)
         is_component_query = re.search(r'\b(cpu|gpu|bo mạch chủ|mainboard|card|chip|vga)\b', msg_lower)
         wants_adjustment = bool(re.search(r'\b(cao hơn|đắt hơn|mạnh hơn|ngon hơn|thấp hơn|rẻ hơn|yếu hơn|bèo hơn)\b', msg_lower))
-        wants_best = any(kw in msg_lower for kw in BEST_KEYWORDS)
-
+        
         is_question_about_current_build = bool(re.search(
             r'\b(bộ này|cái này|nó có|máy này|cấu hình này|bộ đó|cái đó|có thể.*không|chơi được không|có.*không)\b',
             msg_lower
@@ -82,7 +79,6 @@ def _resolve_context_override(is_build_pc: bool, user_message: str, user_message
             is_build_pc = True
 
     return is_build_pc, is_question_about_current_build, None
-
 
 def _resolve_budget_and_quantity(budget: int | None, user_message: str, msg_lower: str, quantity: int, wants_best: bool, chat_history: list, user_uid: str, session_id: str, build_df) -> tuple[int | None, int, dict | None]:
     """Extract and validate budget and quantity. Returns (budget, quantity, early_reply)"""
@@ -142,7 +138,6 @@ def _resolve_budget_and_quantity(budget: int | None, user_message: str, msg_lowe
 
     return budget, quantity, None
 
-
 def _resolve_filters(search_query: str, user_message: str, chat_history: list) -> tuple[dict, dict, bool, dict, bool]:
     """Returns (brand_filter, component_filter, has_specific_component, upgrade_info, is_upgrade_scenario)"""
     brand_filter = extract_brand_filter(search_query)
@@ -169,7 +164,6 @@ def _resolve_filters(search_query: str, user_message: str, chat_history: list) -
 
     has_specific_component = bool(component_filter.get('cpu_model') or component_filter.get('gpu_model'))
     return brand_filter, component_filter, has_specific_component, upgrade_info, is_upgrade_scenario
-
 
 def _handle_missing_info(budget: int | None, has_final_purpose: bool, has_specific_component: bool, component_filter: dict, combined_message_for_purpose: str, user_uid: str, session_id: str, user_message: str) -> dict | None:
     if budget is None and not has_final_purpose and not has_specific_component:
@@ -207,7 +201,6 @@ def _handle_missing_info(budget: int | None, has_final_purpose: bool, has_specif
 
     return None
 
-
 def _build_not_found_reply(component_filter: dict, brand_filter: dict, user_uid: str, session_id: str, user_message: str) -> dict:
     comp = component_filter or {}
     gpu_req = comp.get('gpu_model')
@@ -239,26 +232,16 @@ def _build_not_found_reply(component_filter: dict, brand_filter: dict, user_uid:
     save_message(user_uid, session_id, user_message, reply)
     return {'chatbot_reply': reply}
 
-
 def _invoke_llm_for_build(system_prompt: str, user_message: str, fallback_reply: str) -> str:
     """Shared LLM invocation for build Q&A."""
-    from app.utils.model_utils import get_ollama_model
-    from langchain_ollama import ChatOllama
-    from langchain_core.prompts import ChatPromptTemplate
-    
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", system_prompt),
-        ("human", "{user_message}")
-    ])
-    llm = ChatOllama(model=get_ollama_model(), temperature=0.1)
-    chain = prompt | llm
+    from app.core.llm_chains import get_pc_build_qa_chain
     
     try:
-        res = chain.invoke({"user_message": user_message})
+        chain = get_pc_build_qa_chain()
+        res = chain.invoke({"system_prompt": system_prompt, "user_message": user_message})
         return res.content.strip()
     except Exception:
         return fallback_reply
-
 
 def handle_pc_build_flow(
     user_uid: str,
@@ -380,7 +363,6 @@ def handle_pc_build_flow(
     purpose_str = infer_purpose(combined_message_for_purpose)
     return _build_reply(user_uid, session_id, user_message, best_build, budget, purpose_str, quantity, is_upgrade_scenario, upgrade_info)
 
-
 def _build_reply(user_uid: str, session_id: str, user_message: str, best_build: dict,
                  budget: int, purpose_str: str, quantity: int = 1, is_upgrade_scenario: bool = False, upgrade_info: dict = None) -> dict:
     """Build và lưu câu trả lời hoàn chỉnh."""
@@ -392,7 +374,6 @@ def _build_reply(user_uid: str, session_id: str, user_message: str, best_build: 
         
     save_message(user_uid, session_id, user_message, reply)
     return {'chatbot_reply': reply}
-
 
 def _answer_about_current_build(user_uid: str, session_id: str, user_message: str, chat_history: list) -> dict:
     last_build_msg = ""
@@ -411,7 +392,6 @@ def _answer_about_current_build(user_uid: str, session_id: str, user_message: st
     reply = _invoke_llm_for_build(system_prompt, user_message, fallback)
     save_message(user_uid, session_id, user_message, reply)
     return {'chatbot_reply': reply}
-
 
 def _answer_about_specific_build(user_uid: str, session_id: str, user_message: str, build: dict) -> dict:
     build_context = format_build_context(build)

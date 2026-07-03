@@ -54,7 +54,7 @@ class MasterIntentSchema(BaseModel):
     
     target_product: str = Field(
         default="none", 
-        description="Tên linh kiện chính khi ý định là 'specification' hoặc 'price_check' (VD: 'i9 14900k', 'rtx 4060'). Mặc định 'none'."
+        description="Tên linh kiện chính khi ý định là 'specification' hoặc 'price_check' (VD: 'i9 14900k'). Nếu câu hỏi hiện tại thiếu chủ ngữ, HÃY TÌM TRONG LỊCH SỬ HỘI THOẠI để điền vào. Mặc định 'none'."
     )
     spec_detail: str = Field(
         default="none", 
@@ -63,7 +63,10 @@ class MasterIntentSchema(BaseModel):
     cpu: str = Field(default="none", description="LUÔN trích xuất tên CPU nếu có trong câu (VD: 'i9 14900k', 'ryzen 7 9800x3d'). Mặc định 'none'.")
     mainboard: str = Field(default="none", description="LUÔN trích xuất tên Mainboard nếu có trong câu (VD: 'asus b760m', 'msi b850 pro'). Mặc định 'none'.")
     gpu: str = Field(default="none", description="LUÔN trích xuất tên GPU/VGA nếu có trong câu (VD: 'rtx 5070 ti', 'rx 7900 xt'). Mặc định 'none'.")
-    budget_amount: int = 0        # (VD: 4000000)
+    budget_amount: int = Field(
+        default=0,
+        description="Ngân sách khách yêu cầu. BẮT BUỘC CHUYỂN ĐỔI thành số nguyên VNĐ. Ví dụ: '20 triệu', '20tr', 'tầm 20' → 20000000. '500k' → 500000. Mặc định 0."
+    )
     category: str = Field(
         default="none",
         description="Loại linh kiện khách đang tìm kiếm (vd: 'gpu', 'mainboard', 'cpu'). CẤM TUYỆT ĐỐI điền 'price', 'giá', 'specification'."

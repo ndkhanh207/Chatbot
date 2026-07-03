@@ -141,10 +141,15 @@ def handle_chat(user_message: str, knowledge_base,
                 print(f"⚠️ [FALLBACK OVERRIDE] category được suy luận thành GPU do LLM trả về none")
 
         # ── XỬ LÝ NHÁNH BUILD PC TRỌN BỘ ──
+        # Ưu tiên: tin tưởng LLM (Pass-1). Regex đóng vai trò safety-net.
         is_build_pc = (parsed_intent.intent == "build_pc")
-        if not is_build_pc and detect_build_pc_intent(user_message_fixed):
-            print(f"⚠️ [FALLBACK OVERRIDE] LLM nhận diện sai intent ({parsed_intent.intent}), nhưng detect_build_pc_intent (Keyword) ép luồng BUILD_PC.")
-            is_build_pc = True
+        if not is_build_pc and parsed_intent.intent in ["none", "budget_search", "general_search"]:
+            # LLM bị nhầm lẫn giữa budget_search và build_pc, dùng regex cứu vớt
+            is_build_pc = detect_build_pc_intent(user_message_fixed)
+            if is_build_pc:
+                print(f"[BUILD-PC-SAFETY-NET] Regex bắt được build intent mà LLM bỏ sót (Intent LLM cũ: {parsed_intent.intent}).")
+                parsed_intent.intent = "build_pc"  # Ghi đè intent để luồng chạy đúng
+
         pc_build_result = handle_pc_build_flow(
             user_uid=user_uid,
             session_id=session_id,

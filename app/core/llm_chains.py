@@ -1,5 +1,6 @@
 from langchain_ollama import ChatOllama
 from langchain_core.runnables import RunnableSequence
+from langchain_core.prompts import ChatPromptTemplate
 
 from app.utils.model_utils import get_ollama_model
 from app.templates.prompt_templates import (
@@ -11,7 +12,7 @@ _basic_search_chain: RunnableSequence | None = None
 _compat_check_chain = None
 _suggestion_chain = None
 _emergency_chain     = None  
-
+_pc_build_qa_chain = None
 
 def _get_strict_llm() -> ChatOllama:
     """LLM dùng riêng cho emergency — temperature=0 để tuyệt đối tuân lệnh."""
@@ -70,3 +71,14 @@ def get_emergency_chain() -> RunnableSequence:
     if _emergency_chain is None:
         _emergency_chain = EMERGENCY_LIST_TEMPLATE | _get_strict_llm()
     return _emergency_chain
+
+def get_pc_build_qa_chain() -> RunnableSequence:
+    """Chain dùng riêng cho trả lời câu hỏi phụ về bộ PC đã gợi ý."""
+    global _pc_build_qa_chain
+    if _pc_build_qa_chain is None:
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", "{system_prompt}"),
+            ("human", "{user_message}")
+        ])
+        _pc_build_qa_chain = prompt | ChatOllama(model=get_ollama_model(), temperature=0.1)
+    return _pc_build_qa_chain
