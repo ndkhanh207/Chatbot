@@ -140,7 +140,11 @@ def handle_chat(user_message: str, knowledge_base,
                 category = 'GPU'
                 print(f"⚠️ [FALLBACK OVERRIDE] category được suy luận thành GPU do LLM trả về none")
 
+<<<<<<< HEAD
         # ── XỬ LÝ NHÁNH BUILD PC TRỌN BỘ ──
+=======
+        # ── Xử LÝ NÁNH BUILD PC TRỌN BỘ ──
+>>>>>>> 2cdb56110efd274802492860d1be51a2c821cf14
         # Ưu tiên: tin tưởng LLM (Pass-1). Regex đóng vai trò safety-net.
         is_build_pc = (parsed_intent.intent == "build_pc")
         if not is_build_pc and parsed_intent.intent in ["none", "budget_search", "general_search"]:

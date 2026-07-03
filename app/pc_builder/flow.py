@@ -43,7 +43,7 @@ def _resolve_context_override(is_build_pc: bool, user_message: str, user_message
     wants_best = any(kw in msg_lower for kw in BEST_KEYWORDS)
     has_purpose = any(kw in msg_lower for kw_list in PURPOSE_KEYWORD_MAP.values() for kw in kw_list)
     
-    if asked_budget and (extract_budget(user_message) is not None or wants_cheapest):
+    if asked_budget and (extract_budget(user_message, context_aware=True) is not None or wants_cheapest):
         print(f"⚠️ [FALLBACK OVERRIDE] Context-Aware: Khách đang trả lời ngân sách, ép luồng BUILD_PC.")
         is_build_pc = True
     elif asked_purpose and has_purpose:
@@ -55,7 +55,7 @@ def _resolve_context_override(is_build_pc: bool, user_message: str, user_message
     for msg in reversed(chat_history):
         if getattr(msg, 'type', '') == 'ai':
             ai_msg_count += 1
-            if BUILD_REPLY_HEADER in msg.content:
+            if BUILD_REPLY_HEADER in msg.content or '- Mã bộ: BUILD-' in msg.content:
                 recent_build_context = True
                 break
             if ai_msg_count >= 3:
@@ -309,7 +309,8 @@ def handle_pc_build_flow(
         return _build_reply(user_uid, session_id, user_message, best_build, 0, 'rẻ nhất', 1, is_upgrade_scenario, upgrade_info)
 
     # 4. Resolve budget and quantity
-    budget = extract_budget(user_message)
+    _asked_budget = ai_asked_for_budget(chat_history) if chat_history else False
+    budget = extract_budget(user_message, context_aware=_asked_budget)
     quantity = extract_quantity(user_message)
     
     budget, quantity, early_reply = _resolve_budget_and_quantity(
@@ -365,27 +366,55 @@ def handle_pc_build_flow(
 
 def _build_reply(user_uid: str, session_id: str, user_message: str, best_build: dict,
                  budget: int, purpose_str: str, quantity: int = 1, is_upgrade_scenario: bool = False, upgrade_info: dict = None) -> dict:
-    """Build và lưu câu trả lời hoàn chỉnh."""
-    reply = format_reply_body(best_build, budget, purpose_str, quantity)
+    """Build và lưu câu trả lời hoàn chỉnh bằng cách gọi LLM."""
+    from app.utils.model_utils import get_ollama_model
+    from langchain_ollama import ChatOllama
+    from app.templates.prompt_templates import PC_BUILD_TEMPLATE
     
-    if is_upgrade_scenario and upgrade_info:
-        comp_name = upgrade_info.get('cpu_model') or upgrade_info.get('gpu_model') or "linh kiện của bạn"
-        reply = f"Em ghi nhận bạn đã có sẵn {comp_name.upper()}. Bộ PC gợi ý dưới đây sẽ tận dụng linh kiện này để build phần còn lại cho bạn:\n\n" + reply
+    # 1. Lấy dữ liệu thô (context)
+    build_context = format_reply_body(best_build, budget, purpose_str, quantity)
+    
+    # 2. Gọi LLM sinh câu trả lời tự nhiên
+    llm = ChatOllama(model=get_ollama_model(), temperature=0.3)
+    prompt = PC_BUILD_TEMPLATE.invoke({
+        "user_message": user_message,
+        "build_context": build_context
+    })
+    
+    try:
+        response = llm.invoke(prompt)
+        # Ép cứng mã bộ lên đầu câu trả lời một cách tự nhiên
+        build_id = best_build.get('BuildID', 'N/A')
+        final_reply = f"- Mã bộ: {build_id}\n\n" + response.content
         
-    save_message(user_uid, session_id, user_message, reply)
-    return {'chatbot_reply': reply}
+        if is_upgrade_scenario and upgrade_info:
+            comp_name = upgrade_info.get('cpu_model') or upgrade_info.get('gpu_model') or "linh kiện của bạn"
+            final_reply = f"Em ghi nhận bạn đã có sẵn {comp_name.upper()}. Bộ PC gợi ý dưới đây sẽ tận dụng linh kiện này để build phần còn lại cho bạn:\n\n" + final_reply
+    except Exception as e:
+        print(f"❌ [LLM Error] Lỗi khi sinh reply: {e}")
+        final_reply = f"- Mã bộ: {best_build.get('BuildID', 'N/A')}\n" + build_context
+        
+        if is_upgrade_scenario and upgrade_info:
+            comp_name = upgrade_info.get('cpu_model') or upgrade_info.get('gpu_model') or "linh kiện của bạn"
+            final_reply = f"Em ghi nhận bạn đã có sẵn {comp_name.upper()}. Bộ PC gợi ý dưới đây sẽ tận dụng linh kiện này để build phần còn lại cho bạn:\n\n" + final_reply
+        
+    save_message(user_uid, session_id, user_message, final_reply)
+    return {'chatbot_reply': final_reply}
 
 def _answer_about_current_build(user_uid: str, session_id: str, user_message: str, chat_history: list) -> dict:
     last_build_msg = ""
     for msg in reversed(chat_history):
-        if getattr(msg, 'type', '') == 'ai' and BUILD_REPLY_HEADER in msg.content:
+        if getattr(msg, 'type', '') == 'ai' and ('- Mã bộ: BUILD-' in msg.content or BUILD_REPLY_HEADER in msg.content):
             last_build_msg = msg.content
             break
             
     system_prompt = (
         "Bạn là chuyên gia tư vấn linh kiện máy tính tại cửa hàng. Dưới đây là thông số bộ PC mà bạn vừa gợi ý cho khách:\n\n"
         f"{last_build_msg}\n\n"
-        "Hãy trả lời câu hỏi của khách hàng về bộ PC này một cách thật ngắn gọn, chính xác, súc tích và thân thiện. Không được tự bịa ra thông số không có trong bộ PC."
+        "Hãy trả lời câu hỏi của khách hàng về bộ PC này một cách thật ngắn gọn, chính xác, súc tích và thân thiện. Không được tự bịa ra thông số không có trong bộ PC.\n"
+        "[QUY TẮC BẮT BUỘC]\n"
+        "1. TUYỆT ĐỐI KHÔNG in lại 'Mã bộ' trong câu trả lời.\n"
+        "2. Bắt đầu câu trả lời trực tiếp vào vấn đề."
     )
     fallback = "Dạ bộ PC này rất ngon trong tầm giá ạ! Bạn có muốn lấy bộ này luôn không?"
     
@@ -399,7 +428,10 @@ def _answer_about_specific_build(user_uid: str, session_id: str, user_message: s
     system_prompt = (
         "Bạn là chuyên gia tư vấn linh kiện máy tính tại cửa hàng. Dưới đây là thông số của bộ PC mà khách đang hỏi tới:\n\n"
         f"{build_context}\n\n"
-        "Hãy trả lời câu hỏi của khách hàng về bộ PC này thật ngắn gọn, chính xác, súc tích và thân thiện, dựa hoàn toàn vào thông số trên. Không được tự bịa ra thông số không có trong bộ PC."
+        "Hãy trả lời câu hỏi của khách hàng về bộ PC này thật ngắn gọn, chính xác, súc tích và thân thiện, dựa hoàn toàn vào thông số trên. Không được tự bịa ra thông số không có trong bộ PC.\n"
+        "[QUY TẮC BẮT BUỘC]\n"
+        "1. TUYỆT ĐỐI KHÔNG in lại 'Mã bộ' trong câu trả lời.\n"
+        "2. Bắt đầu câu trả lời trực tiếp vào vấn đề."
     )
     fallback = build_context + "\n\nBạn có muốn em tư vấn thêm về bộ PC này không ạ?"
 
