@@ -16,7 +16,7 @@ import pandas as pd
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from app.api.chat import router as chat_router
 
-REPORT_FILE = "test/reports/report_restful_chat_api.md"
+REPORT_FILE = "tests/reports/report_restful_chat_api.md"
 
 # Khởi tạo TestClient nội bộ để kiểm thử API độc lập không cần chạy Uvicorn
 mock_app = FastAPI()

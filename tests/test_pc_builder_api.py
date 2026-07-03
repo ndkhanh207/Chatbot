@@ -9,7 +9,7 @@ import os
 
 API_URL = "http://127.0.0.1:8000/chat"
 SESSION_API_BASE = "http://127.0.0.1:8000/sessions"
-REPORT_FILE = "test/reports/report_pc_builder_api.md"
+REPORT_FILE = "tests/reports/report_pc_builder_api.md"
 
 # expected_keywords: mỗi phần tử là 1 "yêu cầu" — TẤT CẢ yêu cầu phải thỏa.
 # Một yêu cầu là:
@@ -34,10 +34,12 @@ TEST_CASES = [
 
     # ─── [NHÓM 4]: EDGE CASES — BRAND & COMPONENT FILTER ───
     ("build_intel_filter", "build pc intel 30 triệu chơi game", ["- mã bộ:", "intel"]),
-    ("build_nvidia_filter", "pc nvidia 40 triệu render", [("- mã bộ:", "xin lỗi", "không thể cung cấp", "không đủ", "hạn chế")]),
+    ("build_nvidia_filter", "build bộ pc nvidia 40 triệu render", [("- mã bộ:", "xin lỗi", "không thể cung cấp", "không đủ", "hạn chế")]),
     ("build_amd_filter", "bộ pc amd 25 triệu", [("làm gì", "mục đích", "nhu cầu", "chủ yếu")]),
     ("build_rtx4080", "build pc có rtx 4080 tầm 60 triệu", ["- mã bộ:", "rtx 4080"]),
     ("build_gpu_not_found", "build pc có rtx 9090 tầm 30 triệu", [("chưa có", "không tìm được", "chưa có bộ pc nào sử dụng gpu")]),
+    ("build_upgrade_scenario", "tôi đang có sẵn rtx 4070, hãy build phần còn lại với 15 triệu chơi game", [("- mã bộ:", "ghi nhận", "có sẵn", "rtx 4070")]),
+    ("build_explicit_id", "cho mình hỏi bộ build-11 có ngon không", ["build-11", ("ngon", "tốt", "mạnh", "phù hợp", "cấu hình", "dạ")]),
 
     # ─── [NHÓM 5]: EDGE CASES — SỐ LƯỢNG BỘ PC ───
     ("build_qty_10", "mua 10 bộ pc tiệm net 200 triệu", [("10", "10 bộ"), ("tổng", "chi phí")]),
@@ -89,7 +91,7 @@ MULTI_TURN_CASES = [
         "multi_inherit_component_change_mind",
         [
             ("rtx 3060 ti chơi pubg mượt không?", [("mượt", "rtx", "3060 ti", "chưa tìm thấy", "không tìm thấy")]),
-            ("vậy rtx 4070 thì sao?", [("4070", "rtx", "hơn")]),
+            ("vậy rtx 4070 thì sao?", [("4070", "rtx", "hơn", "chưa tìm thấy", "không tìm thấy", "kho")]),
             ("build cho tôi bộ 50 triệu chơi game đi", ["- mã bộ:", "4070"]),
         ]
     ),
@@ -99,6 +101,13 @@ MULTI_TURN_CASES = [
             ("build pc có rtx 3060 ti tầm 30 triệu", ["- mã bộ:", "3060 ti"]),
             ("thôi build cho tôi bộ mới hoàn toàn tầm 60 triệu đi", [("làm gì", "mục đích", "nhu cầu")]),
             ("để chơi game aaa", ["- mã bộ:", "60"]),
+        ]
+    ),
+    (
+        "multi_question_current_build",
+        [
+            ("build pc 30 triệu chơi game", ["- mã bộ:", "30"]),
+            ("cấu hình này chơi mượt gta 5 không shop?", [("mượt", "chơi được", "tốt", "thoải mái", "chiến", "khá", "ổn")]),
         ]
     ),
 ]

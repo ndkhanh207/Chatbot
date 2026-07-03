@@ -12,7 +12,7 @@ import requests
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 API_KB = "http://127.0.0.1:8000/test-knowledge-base"
-REPORT_FILE = "test/reports/report_knowledge_base_api.md"
+REPORT_FILE = "tests/reports/report_knowledge_base_api.md"
 
 _test_results = []
 

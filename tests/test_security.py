@@ -15,7 +15,7 @@ from app.api.model.chat_models import ChatResponse
 
 client = TestClient(app)
 
-REPORT_FILE = "test/reports/report_security.md"
+REPORT_FILE = "tests/reports/report_security.md"
 _test_results = []
 
 def _update_md_report():

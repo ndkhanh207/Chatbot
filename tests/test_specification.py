@@ -9,7 +9,7 @@ import os
 
 API_URL = "http://127.0.0.1:8000/chat"
 SESSION_API_BASE = "http://127.0.0.1:8000/sessions"
-REPORT_FILE = "test/reports/report_specification.md"
+REPORT_FILE = "tests/reports/report_specification.md"
 
 # expected_keywords: mỗi phần tử là 1 "yêu cầu" — TẤT CẢ yêu cầu phải thỏa.
 # Một yêu cầu là:

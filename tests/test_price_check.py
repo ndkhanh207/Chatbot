@@ -9,7 +9,7 @@ import os
 
 API_URL = "http://127.0.0.1:8000/chat"
 SESSION_API_BASE = "http://127.0.0.1:8000/sessions"
-REPORT_FILE = "test/reports/report_price_check.md"
+REPORT_FILE = "tests/reports/report_price_check.md"
 
 TEST_CASES = [
     # ─── [NHÓM 1]: KIỂM TRA GIÁ 1 LINH KIỆN CỤ THỂ (price_check) ───
