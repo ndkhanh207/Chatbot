@@ -100,6 +100,7 @@ def get_preset_reply(budget: int, purpose_str: str, brand_filter: dict, componen
             # Khớp nếu người dùng không có mục đích cụ thể (chỉ hỏi budget) 
             # hoặc có mục đích trùng khớp với mục đích của preset
             if not user_purposes or user_purposes.intersection(preset_purposes):
+                print(f"⚠️ [PRESET] Đã khớp cấu hình cài sẵn: {preset['id']} (Ngân sách: {preset_budget})")
                 return preset["reply"]
 
     return None

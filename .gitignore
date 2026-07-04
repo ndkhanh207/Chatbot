@@ -228,7 +228,7 @@ open-db/
 .agents
 
 # test
-test/reports/*.md
+tests/reports/*.md
 
 
 # local planing with ai

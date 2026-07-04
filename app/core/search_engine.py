@@ -36,7 +36,8 @@ def hybrid_search(q, category, top_k, knowledge_base, vector_store):
         semantic_scores = np.zeros(score_length)
 
         if q:
-                q_clean = normalize_text(q)
+                from app.core.query_parser import clean_search_query
+                q_clean = clean_search_query(q)
                 # ---------------------------------------------------------------
                 # Unified keyword matching using the pre‑computed ``search_text``
                 # column (created in ``data_loader.load_knowledge_base``). This

@@ -1,15 +1,24 @@
+import re
 from typing import Optional
 from app.constants import *
 from app.compatibility.compat_logic import is_compatibility_query
-import re
 
 _MODEL_PATTERN = re.compile(
     r'(rtx|gtx|rx)\s*-?\s*(\d{3,4})\s*(ti|xt|gre|super|xtx)?',
     re.IGNORECASE,
 )
 
+def remove_weird_characters(text: str) -> str:
+    """Chỉ giữ lại chữ cái, chữ số (bao gồm tiếng Việt), khoảng trắng và các dấu câu cơ bản. Xóa toàn bộ ký tự rác."""
+    if not text: return ""
+    # \w: Chữ cái và số (hỗ trợ trọn vẹn tiếng Việt Unicode)
+    # \s: Khoảng trắng (space, tab, newline)
+    # Cụm dấu câu cơ bản: . , ? ! - _ : ; ( ) " ' + * / % = < > ~ & [ ]
+    safe_pattern = r'[^\w\s.,?!\-_:;()"\'+*/%=<>~&\[\]]'
+    return re.sub(safe_pattern, '', text)
+
 def normalize_user_message(user_message: str) -> str:
-    msg = user_message.lower()
+    msg = remove_weird_characters(user_message).lower()
     # Thay thế compound trước, rồi mới thay từ đơn
     # (tránh "mainboard" bị tách thành "bo mạch chủboard")
     # main 
@@ -26,11 +35,22 @@ def normalize_user_message(user_message: str) -> str:
     msg = msg.replace("điện năng",     "tdp")
     return msg
 
+_STOPWORDS = {"thế", "còn", "thì", "sao", "giá", "bao", "nhiêu", "tư", "vấn", "tìm", "cho", "mình", "loại", "nào", "tốt", "bạn", "ạ", "dạ", "chào"}
+
 def normalize_text(text: str) -> str:
     if not text:
         return ""
-    # Lowercase + chuẩn hóa khoảng trắng (giữ space để keyword matching hoạt động)
-    return re.sub(r'\s+', ' ', text.lower()).strip()
+    # Xóa dấu chấm hỏi, phẩy, chấm, chấm than để không dính vào token
+    text = re.sub(r'[?!.,;]', ' ', text.lower())
+    # Chuẩn hóa khoảng trắng
+    return re.sub(r'\s+', ' ', text).strip()
+
+def clean_search_query(text: str) -> str:
+    """Loại bỏ stopwords để hỗ trợ hybrid_search keyword_scores"""
+    text = normalize_text(text)
+    words = text.split()
+    filtered_words = [w for w in words if w not in _STOPWORDS]
+    return " ".join(filtered_words)
     
 OWNERSHIP_HINTS = ['tôi có', 'tôi đã có', 'sẵn có', 'đang dùng', 'đang có']
 

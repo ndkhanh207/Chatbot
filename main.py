@@ -139,25 +139,37 @@ async def lifespan(app: FastAPI):
         print(f"❌ LỖI KHỞI TẠO HỆ THỐNG: {str(e)}")
         raise e
 
-    yield
-    print("=== [SYSTEM] Shutting down Server... ===")
     try:
-        # Xóa reference tới Chroma và Embeddings model
-        if hasattr(app.state, "vector_store"):
-            del app.state.vector_store
-        
-        # Ép Python dọn rác bộ nhớ
-        import gc
-        gc.collect()
-        
-        # Ép PyTorch giải phóng VRAM đã cấp phát nhưng không dùng
-        import torch
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-            torch.cuda.ipc_collect()
-            print("=== [SYSTEM] Đã dọn dẹp và giải phóng hoàn toàn VRAM (CUDA). ===")
-    except Exception as e:
-        print(f"⚠️ [SYSTEM] Lỗi khi dọn dẹp bộ nhớ: {e}")
+        yield
+    finally:
+        print("=== [SYSTEM] Shutting down Server... ===")
+        try:
+            # Xóa reference tới Chroma và Embeddings model
+            if hasattr(app.state, "vector_store"):
+                del app.state.vector_store
+            
+            # Ép Python dọn rác bộ nhớ
+            import gc
+            gc.collect()
+            
+            # Ép PyTorch giải phóng VRAM đã cấp phát nhưng không dùng
+            import torch
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                torch.cuda.ipc_collect()
+                print("=== [SYSTEM] Đã dọn dẹp và giải phóng hoàn toàn VRAM (CUDA). ===")
+        except Exception as e:
+            print(f"⚠️ [SYSTEM] Lỗi khi dọn dẹp bộ nhớ: {e}")
+            
+        print("=== [SYSTEM] Tắt Ollama Server để gỡ kẹt các request đang chạy và giải phóng VRAM... ===")
+        import os
+        import platform
+        if platform.system() == "Windows":
+            os.system("taskkill /F /IM ollama_llama_server.exe /T >nul 2>&1")
+            os.system("taskkill /F /IM llama-server.exe /T >nul 2>&1")
+        else:
+            os.system("pkill -9 ollama_llama_server")
+            os.system("pkill -9 llama-server")
 
 app = FastAPI(lifespan=lifespan)
 app.state.limiter = limiter

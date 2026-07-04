@@ -5,7 +5,7 @@ LLM bóc tách tên linh kiện → Python tra DB lấy giá → cộng tổng c
 """
 
 from app.core.search_engine import hybrid_search
-from app.core.master_intent import MasterIntentSchema
+from app.core.intent.master_intent import MasterIntentSchema
 from app.compatibility.compat_logic import _get_field
 from app.price.pricing_util import format_currency_vietnam
 

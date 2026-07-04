@@ -17,7 +17,7 @@ from .history import (
 from .formatter import format_approx_million, format_build_context, format_reply_body
 
 from app.pc_builder.advisor import find_best_build
-from app.pc_builder.preset.presets import get_preset_reply
+from app.pc_builder.presets import get_preset_reply
 
 BUILD_REPLY_HEADER = '[GỢI Ý BỘ PC TỐI ƯU]'
 
@@ -383,20 +383,20 @@ def _build_reply(user_uid: str, session_id: str, user_message: str, best_build: 
     
     try:
         response = llm.invoke(prompt)
-        # Ép cứng mã bộ lên đầu câu trả lời một cách tự nhiên
-        build_id = best_build.get('BuildID', 'N/A')
-        final_reply = f"- Mã bộ: {build_id}\n\n" + response.content
-        
-        if is_upgrade_scenario and upgrade_info:
-            comp_name = upgrade_info.get('cpu_model') or upgrade_info.get('gpu_model') or "linh kiện của bạn"
-            final_reply = f"Em ghi nhận bạn đã có sẵn {comp_name.upper()}. Bộ PC gợi ý dưới đây sẽ tận dụng linh kiện này để build phần còn lại cho bạn:\n\n" + final_reply
+        content_str = response.content
     except Exception as e:
         print(f"❌ [LLM Error] Lỗi khi sinh reply: {e}")
-        final_reply = f"- Mã bộ: {best_build.get('BuildID', 'N/A')}\n" + build_context
+        content_str = build_context
         
-        if is_upgrade_scenario and upgrade_info:
-            comp_name = upgrade_info.get('cpu_model') or upgrade_info.get('gpu_model') or "linh kiện của bạn"
-            final_reply = f"Em ghi nhận bạn đã có sẵn {comp_name.upper()}. Bộ PC gợi ý dưới đây sẽ tận dụng linh kiện này để build phần còn lại cho bạn:\n\n" + final_reply
+    from app.guard.response_formatter import word_filter
+    filtered_content = word_filter(content_str)
+    
+    build_id = best_build.get('BuildID', 'N/A')
+    final_reply = f"- Mã bộ: {build_id}\n\n{filtered_content}"
+    
+    if is_upgrade_scenario and upgrade_info:
+        comp_name = upgrade_info.get('cpu_model') or upgrade_info.get('gpu_model') or "linh kiện của bạn"
+        final_reply = f"Em ghi nhận bạn đã có sẵn {comp_name.upper()}. Bộ PC gợi ý dưới đây sẽ tận dụng linh kiện này để build phần còn lại cho bạn:\n\n{final_reply}"
         
     save_message(user_uid, session_id, user_message, final_reply)
     return {'chatbot_reply': final_reply}
@@ -404,13 +404,18 @@ def _build_reply(user_uid: str, session_id: str, user_message: str, best_build: 
 def _answer_about_current_build(user_uid: str, session_id: str, user_message: str, chat_history: list) -> dict:
     last_build_msg = ""
     for msg in reversed(chat_history):
-        if getattr(msg, 'type', '') == 'ai' and ('- Mã bộ: BUILD-' in msg.content or BUILD_REPLY_HEADER in msg.content):
+        if getattr(msg, 'type', '') == 'ai' and ('- Mã bộ: ' in msg.content or BUILD_REPLY_HEADER in msg.content):
             last_build_msg = msg.content
             break
             
+    if not last_build_msg or "- Mã bộ: " not in last_build_msg:
+        reply = "Dạ, em không tìm thấy thông tin bộ PC nào gần đây cả. Bạn có thể nhắc lại yêu cầu hoặc cung cấp mã bộ PC giúp em được không ạ?"
+        save_message(user_uid, session_id, user_message, reply)
+        return {'chatbot_reply': reply}
+
     system_prompt = (
         "Bạn là chuyên gia tư vấn linh kiện máy tính tại cửa hàng. Dưới đây là thông số bộ PC mà bạn vừa gợi ý cho khách:\n\n"
-        f"{last_build_msg}\n\n"
+        f"<build_context>\n{last_build_msg}\n</build_context>\n\n"
         "Hãy trả lời câu hỏi của khách hàng về bộ PC này một cách thật ngắn gọn, chính xác, súc tích và thân thiện. Không được tự bịa ra thông số không có trong bộ PC.\n"
         "[QUY TẮC BẮT BUỘC]\n"
         "1. TUYỆT ĐỐI KHÔNG in lại 'Mã bộ' trong câu trả lời.\n"

@@ -4,13 +4,14 @@ from pydantic import BaseModel, Field, model_validator
 from typing import Literal
 
 from app.utils.model_utils import get_ollama_model
-from app.core.prompts import (
+from app.core.intent.prompts import (
     _SYSTEM_CLASSIFY,
     _FEWSHOT_CLASSIFY,
     _SYSTEM_EXTRACT,
     _FEWSHOT_BY_INTENT,
     _FALLBACK_MAP
 )
+from app.core.intent.history_context import build_history_context
 
 # ==============================================================================
 # CONSTANTS & CONFIG
@@ -18,8 +19,6 @@ from app.core.prompts import (
 
 MAX_TOKENS_CLASSIFY = 100
 MAX_TOKENS_EXTRACT = 250
-MAX_HISTORY_MSGS = 4
-MAX_HISTORY_CHAR_LIMIT = 200
 
 COMPAT_TRIGGERS = [
     'lắp với', 'đi với', 'tương thích', 'lắp được', 'chạy được', 'hợp không',
@@ -58,11 +57,11 @@ class MasterIntentSchema(BaseModel):
     )
     spec_detail: str = Field(
         default="none", 
-        description="Từ khóa thông số khách hỏi (vd: 'lõi', 'vram', 'socket', 'xung tối đa'). Nếu hỏi chung chung điền 'all'. Mặc định 'none'."
+        description="Từ khóa thông số khách hỏi (vd: 'lõi', 'vram', 'socket', 'xung tối đa'). Nếu câu hỏi hiện tại đang nói tiếp chủ đề của câu trước (VD: 'vậy con ABC thì sao?') nhưng thiếu thông số/mục đích, HÃY TÌM TRONG LỊCH SỬ HỘI THOẠI để điền vào (VD: lấy lại chữ 'mượt không', 'socket'). Nếu hỏi chung chung điền 'all'. Mặc định 'none'."
     )
-    cpu: str = Field(default="none", description="LUÔN trích xuất tên CPU nếu có trong câu (VD: 'i9 14900k', 'ryzen 7 9800x3d'). Mặc định 'none'.")
-    mainboard: str = Field(default="none", description="LUÔN trích xuất tên Mainboard nếu có trong câu (VD: 'asus b760m', 'msi b850 pro'). Mặc định 'none'.")
-    gpu: str = Field(default="none", description="LUÔN trích xuất tên GPU/VGA nếu có trong câu (VD: 'rtx 5070 ti', 'rx 7900 xt'). Mặc định 'none'.")
+    cpu: str = Field(default="none", description="LUÔN trích xuất tên CPU nếu có trong câu (VD: 'i9 14900k', 'ryzen 7 9800x3d'). Nếu câu trước đang hỏi tương thích và câu này đổi linh kiện khác nhưng thiếu CPU, HÃY TÌM TRONG LỊCH SỬ HỘI THOẠI để giữ lại CPU cũ. Mặc định 'none'.")
+    mainboard: str = Field(default="none", description="LUÔN trích xuất tên Mainboard nếu có trong câu (VD: 'asus b760m', 'msi b850 pro'). Nếu câu trước đang hỏi tương thích và thiếu Mainboard, HÃY TÌM TRONG LỊCH SỬ HỘI THOẠI để giữ lại. Mặc định 'none'.")
+    gpu: str = Field(default="none", description="LUÔN trích xuất tên GPU/VGA nếu có trong câu (VD: 'rtx 5070 ti', 'rx 7900 xt'). Nếu thiếu GPU và đang hỏi tương thích tiếp nối, HÃY TÌM TRONG LỊCH SỬ HỘI THOẠI để giữ lại. Mặc định 'none'.")
     budget_amount: int = Field(
         default=0,
         description="Ngân sách khách yêu cầu. BẮT BUỘC CHUYỂN ĐỔI thành số nguyên VNĐ. Ví dụ: '20 triệu', '20tr', 'tầm 20' → 20000000. '500k' → 500000. Mặc định 0."
@@ -95,19 +94,6 @@ class MasterIntentSchema(BaseModel):
 # PIPELINE HELPER FUNCTIONS
 # ==============================================================================
 
-def _build_history_context(chat_history: list = None) -> str:
-    if not chat_history:
-        return ""
-    
-    context = "LỊCH SỬ HỘI THOẠI TRƯỚC ĐÓ:\n"
-    for msg in chat_history[-MAX_HISTORY_MSGS:]:
-        role = "Khách" if getattr(msg, "type", "") == "human" else "AI"
-        content = msg.content
-        if role == "AI" and len(content) > MAX_HISTORY_CHAR_LIMIT:
-            content = content[:MAX_HISTORY_CHAR_LIMIT] + "..."
-        context += f"{role}: {content}\n"
-    return context + "\n"
-
 def _count_components(msg_l: str) -> tuple:
     cpu_match = re.search(CPU_REGEX, msg_l)
     gpu_match = re.search(GPU_REGEX, msg_l)
@@ -115,11 +101,25 @@ def _count_components(msg_l: str) -> tuple:
     comp_count = sum(1 for x in [cpu_match, gpu_match, main_match] if x)
     return comp_count, cpu_match, gpu_match, main_match
 
-def _apply_pre_extraction_guards(msg_l: str, comp_count: int, intent_pass1: str) -> str:
+def _apply_pre_extraction_guards(msg_l: str, comp_count: int, intent_pass1: str, history_context: str) -> str:
     has_compat_trigger = any(t in msg_l for t in COMPAT_TRIGGERS)
     if has_compat_trigger and comp_count >= 2 and intent_pass1 != "compatibility":
         print(f"\u26a0\ufe0f [GUARD] Pass 1 phân loại nhầm ({intent_pass1}). Ép thành 'compatibility'.")
         return "compatibility"
+
+    # Nếu nhắc đích danh linh kiện cụ thể (comp_count >= 1) thì không thể là tìm kiếm chung chung.
+    # Nếu Pass-1 ra build_pc nhưng không hề có chữ 'build', 'bộ', 'pc', 'dàn', 'máy' -> Ảo giác.
+    is_explicit_build = any(w in msg_l for w in ['build', 'bộ', 'dàn', 'máy', 'pc'])
+    if comp_count >= 1 and (intent_pass1 in ["general_search", "none"] or (intent_pass1 == "build_pc" and not is_explicit_build)):
+        match = re.search(r'LAST_INTENT=([a-z_]+)', history_context)
+        if match:
+            inherited = match.group(1)
+            if inherited not in ["general_search", "none"]:
+                print(f"\u26a0\ufe0f [GUARD] Nhắc tên linh kiện cụ thể nhưng Pass 1 trả {intent_pass1}. Ép kế thừa: {inherited}")
+                return inherited
+        print(f"\u26a0\ufe0f [GUARD] Nhắc tên linh kiện cụ thể nhưng Pass 1 trả {intent_pass1}. Mặc định ép về price_check")
+        return "price_check"
+
     return intent_pass1
 
 def _apply_post_extraction_guards(parsed: MasterIntentSchema, cpu_match, gpu_match, main_match, comp_count: int):
@@ -138,11 +138,20 @@ def _apply_post_extraction_guards(parsed: MasterIntentSchema, cpu_match, gpu_mat
                 parsed.mainboard = main_match.group(1)
             parsed.target_product = "none"
 
-    # Regex Rescue
-    if parsed.intent == "compatibility" and comp_count >= 2:
-        if parsed.cpu == "none" and cpu_match: parsed.cpu = cpu_match.group(1)
-        if parsed.gpu == "none" and gpu_match: parsed.gpu = gpu_match.group(1)
-        if parsed.mainboard == "none" and main_match: parsed.mainboard = main_match.group(1)
+    # Regex Rescue (Áp dụng cho mọi ý định nếu LLM bỏ sót)
+    if parsed.cpu == "none" and cpu_match: parsed.cpu = cpu_match.group(1)
+    if parsed.gpu == "none" and gpu_match: parsed.gpu = gpu_match.group(1)
+    if parsed.mainboard == "none" and main_match: parsed.mainboard = main_match.group(1)
+
+    # Sửa lỗi LLM điền sai slot (vd: rx 7600 bị nhét vào slot CPU)
+    if parsed.cpu != "none" and re.search(GPU_REGEX, parsed.cpu, re.I):
+        parsed.gpu = parsed.cpu
+        parsed.cpu = "none"
+        if parsed.category == "cpu": parsed.category = "gpu"
+    elif parsed.gpu != "none" and re.search(CPU_REGEX, parsed.gpu, re.I):
+        parsed.cpu = parsed.gpu
+        parsed.gpu = "none"
+        if parsed.category == "gpu": parsed.category = "cpu"
 
 def _check_retry_condition(parsed: MasterIntentSchema) -> str | None:
     named_items = [parsed.cpu, parsed.mainboard, parsed.gpu]
@@ -232,7 +241,7 @@ def parse_master_intent(user_msg: str, chat_history: list = None) -> MasterInten
     Bóc tách tên linh kiện + ý định bằng LLM 2-Stage Pipeline.
     Orchestrates Pass 1, Pre-Guards, Pass 2, Post-Guards, and Retry Logic.
     """
-    history_context = _build_history_context(chat_history)
+    history_context = build_history_context(chat_history)
 
     try:
         # 1. PASS 1
@@ -241,7 +250,7 @@ def parse_master_intent(user_msg: str, chat_history: list = None) -> MasterInten
         # 2. Pre-extraction Guards
         msg_l = user_msg.lower()
         comp_count, cpu_match, gpu_match, main_match = _count_components(msg_l)
-        intent_pass1 = _apply_pre_extraction_guards(msg_l, comp_count, intent_pass1)
+        intent_pass1 = _apply_pre_extraction_guards(msg_l, comp_count, intent_pass1, history_context)
             
         # 3. PASS 2
         parsed = _run_extraction_pass(user_msg, intent_pass1, history_context)

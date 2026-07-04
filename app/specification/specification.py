@@ -103,6 +103,8 @@ def build_specification_context(parsed_intent, category, knowledge_base, vector_
             else:
                 format_hint += f"\n✅ DỮ LIỆU THỰC TẾ: Thông số '{spec_detail}' = '{detected_field_val}'. Hãy trả lời DỰA TRÊN GIÁ TRỊ NÀY, giữ nguyên số và đơn vị."
                     
-        format_hint += "\n📌 QUAN TRỌNG: Trả lời phải giữ NGUYÊN giá trị số và đơn vị như trong dữ liệu (VD: VNĐ, MHz). TUYỆT ĐỐI KHÔNG tự tính toán, KHÔNG chuyển đổi đơn vị, và KHÔNG trích dẫn/nhắc lại quy tắc này."
+            format_hint += "\n📌 QUAN TRỌNG: Chỉ trả lời thẳng vào thông tin số liệu. Giữ nguyên đơn vị."
+        else:
+            format_hint += "\n📌 QUAN TRỌNG: Hãy tư vấn khách quan dựa trên thông số hiện có của sản phẩm. Không tự bịa thông số."
         
     return context, format_hint

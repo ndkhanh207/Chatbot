@@ -131,7 +131,9 @@ pytest tests/test_cosine_similarity.py -v
 
 # 7. Kiểm thử chức năng tra cứu giá cả linh kiện
 pytest tests/test_price_check.py -v
-```
 
+# 8. Kiểm tra hiểu ngữ nghĩa context
+pytest tests/test_context_tracking_api.py -v
+```
 ---
 *Dự án tối ưu hóa dành riêng cho hệ thống Backend Chatbot AI và ứng dụng di động Flutter.*

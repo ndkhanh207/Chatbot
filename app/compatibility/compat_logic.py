@@ -172,10 +172,11 @@ def check_cpu_main_compat(cpu: dict, main: dict) -> Dict[str, Any]:
         tier_source = f"CPU Tier {cpu_tier}"
         # Required tier clamp ở 3 vì Z/X (Tier 3) đủ cân hết các dòng Core i/Ryzen cao nhất.
         required_tier = min(3, cpu_tier)
-        # [BƯỚC ĐỘT PHÁ]: Nếu main là Tier 2 (dòng B) và CPU không có hậu tố K/X (has_k_modifier=False),
-        # dòng B hoàn toàn gánh tốt i7/Ryzen 7 non-K/X3D (cpu_tier=3) -> giảm required_tier xuống 2.
-        if main_tier == 2 and cpu_tier == 3 and not cpu_p.get("has_k_modifier"):
-            required_tier = 2
+        # [QUY TẮC TỔNG QUÁT]: CPU không có hậu tố K/X (non-K) tiêu thụ ít điện hơn đáng kể
+        # so với bản unlocked → mainboard chỉ cần thấp hơn 1 tier so với CPU tier là đủ gánh.
+        # VD: i5 non-K (tier 2) chạy tốt trên H610 (tier 1), i7 non-K (tier 3) chạy tốt trên B660 (tier 2).
+        if not cpu_p.get("has_k_modifier"):
+            required_tier = max(1, required_tier - 1)
     else:
         cpu_tdp = float(_get_field(cpu, "tdp", default=0) or 0)
         required_tier = min(3, required_tier_for_tdp(cpu_tdp))
@@ -287,6 +288,9 @@ def find_compatible_cpus(main: dict, kb: pd.DataFrame, top_k: int = 10):
         if cpu_p and "tier_rank" in cpu_p:
             cpu_tier = cpu_p["tier_rank"]
             required_tier = min(3, cpu_tier)
+            # Non-K CPU → mainboard chỉ cần thấp hơn 1 tier
+            if not cpu_p.get("has_k_modifier"):
+                required_tier = max(1, required_tier - 1)
         else:
             cpu_tdp = float(_get_field(cpu, "tdp", default=0) or 0)
             required_tier = min(3, required_tier_for_tdp(cpu_tdp))

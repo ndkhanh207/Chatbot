@@ -8,7 +8,7 @@ import json
 import traceback
 from app.guard.response_formatter import word_filter, build_range_summary
 from app.guard.clarify import chain_invoke, chain_stream, _format_context_directly, _session_context_cache, _is_clarification_rejection
-from app.core.master_intent import parse_master_intent
+from app.core.intent.master_intent import parse_master_intent
 from app.core.query_parser import normalize_text, normalize_user_message, get_category
 from app.memory.memory_store import get_trimmed_history, save_message
 from app.core.search_engine import hybrid_search
@@ -212,7 +212,7 @@ def handle_chat(user_message: str, knowledge_base,
         # 🔹 NHÁNH 6: TÌM KIẾM/HỎI GIÁ CHUNG CHUNG (Fallback)
         else:
             matched_items = hybrid_search(q_clean, category, 4, knowledge_base, vector_store) or []
-            context = build_product_context(search_query, category, matched_items, include_all_fields=True)
+            context = build_product_context(search_query, category, matched_items, include_all_fields=False)
             chain = get_basic_search_chain()
         
         if not context or parsed_intent.intent == "none":
@@ -274,9 +274,12 @@ def handle_chat(user_message: str, knowledge_base,
             response = _format_context_directly(context, parsed_intent.intent)
 
         clean_reply = word_filter(response)
-        save_message(user_uid, session_id, user_message_fixed, clean_reply)
-
-        print(f"[HISTORY SAVED] AI reply lưu vào DB ({len(clean_reply)} ký tự gốc)")
+        if parsed_intent.intent != "none":
+            save_message(user_uid, session_id, user_message_fixed, clean_reply)
+            print(f"[HISTORY SAVED] AI reply lưu vào DB ({len(clean_reply)} ký tự gốc)")
+        else:
+            print("[HISTORY SKIP] Intent là 'none', không lưu vào DB để tránh nhiễu.")
+            
         return {
             "chatbot_reply": clean_reply,
             "contexts": [context] if context else []

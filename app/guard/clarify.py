@@ -41,8 +41,8 @@ _ASKING_PATTERNS = [
     "yêu cầu cụ thể",
     "sở thích của bạn",
     "ngân sách của bạn",
-    "thông tin thêm",
     "có thể cho em biết",
+    "cho em biết rõ",
 ]
 
 _POLITE_CLOSINGS = [
@@ -54,6 +54,7 @@ _POLITE_CLOSINGS = [
     "bạn cần hỗ trợ gì thêm",
     "bạn cần thêm thông tin gì không",
     "cần thêm thông tin gì khác không",
+    "bạn có muốn tham khảo thêm",   
 ]
 
 _FALSE_COMPAT_PATTERNS = [
@@ -103,16 +104,26 @@ def _is_clarification_rejection(text: str) -> bool:
 def _is_asking_clarification(reply: str) -> bool:
     r = reply.lower().strip()
     
+    # Nếu câu trả lời chứa thông tin giá trị (số tiền, cấu hình), hoặc kết luận tương thích, xem như đã trả lời
+    valid_data_keywords = [
+        "vnđ", "triệu", "giá là", "có giá", "gb ", "mhz", "ghz",
+        "tương thích", "phù hợp", "không tương thích", "không phù hợp",
+        "bottleneck", "nghẽn", "cảnh báo", "gợi ý", "đề xuất", "dạ đây là"
+    ]
+    has_data = any(x in r for x in valid_data_keywords)
+    
     # Loại bỏ các câu hỏi lịch sự cuối câu trước khi đếm dấu hỏi
     for polite in _POLITE_CLOSINGS:
         if polite in r:
             r = r.replace(polite + "?", "").replace(polite, "").strip()
             
-    if r.endswith("?"):          # kết thúc bằng dấu hỏi
-        return True
-    if r.count("?") >= 2:        # hỏi nhiều lần trong 1 reply
-        return True
-    return any(p in r for p in _ASKING_PATTERNS)
+    is_asking = r.endswith("?") or r.count("?") >= 2 or any(p in r for p in _ASKING_PATTERNS)
+    
+    # Nếu có dấu hiệu hỏi vặn nhưng ĐÃ trả lời thông tin trước đó -> Hợp lệ, không chặn
+    if is_asking and has_data:
+        return False
+        
+    return is_asking
 
 
 def _is_compatibility_hallucination(raw: str, context: str) -> bool:
@@ -154,6 +165,26 @@ def _format_context_directly(context: str, intent: str) -> str:
     
     return header + context
 
+def _remove_repetitive_paragraphs(text: str) -> str:
+    """Loại bỏ các câu văn bị LLM lặp lại vô tận (repetition collapse)."""
+    import re
+    # Tách văn bản thành các câu dựa trên dấu chấm, hỏi, chấm than
+    sentences = re.split(r'(?<=[.?!])\s+', text)
+    seen = set()
+    result = []
+    for s in sentences:
+        cleaned = s.strip()
+        if not cleaned:
+            continue
+        # Chỉ xét trùng với các câu có độ dài tương đối (tránh xóa nhầm các câu ngắn "Dạ.", "Vâng.")
+        if len(cleaned) > 15:
+            if cleaned not in seen:
+                seen.add(cleaned)
+                result.append(s)
+        else:
+            result.append(s)
+    return " ".join(result).strip()
+
 def chain_invoke(chain, context, format_hint, user_message_fixed, chat_history, parsed_intent):
     """
     Gọi lại chain đã lưu trước đó khi user từ chối yêu cầu bổ sung thông tin.
@@ -177,6 +208,7 @@ def chain_invoke(chain, context, format_hint, user_message_fixed, chat_history, 
                     "chat_history": chat_history,
                 })
             raw = response.content
+            raw = _remove_repetitive_paragraphs(raw)
             print(f"[RAW LLM OUTPUT - attempt {attempt}]: {raw}")
 
             # nếu là giao tiếp thông thường thì không chặn lại

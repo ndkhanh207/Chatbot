@@ -38,7 +38,7 @@ def build_price_check_context(parsed_intent, category, knowledge_base, vector_st
         matched_items.sort(key=name_match_score, reverse=True)
         matched_items = matched_items[:2]
         
-    context = build_product_context(search_query, category, matched_items, include_all_fields=True)
+    context = build_product_context(search_query, category, matched_items, include_all_fields=False)
     
     format_hint = ""
     if matched_items:
@@ -47,8 +47,8 @@ def build_price_check_context(parsed_intent, category, knowledge_base, vector_st
         name_disp = _get_field(item, "tên", "name", default=lookup_term)
         price_str = format_currency_vietnam(price_raw)
         format_hint = (
-            f"\nThông tin giá chính xác từ kho cho '{name_disp}': {price_str} VNĐ.\n"
-            f"Lưu ý quan trọng: Hãy báo chính xác mức giá {price_str} VNĐ này cho khách hàng."
+            f"\n[CHỈ THỊ CỦA HỆ THỐNG]: Khách hàng đang muốn BIẾT GIÁ của sản phẩm này. "
+            f"Bạn PHẢI trả lời ngay giá của '{name_disp}' là {price_str} VNĐ, KHÔNG được hỏi ngược lại khách."
         )
         
     return context, format_hint

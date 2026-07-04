@@ -4,7 +4,7 @@ from langchain_core.prompts import ChatPromptTemplate
 
 from app.utils.model_utils import get_ollama_model
 from app.templates.prompt_templates import (
-    BASIC_SEARCH_TEMPLATE, COMPAT_CHECK_TEMPLATE, SUGGESTION_TEMPLATE, REFORMULATE_TEMPLATE, EMERGENCY_LIST_TEMPLATE,
+    BASIC_SEARCH_TEMPLATE, COMPAT_CHECK_TEMPLATE, SUGGESTION_TEMPLATE, EMERGENCY_LIST_TEMPLATE,
 )
 
 _reformulate_chain = None
@@ -52,14 +52,6 @@ def get_suggestion_chain() -> RunnableSequence:
         _suggestion_chain = SUGGESTION_TEMPLATE | get_llm()
     return _suggestion_chain
 
-def get_reformulate_chain():
-    global _reformulate_chain
-    if _reformulate_chain is None:
-        _reformulate_chain = REFORMULATE_TEMPLATE | ChatOllama(
-            model=get_ollama_model(), temperature=0.1,
-        )
-    return _reformulate_chain
-
 
 def get_emergency_chain() -> RunnableSequence:
     """
@@ -81,4 +73,4 @@ def get_pc_build_qa_chain() -> RunnableSequence:
             ("human", "{user_message}")
         ])
         _pc_build_qa_chain = prompt | ChatOllama(model=get_ollama_model(), temperature=0.1)
-    return _pc_build_qa_chain
+    return _pc_build_qa_chain

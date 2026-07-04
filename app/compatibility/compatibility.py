@@ -13,7 +13,7 @@ from app.compatibility.compat_logic import (
     CPU_TERMS, GPU_TERMS, MAIN_TERMS  # Expose cho chat_handler
 )
 from app.compatibility.compat_format import _fmt_cpu_main, _fmt_gpu_main, _fmt_cpu_gpu
-from app.core.master_intent import MasterIntentSchema
+from app.core.intent.master_intent import MasterIntentSchema
 from app.price.pricing_util import format_currency_vietnam
 
 __all__ = [
