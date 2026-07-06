@@ -5,12 +5,13 @@ Lazy init: không kết nối MySQL tại import time — tránh block server st
 """
 
 from datetime import datetime
+import json
 from langchain_core.messages import HumanMessage, AIMessage, BaseMessage, trim_messages
 from sqlalchemy import (
-    create_engine, Column, Integer, String, Text, DateTime, text
+    create_engine, Column, Integer, String, Text, DateTime, text, JSON
 )
 from sqlalchemy.orm import declarative_base, sessionmaker
-from config.config import MYSQL_CONNECTION_STRING
+from config.config import MYSQL_CONNECTION_STRING, MYSQL_TABLE
 
 # ──────────────────────────────────────────────
 # SQLAlchemy setup  (lazy — không block import)
@@ -20,14 +21,15 @@ Base = declarative_base()
 
 class ChatMessage(Base):
     """Bảng lưu từng message trong hội thoại."""
-    __tablename__ = "chat_history"
+    __tablename__ = MYSQL_TABLE
 
-    id         = Column(Integer,     primary_key=True, autoincrement=True)
-    user_uid   = Column(String(255), nullable=False,   index=True)   # Firebase UID để phân biệt user
-    session_id = Column(String(255), nullable=False,   index=True)
-    role       = Column(String(10),  nullable=False)   # "human" | "ai"
-    content    = Column(Text(length=65535), nullable=False)
-    created_at = Column(DateTime,   default=datetime.utcnow)
+    id            = Column(Integer,     primary_key=True, autoincrement=True)
+    user_uid      = Column(String(255), nullable=False,   index=True)   # Firebase UID để phân biệt user
+    session_id    = Column(String(255), nullable=False,   index=True)
+    role          = Column(String(10),  nullable=False)   # "human" | "ai"
+    content       = Column(Text(length=65535), nullable=False)
+    metadata_json = Column(JSON,        nullable=True)
+    created_at    = Column(DateTime,    default=datetime.utcnow)
 
 
 # Lazy init — chỉ kết nối MySQL khi thực sự cần, tránh block server startup
@@ -92,10 +94,11 @@ def _load_messages(user_uid: str, session_id: str) -> list[BaseMessage]:
         )
         messages = []
         for row in rows:
+            kwargs = row.metadata_json if row.metadata_json else {}
             if row.role == "human":
-                messages.append(HumanMessage(content=row.content))
+                messages.append(HumanMessage(content=row.content, additional_kwargs=kwargs))
             elif row.role == "ai":
-                messages.append(AIMessage(content=row.content))
+                messages.append(AIMessage(content=row.content, additional_kwargs=kwargs))
         return messages
     except Exception as e:
         print(f"❌ [MEMORY ERROR] Lỗi khi đọc dữ liệu từ Database: {e}")
@@ -124,12 +127,39 @@ def get_trimmed_history(user_uid: str, session_id: str) -> list[BaseMessage]:
     )
 
 
+def get_latest_metadata(user_uid: str, session_id: str) -> dict | None:
+    """Trả về metadata_json của tin nhắn AI gần nhất trong session."""
+    db = _get_session()
+    if db is None:
+        return None
+    try:
+        row = (
+            db.query(ChatMessage)
+            .filter(
+                ChatMessage.user_uid == user_uid, 
+                ChatMessage.session_id == session_id,
+                ChatMessage.role == "ai",
+                ChatMessage.metadata_json != None
+            )
+            .order_by(ChatMessage.id.desc())
+            .first()
+        )
+        if row and row.metadata_json:
+            return row.metadata_json
+        return None
+    except Exception as e:
+        print(f"❌ [MEMORY ERROR] Lỗi khi lấy metadata: {e}")
+        return None
+    finally:
+        db.close()
+
+
 def _summarize_for_history(ai_msg: str) -> str:
     """Rút gọn câu trả lời AI trước khi lưu vào history.
     Chỉ giữ phần đầu (~200 ký tự) để reformulate LLM không bị
     nhiễm data sản phẩm/giá cả từ reply cũ (ngộ độc history).
     """
-    if "[GỢI Ý BỘ PC TỐI ƯU]" in ai_msg:
+    if "[GỢI Ý BỘ PC TỐI ƯU]" in ai_msg or "- Mã bộ:" in ai_msg:
         return ai_msg
     
     if len(ai_msg) <= MAX_AI_SAVE_LEN:
@@ -145,9 +175,10 @@ def _summarize_for_history(ai_msg: str) -> str:
     return truncated.strip()
 
 
-def save_message(user_uid: str, session_id: str, user_msg: str, ai_msg: str) -> None:
+def save_message(user_uid: str, session_id: str, user_msg: str, ai_msg: str, metadata: dict = None) -> None:
     """Lưu một lượt hội thoại vào MySQL.
     AI reply được rút gọn để tránh ngộ độc history cho reformulate.
+    metadata được lưu dưới dạng JSON cho AI message để duy trì state.
     """
     db = _get_session()
     if db is None:
@@ -165,6 +196,7 @@ def save_message(user_uid: str, session_id: str, user_msg: str, ai_msg: str) -> 
             session_id=session_id,
             role="ai",
             content=ai_short,
+            metadata_json=metadata
         ))
         db.commit()
     except Exception as e:

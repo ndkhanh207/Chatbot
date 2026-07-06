@@ -98,7 +98,7 @@ def test_invalid_session_id_validation():
         response = client.post("/chat", json=payload, headers=get_auth_headers())
         data = response.json()
         resp_body = json.dumps(data, ensure_ascii=False)
-        passed = (response.status_code == 422)
+        passed = (response.status_code == 400 and data.get("code") == "INVALID_SESSION_ID")
         err = "None" if passed else f"Unexpected response: {data}"
         status_code = response.status_code
     except Exception as e:

@@ -5,6 +5,7 @@ from .constants import (
     AI_PURPOSE_KEYWORDS, AI_BUILD_CONTEXT_KEYWORDS
 )
 from .extractor import extract_budget, extract_quantity, extract_component_filter, extract_brand_filter, is_reset_intent
+from app.core.intent.history_context import CPU_RE, GPU_RE, MAIN_RE
 
 # ──────────────────────────────────────────────
 # Compiled regex (biên dịch 1 lần, dùng nhiều lần — hiệu năng tốt hơn)
@@ -57,47 +58,24 @@ def is_build_context_active(chat_history: list) -> bool:
     return False
 
 
-def get_exclude_builds(chat_history: list) -> list:
-    """Lấy danh sách BuildID đã gợi ý để tránh lặp."""
-    exclude = []
-    if chat_history:
-        for msg in reversed(chat_history):
-            if getattr(msg, 'type', '') == 'ai':
-                m = re.search(r'Mã bộ\s*:\s*(BUILD-\d+)', msg.content)
-                if m:
-                    exclude.append(m.group(1).strip())
-    return exclude
-
-
-def get_last_build_id(chat_history: list) -> str | None:
-    """Lấy BuildID gần nhất từ lịch sử."""
-    for msg in reversed(chat_history):
-        if getattr(msg, 'type', '') == 'ai':
-            m = re.search(r'Mã bộ\s*:\s*(BUILD-\d+)', msg.content)
-            if m:
-                return m.group(1).strip()
-    return None
-
-
-def inherit_budget(msg_lower: str, chat_history: list) -> int | None:
+def inherit_budget(msg_lower: str, ctx_budget: int | None) -> int | None:
     """
-    Kế thừa ngân sách từ lịch sử, điều chỉnh nếu có từ khóa cao/thấp hơn.
-    Tìm trong cả tin nhắn human (user nhập) và AI (AI đã đề cập).
+    Điều chỉnh ngân sách hiện tại nếu người dùng có từ khóa tăng/giảm.
     """
-    if not chat_history:
+    if ctx_budget is None:
         return None
 
-    # Ưu tiên tìm trong lịch sử người dùng nhập (chính xác hơn)
-    for msg in reversed(chat_history):
-        if getattr(msg, 'type', '') == 'human':
-            hist_budget = extract_budget(msg.content)
-            if hist_budget is not None:
-                if re.search(r'\b(cao hơn|đắt hơn|mạnh hơn|ngon hơn)\b', msg_lower):
-                    return int(hist_budget * 1.3)
-                elif re.search(r'\b(thấp hơn|rẻ hơn|yếu hơn|bèo hơn)\b', msg_lower):
-                    return int(hist_budget * 0.7)
-                return hist_budget
-    return None
+    # Nếu user đồng ý tăng ngân sách theo đề xuất của AI (out of budget prompt)
+    if re.search(r'\b(ok|oke|đồng ý|có|tăng đi|được|okela|triển)\b', msg_lower):
+        # Không có giá trị cụ thể, tăng nhẹ 15% hoặc giữ nguyên để LLM xử lý
+        return int(ctx_budget * 1.15)
+
+    if re.search(r'\b(cao hơn|đắt hơn|mạnh hơn|ngon hơn)\b', msg_lower):
+        return int(ctx_budget * 1.3)
+    elif re.search(r'\b(thấp hơn|rẻ hơn|yếu hơn|bèo hơn)\b', msg_lower):
+        return int(ctx_budget * 0.7)
+        
+    return ctx_budget
 
 
 def inherit_quantity(chat_history: list) -> int:
@@ -106,6 +84,8 @@ def inherit_quantity(chat_history: list) -> int:
         return 1
     for msg in reversed(chat_history):
         if getattr(msg, 'type', '') == 'human':
+            if is_reset_intent(msg.content):
+                break
             hist_qty = extract_quantity(msg.content)
             if hist_qty > 1:
                 return hist_qty

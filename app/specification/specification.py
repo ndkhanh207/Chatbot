@@ -5,6 +5,7 @@ from app.constants import FIELD_KEYWORD_ALIASES
 
 SEARCH_TOP_K = 3
 RERANK_TOP_K = 2
+import re
 
 def _is_valid_val(val: any) -> bool:
     """Kiểm tra xem giá trị DB có hợp lệ không."""
@@ -105,6 +106,25 @@ def build_specification_context(parsed_intent, category, knowledge_base, vector_
                     
             format_hint += "\n📌 QUAN TRỌNG: Chỉ trả lời thẳng vào thông tin số liệu. Giữ nguyên đơn vị."
         else:
-            format_hint += "\n📌 QUAN TRỌNG: Hãy tư vấn khách quan dựa trên thông số hiện có của sản phẩm. Không tự bịa thông số."
+            format_hint += "\n📌 QUAN TRỌNG: Hãy tư vấn khách quan dựa trên thông số hiện có của sản phẩm. KHÔNG tự bịa thông số, và TUYỆT ĐỐI KHÔNG TỰ ĐỘNG QUY ĐỔI ĐƠN VỊ (Ví dụ: phải giữ nguyên MHz, tuyệt đối không đổi sang GHz)."
+        
+        format_hint += "\n[TUYỆT ĐỐI TUÂN THỦ]: TRẢ LỜI NGẮN GỌN TỐI ĐA, đi thẳng vào các thông số. KHÔNG yapping, KHÔNG chào hỏi dài dòng, KHÔNG phân tích hay đưa ra công thức tính toán."
         
     return context, format_hint
+
+def build_general_search_context(parsed_intent, msg_lower, category, knowledge_base, vector_store, search_query) -> tuple[str, str]:
+    """
+    Container xử lý riêng cho luồng tìm kiếm chung chung (general_search).
+    Hỗ trợ Regex lấy số lượng (ví dụ: "top 5").
+    """
+    top_k = 4
+    m_top = re.search(r'(?:top|cho xem|list|liệt kê)\s+(\d+)', msg_lower)
+    if m_top:
+        top_k = min(int(m_top.group(1)), 10)
+        
+    # q_clean was used in chat_handler, but search_query is essentially q_clean or very close. 
+    # To be exactly identical, we will just use search_query here.
+    matched_items = hybrid_search(search_query, category, top_k, knowledge_base, vector_store) or []
+    context = build_product_context(search_query, category, matched_items, include_all_fields=False)
+    
+    return context, ""

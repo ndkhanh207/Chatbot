@@ -2,6 +2,7 @@ import re
 from typing import Optional, Tuple, List, Dict, Any, Callable
 from app.constants import *
 import pandas as pd
+import functools
 
 # ──────────────────────────────────────────────
 # 1. TIER MAINBOARD (Đánh giá theo chất lượng dàn điện VRM)
@@ -31,7 +32,7 @@ CPU_LINE_TIER: Dict[str, int] = {
 CPU_SUFFIX_MODIFIER: Dict[str, int] = {
     "KS": 1, "KF": 1, "K": 1,            # Intel Unlocked: Ăn cực nhiều điện -> Ép lên 1 Tier Mainboard
     "X3D": 0,                             # AMD 3D V-Cache: Tiết kiệm điện (120W), main B tầm trung gánh tốt -> Giữ nguyên
-    "XT": 1, "X": 1,                     # AMD Extreme: Ăn nhiều điện -> Ép lên 1 Tier
+    "XT": 0, "X": 0,                     # AMD Extreme: Ăn nhiều điện hơn non-X nhưng ko ép lên Tier, chỉ set has_k_modifier để tránh dùng main Tier thấp nhất
     "F": 0, "": 0,                       # Dòng tiêu chuẩn không iGPU hoặc bình thường -> Giữ nguyên Tier
     "GE": -1, "G": -1,                   # Dòng tiết kiệm điện (có iGPU) -> Hạ 1 Tier
     "T": -1, "U": -1,                    # Dòng tiết kiệm điện -> Hạ 1 Tier (Main rẻ hơn vẫn gánh tốt)
@@ -68,6 +69,7 @@ _CPU_AMD_PATTERN = re.compile(r'ryzen\s*([3579])\s+(\d{4,5})([a-z0-9]*)', re.IGN
 # ──────────────────────────────────────────────
 # Helpers — parsing & lookup
 # ──────────────────────────────────────────────
+@functools.lru_cache(maxsize=1024)
 def extract_chipset_code(name: str) -> Optional[str]:
     if not name:
         return None
@@ -75,6 +77,7 @@ def extract_chipset_code(name: str) -> Optional[str]:
     return (m.group(1) + m.group(2) + (m.group(3) or "")).upper() if m else None
 
 
+@functools.lru_cache(maxsize=128)
 def chipset_tier(chipset_code: Optional[str]) -> Optional[int]:
     """Tier theo CHỮ CÁI ĐẦU mã chipset (quy ước Intel/AMD), None nếu
     không nhận diện được — không đoán bừa."""
@@ -89,15 +92,18 @@ def max_tdp_for_tier(tier: int) -> float:
     return next((t for t, tr in TDP_TIER_THRESHOLDS if tr == tier), float("inf"))
 
 
+@functools.lru_cache(maxsize=1024)
 def normalize_socket(s: str) -> str:
     return re.sub(r"\s+", "", str(s)).upper() if s else ""
 
 
+@functools.lru_cache(maxsize=1024)
 def parse_pcie_gen(text: str) -> Optional[float]:
     m = re.search(r"pcie\s*(\d+(?:\.\d+)?)", str(text), re.IGNORECASE) if text else None
     return float(m.group(1)) if m else None
 
 
+@functools.lru_cache(maxsize=1024)
 def parse_gpu_profile(text: str) -> Optional[Dict[str, Any]]:
     """
     NVIDIA: 2 số cuối = tier band ('RTX 4080' → tier=80).
@@ -128,6 +134,7 @@ def _match_cpu_suffix(suffix: str) -> int:
     return CPU_SUFFIX_MODIFIER.get("", 0)
 
 
+@functools.lru_cache(maxsize=1024)
 def parse_cpu_profile(name: str) -> Optional[Dict[str, Any]]:
     """Tier chính từ dòng (i3=1...i9=4). Hậu tố X3D/G/T giảm hoặc giữ tier; K/KF/X ép lên."""
     if not name:
@@ -137,7 +144,8 @@ def parse_cpu_profile(name: str) -> Optional[Dict[str, Any]]:
         if m:
             line, suffix = m.group(1), m.group(3).upper()
             modifier = _match_cpu_suffix(suffix)
-            return {"brand": brand, "tier_rank": max(1, CPU_LINE_TIER[line] + modifier), "has_k_modifier": modifier > 0}
+            has_k = modifier > 0 or suffix in ["X", "XT"]
+            return {"brand": brand, "tier_rank": max(1, CPU_LINE_TIER[line] + modifier), "has_k_modifier": has_k}
     return None
 
 
@@ -246,8 +254,8 @@ def _collect(kb: pd.DataFrame, category: str, check_fn: Callable[[dict], dict],
              require_compatible: bool = False, sort_no_warning_first: bool = False,
              sort_key: Optional[Callable[[dict], Any]] = None, top_k: int = 10) -> List[Dict[str, Any]]:
     results = []
-    for _, row in _category_df(kb, category).iterrows():
-        item = row.to_dict()
+    category_items = _category_df(kb, category).to_dict('records')
+    for item in category_items:
         check = check_fn(item)
         if require_compatible and not check["is_compatible"]:
             continue

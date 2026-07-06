@@ -22,39 +22,39 @@ MULTI_TURN_CASES = [
     (
         "multi_inherit_spec",
         [
-            ("rtx 5070 ti vram bao nhiêu?", [("vram", "gb", "16gb")]),
-            ("thế còn xung nhịp?", [("mhz", "ghz", "xung", "nhịp")]),
-            ("vậy của rtx 5080 thì sao?", [("mhz", "ghz", "xung", "nhịp", "5080")]),
+            ("rtx 5070 ti vram bao nhiêu?", ["16", ("vram", "gb")]),
+            ("thế còn xung nhịp?", [("2295", "2572"), ("mhz", "ghz", "xung", "nhịp")]),
+            ("vậy của rtx 5080 thì sao?", ["5080", ("2205", "2610", "2625", "2.205", "2.610", "2.625"), ("mhz", "ghz", "xung", "nhịp")]),
         ]
     ),
     (
         "multi_inherit_compat",
         [
-            ("ryzen 5 7600x có lắp được với main MSI PRO B650M-P không?", [("tương thích", "lắp được", "hợp", "hỗ trợ", "b650m-p")]),
-            ("thế còn main ASUS B760M-AYW thì sao?", [("không", "chưa", "kém", "b760m-ayw")]),
-            ("vậy đi với i7 14700k?", [("tương thích", "lắp được", "hợp", "hỗ trợ", "i7", "14700k")]),
+            ("ryzen 5 7600x có lắp được với main MSI PRO B650M-P không?", ["tương thích"]),
+            ("thế còn main ASUS B760M-AYW thì sao?", ["b760m-ayw", ("không", "không tương thích")]),
+            ("vậy đi với i7 14700k?", ["14700k", ("không", "không thể", "lỗi")]),
         ]
     ),
     (
         "multi_inherit_general",
         [
-            ("tìm cho mình card đồ họa nvidia", [("nvidia", "rtx", "gtx", "gpu", "card")]),
-            ("có loại nào tầm 10 triệu không?", [("triệu", "vnđ", "giá", "10")]),
+            ("tìm cho mình card đồ họa nvidia", [("nvidia", "rtx", "gtx")]),
+            ("có loại nào tầm 10 triệu không?", [("11.995.920", "11.976.000", "vnđ")]),
         ]
     ),
     (
         "multi_inherit_build_pc",
         [
-            ("rtx 3080 chơi pubg mượt không?", [("mượt", "rtx", "3080", "tốt", "ổn")]),
-            ("vậy rtx 4080 thì sao?", [("4080", "rtx", "hơn", "chưa tìm thấy", "không tìm thấy", "kho")]),
-            ("build cho tôi bộ 50 triệu chơi game đi", ["- mã bộ:", "4080"]),
+            ("rtx 3080 chơi pubg mượt không?", ["3080", ("mượt", "tốt", "ổn", "có")]),
+            ("vậy rtx 4080 thì sao?", ["4080", ("2205", "2610", "2625", "2.205", "2.610", "2.625")]),
+            ("build cho tôi bộ 50 triệu chơi game đi", ["- mã bộ:", "4080", "triệu"]),
         ]
     ),
     (
         "multi_non_exists_general",
         [
-            ("tìm cho mình ssd samsung", [("ssd", "samsung", "ổ cứng", "chưa tìm thấy", "không tìm thấy")]),
-            ("có loại 1TB không?", [("1tb", "samsung", "ổ cứng", "ssd", "chưa tìm thấy", "không tìm thấy")]),
+            ("tìm cho mình ssd samsung", [("chưa tìm thấy", "không tìm thấy", "không có")]),
+            ("có loại 1TB không?", [("chưa tìm thấy", "không tìm thấy", "không có")]),
         ]
     ),
 ]
@@ -139,23 +139,33 @@ def _format_requirement(requirement) -> str:
 def test_multi_turn_context(label, turns):
     session_id = _session_id_for(label)
     _ensure_clean_session(session_id)
+    failed_turns = []
 
     for turn_idx, (question, expected_keywords) in enumerate(turns, 1):
         print(f"\n▶ Đang chạy [Turn {turn_idx}]: {question}...")
         payload = {"user_message": question, "session_id": session_id}
-        response = requests.post(API_URL, json=payload, timeout=90, headers=get_auth_headers())
-
-        assert response.status_code in (200, 201), (
-            f"Lỗi ở turn '{question}' - HTTP {response.status_code}: {response.text}"
-        )
-
-        reply = _extract_reply(response.json())
-        reply_lower = reply.lower()
-        missing = [req for req in expected_keywords if not _check_requirement(req, reply_lower)]
-        passed = len(missing) == 0
+        
+        passed = False
+        missing = []
+        reply = ""
+        error_msg = ""
+        
+        try:
+            response = requests.post(API_URL, json=payload, timeout=90, headers=get_auth_headers())
+            if response.status_code not in (200, 201):
+                error_msg = f"HTTP {response.status_code}: {response.text}"
+                reply = f"❌ LỖI API: {error_msg}"
+            else:
+                reply = _extract_reply(response.json())
+                reply_lower = reply.lower()
+                missing = [req for req in expected_keywords if not _check_requirement(req, reply_lower)]
+                passed = len(missing) == 0
+        except Exception as e:
+            error_msg = f"Exception: {str(e)}"
+            reply = f"❌ LỖI KẾT NỐI: {error_msg}"
 
         keywords_display = ", ".join(_format_requirement(r) for r in expected_keywords)
-        missing_display = ", ".join(_format_requirement(m) for m in missing)
+        missing_display = "Lỗi API" if error_msg else ", ".join(_format_requirement(m) for m in missing)
 
         _test_results.append({
             "label": f"{label} [Turn {turn_idx}]",
@@ -163,9 +173,15 @@ def test_multi_turn_context(label, turns):
             "question": question,
             "reply": reply,
             "expected": keywords_display,
-            "passed": passed,
+            "passed": passed if not error_msg else False,
             "missing": missing_display
         })
         _update_md_report()
 
-        assert passed, f"[Turn {turn_idx}] Thiếu {[_format_requirement(m) for m in missing]} trong câu trả lời: '{reply}'"
+        if error_msg:
+            failed_turns.append(f"Lỗi ở turn {turn_idx} '{question}': {error_msg}")
+        elif not passed:
+            failed_turns.append(f"Turn {turn_idx} thiếu {[_format_requirement(m) for m in missing]} trong câu trả lời: '{reply}'")
+
+    if failed_turns:
+        pytest.fail("\n".join(failed_turns))

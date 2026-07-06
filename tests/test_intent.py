@@ -5,7 +5,7 @@ import os
 # Ensure app is in path
 sys.path.insert(0, os.path.abspath("."))
 
-from app.core.master_intent import parse_master_intent, _extract_verified_state
+from app.core.intent.master_intent import parse_master_intent, _extract_verified_state
 
 class DummyMsg:
     def __init__(self, t, c): self.type = t; self.content = c

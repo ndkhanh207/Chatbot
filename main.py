@@ -20,6 +20,8 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
@@ -174,6 +176,28 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    errors = exc.errors()
+    for error in errors:
+        loc = error.get("loc", [])
+        if "session_id" in loc:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "error": "Validation Error",
+                    "message": "Lỗi hệ thống. Vui lòng xóa phiên chat và thử lại!",
+                    "code": "INVALID_SESSION_ID"
+                }
+            )
+    
+    # Nếu không phải lỗi session_id, trả về 422 mặc định của FastAPI
+    return JSONResponse(
+        status_code=422,
+        content={"detail": errors}
+    )
+
 app.add_middleware(SecurityHeadersMiddleware)
 
 # Cấu hình CORS để cho phép frontend (Flutter/React/Postman) gọi API

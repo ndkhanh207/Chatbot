@@ -173,7 +173,8 @@ _ROBOT_PHRASES_PATTERN = re.compile(
 )
 
 _PARAGRAPH_CUTOFF_PATTERN = re.compile(
-    r'\b(giải thích|lý do)\s*:', re.IGNORECASE
+    r'\b(giải thích|lý do|trung thực tuyệt đối|thiếu linh kiện|định dạng hiển thị|chỉ in câu trả lời|không rò rỉ quy tắc|không rò ràng quy tắc|không tự điều chỉnh cấu hình|mẫu trình bày yêu cầu|quy tắc bắt buộc)\b', 
+    re.IGNORECASE
 )
 
 _UNSOLICITED_SUGGESTION_PATTERN = re.compile(
@@ -221,9 +222,21 @@ def word_filter(reply: str) -> str:
 
     reply = _ROBOT_PHRASES_PATTERN.sub('', reply)
 
+    # Xóa câu lệnh prompt bị leak vào câu trả lời
+    reply = reply.replace("(Tuyệt đối KHÔNG viết thêm bất kỳ câu nhận xét, cảm ơn, hay lời khuyên nào sau dòng Tổng cộng)", "")
+    reply = re.sub(r'\(Tuyệt đối KHÔNG.*?\)', '', reply, flags=re.IGNORECASE)
+
+    # Tranh thủ cắt luôn những lời khuyên/cảm ơn thừa sau dòng "Tổng cộng" do LLM hay tự chế
+    m_tong = re.search(r'(Tổng cộng:\s*~?[\d.,]+\s*triệu)(.*?)$', reply, flags=re.IGNORECASE | re.DOTALL)
+    if m_tong:
+        # Nếu phần thừa chứa các từ như "cảm ơn", "chúc", "nếu cần", "liên hệ"... thì cắt bỏ phần thừa
+        tail = m_tong.group(2)
+        if any(w in tail.lower() for w in ["cảm ơn", "chúc", "nếu cần", "liên hệ", "vui lòng", "tư vấn"]):
+            reply = reply[:m_tong.start(1)] + m_tong.group(1)
+
     # Chặn triệt để phần LLM tự ý bịa gợi ý thay thế / hạ cấp linh kiện ngớ ngẩn
     m_sub = _UNSOLICITED_SUGGESTION_PATTERN.search(reply)
-    if m_sub:
+    if m_sub and m_sub.start() > 50:  # Đảm bảo không vô tình xóa sạch cả câu nếu nó nằm ở đầu câu
         reply = reply[:m_sub.start()].strip()
 
     # [BƯỚC ĐỘT PHÁ - NHÌN RỘNG RA]: Dọn dẹp triệt để các dấu câu mồ côi (dấu phẩy, dấu hai chấm đứng trơ trọi đầu dòng hoặc sau khoảng trắng)
@@ -243,3 +256,20 @@ def word_filter(reply: str) -> str:
             reply = f"{reply}\n\nBạn cần tư vấn thêm gì cứ bảo em nhé!"
 
     return reply
+
+
+def check_missing_components(content_str: str, best_build: dict) -> list[str]:
+    """Kiểm tra LLM có bị ảo giác (hallucination) nuốt mất linh kiện cốt lõi không."""
+    content_lower = content_str.lower()
+    missing_components = []
+    
+    if "cpu" not in content_lower:
+        missing_components.append("cpu")
+        
+    if best_build.get('GPU_Model') and str(best_build.get('GPU_Model')) != 'N/A' and "gpu" not in content_lower:
+        missing_components.append("gpu")
+        
+    if "mainboard" not in content_lower:
+        missing_components.append("mainboard")
+        
+    return missing_components

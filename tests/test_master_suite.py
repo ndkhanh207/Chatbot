@@ -7,12 +7,16 @@ import pytest
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 TEST_MODULES = [
-    "test/test_specification.py",
-    "test/test_compatibility.py",
-    "test/test_pc_builder_api.py",
-    "test/test_price_check.py",
-    "test/test_knowledge_base_api.py",
-    "test/test_restful_chat_api.py"
+    "tests/test_specification.py",
+    "tests/test_compatibility.py",
+    "tests/test_pc_builder_api.py",
+    "tests/test_price_check.py",
+    "tests/test_knowledge_base_api.py",
+    "tests/test_restful_chat_api.py",
+    "tests/test_context_tracking_api.py",
+    "tests/test_cosine_similarity.py",
+    "tests/test_security.py",
+    "tests/test_pc_builder_multi_turn_api.py"
 ]
 
 @pytest.mark.parametrize("test_file", TEST_MODULES)

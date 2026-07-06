@@ -47,8 +47,8 @@ def build_price_check_context(parsed_intent, category, knowledge_base, vector_st
         name_disp = _get_field(item, "tên", "name", default=lookup_term)
         price_str = format_currency_vietnam(price_raw)
         format_hint = (
-            f"\n[CHỈ THỊ CỦA HỆ THỐNG]: Khách hàng đang muốn BIẾT GIÁ của sản phẩm này. "
-            f"Bạn PHẢI trả lời ngay giá của '{name_disp}' là {price_str} VNĐ, KHÔNG được hỏi ngược lại khách."
+            f"\n[CHỈ THỊ CỦA HỆ THỐNG]: Khách hàng muốn hỏi giá. BẮT BUỘC chỉ trả lời đúng 1 câu ngắn gọn, không giải thích dài dòng: "
+            f"\"Dạ, giá của **{name_disp}** hiện tại là **{price_str} VNĐ** ạ.\""
         )
         
     return context, format_hint
@@ -67,23 +67,39 @@ def build_budget_search_context(parsed_intent, msg_lower, category, knowledge_ba
     top_k = 5
     sort_order = "none"
     
-    # Phân tích Regex trực tiếp từ msg_lower
-    # 1. Tìm cụm 'từ X (triệu|tr) đến Y (triệu|tr)'
-    m_range = re.search(r'\btừ\s+(\d+(?:\.\d+)?)\s*(?:triệu|tr)?\s*(?:đến|tới|-)\s*(\d+(?:\.\d+)?)\s*(?:triệu|tr)\b', msg_lower)
+    # Phân tích Regex trực tiếp từ msg_lower — ưu tiên hơn budget_amount từ LLM (thường sai đơn vị)
+    # 1. Từ X đến Y triệu
+    m_range = re.search(r'từ\s+(\d+(?:\.\d+)?)\s*(?:triệu|tr)?\s*(?:đến|tới|-)\s*(\d+(?:\.\d+)?)\s*(?:triệu|tr)', msg_lower)
     if m_range:
-        lo = float(m_range.group(1)) * 1000000
-        hi = float(m_range.group(2)) * 1000000
+        lo = float(m_range.group(1)) * 1_000_000
+        hi = float(m_range.group(2)) * 1_000_000
+    else:
+        # 2. Dưới X triệu
+        m_under = re.search(r'dưới\s+(\d+(?:\.\d+)?)\s*(?:triệu|tr)', msg_lower)
+        if m_under:
+            hi = float(m_under.group(1)) * 1_000_000
+        else:
+            # 3. Tầm / khoảng / cỡ / quanh X triệu (+/- 20%)
+            m_around = re.search(r'(?:tầm|khoảng|cỡ|quanh)\s+(\d+(?:\.\d+)?)\s*(?:triệu|tr)', msg_lower)
+            if m_around:
+                target = float(m_around.group(1)) * 1_000_000
+                lo = target * 0.8
+                hi = target * 1.2
+            elif hi < 100_000:  # LLM trả về đơn vị triệu (VD: 5) thay vì VNĐ (5000000)
+                hi = hi * 1_000_000
         
     # 2. Tìm yêu cầu sắp xếp rẻ nhất / đắt nhất
     if any(k in msg_lower for k in ["rẻ nhất", "thấp nhất", "giá rẻ", "giá thấp"]):
         sort_order = "asc"
     elif any(k in msg_lower for k in ["đắt nhất", "cao nhất", "giá cao", "max giá"]):
         sort_order = "desc"
+    else:
+        sort_order = "desc" # Mặc định lấy sản phẩm tốt nhất (đắt nhất) sát với ngân sách
         
     # 3. Tìm số lượng top K
-    m_top = re.search(r'\b(top|cho xem|list|liệt kê)\s+(\d+)\b', msg_lower)
+    m_top = re.search(r'(?:top|cho xem|list|liệt kê)\s+(\d+)', msg_lower)
     if m_top:
-        top_k = int(m_top.group(2))
+        top_k = int(m_top.group(1))
     
     # Lọc trực tiếp từ DB/DataFrame
     matched_items, total_count = filter_knowledge_base_by_price(
@@ -115,5 +131,7 @@ def build_budget_search_context(parsed_intent, msg_lower, category, knowledge_ba
             
         if total_count and total_count > len(matched_items):
             format_hint += f"\n(Lưu ý: còn {total_count - len(matched_items)} sản phẩm khác cũng nằm trong khoảng giá này, không hiển thị hết ở đây.)"
+            
+        format_hint += "\n[TUYỆT ĐỐI TUÂN THỦ]: BẠN PHẢI TRỰC TIẾP LIỆT KÊ TÊN VÀ GIÁ TỪNG SẢN PHẨM Ở TRÊN RA CHO KHÁCH. KHÔNG ĐƯỢC LƯỜI BIẾNG GIẤU THÔNG TIN. KHÔNG ĐƯỢC HỎI NGƯỢC LẠI KHÁCH HÀNG MÀ PHẢI ĐƯA RA DANH SÁCH LUÔN."
             
     return context, format_hint

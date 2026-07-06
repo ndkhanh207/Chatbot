@@ -206,19 +206,28 @@ def test_single_turn(label, question, expected_keywords):
     _ensure_clean_session(session_id)
 
     payload = {"user_message": question, "session_id": session_id}
-    response = requests.post(API_URL, json=payload, timeout=90, headers=get_auth_headers())
-
-    assert response.status_code in (200, 201), (
-        f"HTTP {response.status_code} cho câu hỏi '{question}': {response.text}"
-    )
-
-    reply = _extract_reply(response.json())
-    reply_lower = reply.lower()
-    missing = [req for req in expected_keywords if not _check_requirement(req, reply_lower)]
-    passed = len(missing) == 0
+    
+    passed = False
+    missing = []
+    reply = ""
+    error_msg = ""
+    
+    try:
+        response = requests.post(API_URL, json=payload, timeout=90, headers=get_auth_headers())
+        if response.status_code not in (200, 201):
+            error_msg = f"HTTP {response.status_code}: {response.text}"
+            reply = f"❌ LỖI API: {error_msg}"
+        else:
+            reply = _extract_reply(response.json())
+            reply_lower = reply.lower()
+            missing = [req for req in expected_keywords if not _check_requirement(req, reply_lower)]
+            passed = len(missing) == 0
+    except Exception as e:
+        error_msg = f"Exception: {str(e)}"
+        reply = f"❌ LỖI KẾT NỐI: {error_msg}"
 
     keywords_display = ", ".join(_format_requirement(r) for r in expected_keywords)
-    missing_display = ", ".join(_format_requirement(m) for m in missing)
+    missing_display = "Lỗi API" if error_msg else ", ".join(_format_requirement(m) for m in missing)
 
     _test_results.append({
         "label": label,
@@ -226,12 +235,15 @@ def test_single_turn(label, question, expected_keywords):
         "question": question,
         "reply": reply,
         "expected": keywords_display,
-        "passed": passed,
+        "passed": passed if not error_msg else False,
         "missing": missing_display
     })
     _update_md_report()
 
-    assert passed, f"Thiếu {[_format_requirement(m) for m in missing]} trong câu trả lời: '{reply}'"
+    if error_msg:
+        pytest.fail(error_msg)
+    else:
+        assert passed, f"Thiếu {[_format_requirement(m) for m in missing]} trong câu trả lời: '{reply}'"
 
 
 @pytest.mark.parametrize("label, turns", MULTI_TURN_CASES)
@@ -241,19 +253,28 @@ def test_multi_turn(label, turns):
 
     for turn_idx, (question, expected_keywords) in enumerate(turns, 1):
         payload = {"user_message": question, "session_id": session_id}
-        response = requests.post(API_URL, json=payload, timeout=90, headers=get_auth_headers())
-
-        assert response.status_code in (200, 201), (
-            f"Lỗi ở turn '{question}' - HTTP {response.status_code}: {response.text}"
-        )
-
-        reply = _extract_reply(response.json())
-        reply_lower = reply.lower()
-        missing = [req for req in expected_keywords if not _check_requirement(req, reply_lower)]
-        passed = len(missing) == 0
+        
+        passed = False
+        missing = []
+        reply = ""
+        error_msg = ""
+        
+        try:
+            response = requests.post(API_URL, json=payload, timeout=90, headers=get_auth_headers())
+            if response.status_code not in (200, 201):
+                error_msg = f"HTTP {response.status_code}: {response.text}"
+                reply = f"❌ LỖI API: {error_msg}"
+            else:
+                reply = _extract_reply(response.json())
+                reply_lower = reply.lower()
+                missing = [req for req in expected_keywords if not _check_requirement(req, reply_lower)]
+                passed = len(missing) == 0
+        except Exception as e:
+            error_msg = f"Exception: {str(e)}"
+            reply = f"❌ LỖI KẾT NỐI: {error_msg}"
 
         keywords_display = ", ".join(_format_requirement(r) for r in expected_keywords)
-        missing_display = ", ".join(_format_requirement(m) for m in missing)
+        missing_display = "Lỗi API" if error_msg else ", ".join(_format_requirement(m) for m in missing)
 
         _test_results.append({
             "label": f"{label} [Turn {turn_idx}]",
@@ -261,9 +282,12 @@ def test_multi_turn(label, turns):
             "question": question,
             "reply": reply,
             "expected": keywords_display,
-            "passed": passed,
+            "passed": passed if not error_msg else False,
             "missing": missing_display
         })
         _update_md_report()
 
-        assert passed, f"[Turn {turn_idx}] Thiếu {[_format_requirement(m) for m in missing]} trong câu trả lời: '{reply}'"
+        if error_msg:
+            pytest.fail(f"Lỗi ở turn '{question}': {error_msg}")
+        else:
+            assert passed, f"Thiếu {[_format_requirement(m) for m in missing]} trong câu trả lời: '{reply}'"

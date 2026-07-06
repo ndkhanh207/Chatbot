@@ -40,10 +40,20 @@ def get_basic_search_chain() -> RunnableSequence:
         _basic_search_chain = BASIC_SEARCH_TEMPLATE | get_llm()
     return _basic_search_chain
 
+def _get_compat_llm() -> ChatOllama:
+    """LLM dùng riêng cho compatibility check — repeat_penalty thấp để cho phép copy text y nguyên."""
+    return ChatOllama(
+        model=get_ollama_model(),
+        temperature=0,
+        request_timeout=85.0,
+        top_p=0.05,
+        repeat_penalty=1.05,  # ← Hạ repeat_penalty để LLM có thể lặp lại đúng nguyên văn cảnh báo
+    )
+
 def get_compat_check_chain() -> RunnableSequence:
     global _compat_check_chain
     if _compat_check_chain is None:
-        _compat_check_chain = COMPAT_CHECK_TEMPLATE | _get_strict_llm()
+        _compat_check_chain = COMPAT_CHECK_TEMPLATE | _get_compat_llm()
     return _compat_check_chain
 
 def get_suggestion_chain() -> RunnableSequence:

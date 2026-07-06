@@ -118,6 +118,10 @@ PC_BUILD_TEMPLATE = ChatPromptTemplate.from_messages([
 2. THIẾU LINH KIỆN: Nếu dữ liệu không có GPU (ví dụ máy văn phòng), thì bỏ qua mục GPU. Tuyệt đối không tự bịa GPU.
 3. ĐỊNH DẠNG HIỂN THỊ: Phải liệt kê theo đúng danh sách số, giá làm tròn và ghi "~X triệu". BẮT BUỘC XUỐNG DÒNG (\n) sau mỗi linh kiện, TUYỆT ĐỐI không viết dính liền thành 1 đoạn văn dài.
 4. CHỈ IN RA CÂU TRẢ LỜI CỦA BẠN. Tuyệt đối không tự sinh thêm câu hỏi của khách hàng hay kịch bản mới.
+5. KHÔNG RÒ RỈ QUY TẮC: TUYỆT ĐỐI KHÔNG thêm bất kỳ dòng "Lưu ý:", "Ghi chú:", hay giải thích về quy tắc, ngữ cảnh ở cuối câu trả lời. Cấm yapping.
+6. KHÔNG TỰ ĐIỀU CHỈNH CẤU HÌNH: DỮ LIỆU BỘ PC đã được hệ thống tính toán và điều chỉnh xong xuôi. Bạn TUYỆT ĐỐI KHÔNG ĐƯỢC tự ý thay đổi, nâng cấp hay hạ cấp bất kỳ linh kiện nào (CPU, GPU, Mainboard) dù yêu cầu của khách có nói gì đi nữa. CHỈ ĐƯỢC PHÉP ĐỌC VÀ TRÌNH BÀY y xì đúc thông tin từ DỮ LIỆU BỘ PC.
+
+
 [MẪU TRÌNH BÀY YÊU CẦU]
 Dạ, với nhu cầu của bạn, em xin gợi ý cấu hình sau:
 1. CPU: [Tên CPU] - ~[Giá] triệu
@@ -125,8 +129,8 @@ Dạ, với nhu cầu của bạn, em xin gợi ý cấu hình sau:
 3. Mainboard: [Tên Mainboard] - ~[Giá] triệu
 4. Phí lắp ráp: ~[Giá] triệu
 * Tổng cộng: ~[Tổng giá] triệu
-[NHẬN XÉT CỦA BẠN]
-Viết ĐÚNG 1 câu nhận xét ở cuối cùng, cho khách biết bộ máy này giải quyết được [YÊU CẦU] của họ như thế nào (Ví dụ: "Bộ này cân tốt game AAA..." hoặc "Cấu hình này rất mượt cho Excel...").
+
+(Tuyệt đối KHÔNG viết thêm bất kỳ câu nhận xét, cảm ơn, hay lời khuyên nào sau dòng Tổng cộng)
 """),
     ("human", """YÊU CẦU KHÁCH HÀNG: {user_message}
 DỮ LIỆU BỘ PC:

@@ -38,7 +38,7 @@ def build_price_calculation_context(intent: MasterIntentSchema, knowledge_base, 
     main = _resolve_item(intent.mainboard, "MAINBOARD", knowledge_base, vector_store)
     gpu  = _resolve_item(intent.gpu,       "GPU",       knowledge_base, vector_store)
 
-    lines         = ["[KẾT QUẢ TÍNH TỔNG GIÁ LINH KIỆN]"]
+    lines         = ["Dạ, chi tiết giá các linh kiện anh/chị cần tính đây ạ:\n"]
     total_price   = 0
     found_items   = []
     missing_items = []

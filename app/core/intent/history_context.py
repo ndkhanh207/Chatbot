@@ -3,38 +3,44 @@ import re
 MAX_HISTORY_MSGS = 4
 MAX_HISTORY_CHAR_LIMIT = 200
 
+# Centralized Regex for component extraction across the system
+CPU_RE  = re.compile(r'\b(i[3579](?:-?\d{4,5}[a-z0-9]*)?|ryzen\s*[3579](?:\s*\d{3,5}[a-z0-9]*)?|core\s*ultra\s*\d+|x3d)\b', re.I)
+GPU_RE  = re.compile(r'\b(rtx|gtx|rx|arc)\s*(\d{3,5}(?:\s*ti|\s*xt|\s*xtx|\s*gre)?)\b', re.I)
+MAIN_RE = re.compile(r'\b([bzhx]\d{2,3}m?(?:-[a-z0-9]+)?)\b', re.I)
+CAT_RE  = re.compile(r'\b(gpu|cpu|mainboard|card đồ họa|bo mạch chủ|vga)\b', re.I)
+
 def _extract_verified_state(chat_history: list) -> str:
     """Extract confirmed components and last intent from chat history.
     User messages are source of truth; AI suggestions fill missing slots."""
-    CPU_RE  = re.compile(r'\b(i[3579][-\s]?\d{4,5}[a-z0-9]*|ryzen\s*[3579]\s+\d{4,5}[a-z0-9]*)\b', re.I)
-    GPU_RE  = re.compile(r'\b(rtx\s*\d{3,4}(?:\s*ti)?|rx\s*\d{3,4}(?:\s*xt)?)\b', re.I)
-    MAIN_RE = re.compile(r'\b([bzhx]\d{2,3}m?(?:-[a-z0-9]+)?)\b', re.I)
-    CAT_RE  = re.compile(r'\b(gpu|cpu|mainboard|card đồ họa|bo mạch chủ|vga)\b', re.I)
-
-    # Intent detection from user question patterns
     INTENT_PATTERNS = [
         (re.compile(r'lắp được|tương thích|đi với|chạy chung|hợp không|kết hợp|gắn được', re.I), "compatibility"),
         (re.compile(r'giá\s*bao nhiêu|giá\s*nhiêu|bao\s*nhiêu\s*tiền', re.I), "price_check"),
         (re.compile(r'vram|xung|socket|lõi|nhân|tdp|bộ nhớ|thông số|mượt|khỏe', re.I), "specification"),
         (re.compile(r'tìm|gợi ý|đề xuất|phù hợp', re.I), "suggestion"),
+        (re.compile(r'build|ráp|tư vấn pc|cấu hình', re.I), "build_pc"),
     ]
 
-    user_state = {}   # confirmed by human turn
-    ai_state   = {}   # suggested by AI (lower trust)
+    state = {}
     last_intent = None
 
     for msg in reversed(chat_history[-6:]):
         role = getattr(msg, "type", "")
         c    = msg.content
-        cpu  = CPU_RE.search(c)
-        gpu  = GPU_RE.search(c)
-        main = MAIN_RE.search(c)
-        cat  = CAT_RE.search(c)
+        cpu_m = CPU_RE.search(c)
+        gpu_m = GPU_RE.search(c)
+        main_m = MAIN_RE.search(c)
+        cat_m = CAT_RE.search(c)
+        
+        cpu = cpu_m.group(0).strip() if cpu_m else None
+        gpu = gpu_m.group(0).strip() if gpu_m else None
+        main = main_m.group(1).strip() if main_m else None
+        cat = cat_m.group(1).lower().strip() if cat_m else None
+        
         if role == "human":
-            if cpu:  user_state.setdefault("cpu", cpu.group(1))
-            if gpu:  user_state.setdefault("gpu", gpu.group(1))
-            if main: user_state.setdefault("mainboard", main.group(1))
-            if cat:  user_state.setdefault("category", cat.group(1).lower())
+            if cpu:  state.setdefault("cpu", cpu)
+            if gpu:  state.setdefault("gpu", gpu)
+            if main: state.setdefault("mainboard", main)
+            if cat:  state.setdefault("category", cat)
             # Extract intent from user's most recent explicit question
             if last_intent is None:
                 for pattern, intent_name in INTENT_PATTERNS:
@@ -42,13 +48,20 @@ def _extract_verified_state(chat_history: list) -> str:
                         last_intent = intent_name
                         break
         elif role == "ai":
-            if cpu:  ai_state.setdefault("cpu", cpu.group(1))
-            if gpu:  ai_state.setdefault("gpu", gpu.group(1))
-            if main: ai_state.setdefault("mainboard", main.group(1))
-            if cat:  ai_state.setdefault("category", cat.group(1).lower())
+            kwargs = getattr(msg, "additional_kwargs", {})
+            if kwargs:
+                meta_cpu = kwargs.get("user_cpu") or kwargs.get("last_suggested_cpu")
+                meta_gpu = kwargs.get("user_gpu") or kwargs.get("last_suggested_gpu")
+                meta_main = kwargs.get("user_mainboard") or kwargs.get("last_suggested_mainboard")
+                
+                if meta_cpu: state.setdefault("cpu", meta_cpu)
+                if meta_gpu: state.setdefault("gpu", meta_gpu)
+                if meta_main: state.setdefault("mainboard", meta_main)
 
-    # Merge: user confirmation wins; AI suggestion only fills missing slots
-    state = {**ai_state, **user_state}
+            if cpu:  state.setdefault("cpu", cpu)
+            if gpu:  state.setdefault("gpu", gpu)
+            if main: state.setdefault("mainboard", main)
+            if cat:  state.setdefault("category", cat)
     
     if last_intent is None:
         for msg in reversed(chat_history[-6:]):
@@ -62,6 +75,9 @@ def _extract_verified_state(chat_history: list) -> str:
                     break
                 if re.search(r'tương thích|không tương thích|lắp được|phù hợp', c, re.I):
                     last_intent = "compatibility"
+                    break
+                if re.search(r'bộ pc|cấu hình|mã bộ:\s*build-|để build bộ máy', c, re.I):
+                    last_intent = "build_pc"
                     break
 
     if last_intent:

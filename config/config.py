@@ -46,6 +46,7 @@ MYSQL_PASSWORD = _env('MYSQL_PASSWORD', '')
 MYSQL_HOST     = _env('MYSQL_HOST',     '127.0.0.1')
 MYSQL_PORT     = _env('MYSQL_PORT',     '3306')
 MYSQL_DB       = _env('MYSQL_DB',       'chat_history')
+MYSQL_TABLE    = _env('MYSQL_TABLE',    'chat_history')
 
 # Base directory for data files
 PC_STORE_DATA = _env('PC_STORE_DATA','data/dataset')

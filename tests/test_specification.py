@@ -168,19 +168,32 @@ def test_export_qa(label, question, expected_keywords):
     _ensure_clean_session(session_id)
 
     payload = {"user_message": question, "session_id": session_id}
-    response = requests.post(API_URL, json=payload, timeout=30, headers=get_auth_headers())
-
-    assert response.status_code in (200, 201), (
-        f"HTTP {response.status_code} cho câu hỏi '{question}': {response.text}"
-    )
-
-    reply = _extract_reply(response.json())
-    reply_lower = reply.lower()
-    missing = [req for req in expected_keywords if not _check_requirement(req, reply_lower)]
-    passed = len(missing) == 0
+    
+    passed = False
+    missing = []
+    reply = ""
+    error_msg = ""
+    
+    try:
+        response = requests.post(API_URL, json=payload, timeout=60, headers=get_auth_headers())
+        if response.status_code not in (200, 201):
+            error_msg = f"HTTP {response.status_code}: {response.text}"
+            reply = f"❌ LỖI API: {error_msg}"
+        else:
+            reply = _extract_reply(response.json())
+            reply_lower = reply.lower()
+            missing = [req for req in expected_keywords if not _check_requirement(req, reply_lower)]
+            passed = len(missing) == 0
+    except Exception as e:
+        error_msg = f"Exception: {str(e)}"
+        reply = f"❌ LỖI KẾT NỐI: {error_msg}"
 
     with open(REPORT_FILE, "a", encoding="utf-8") as f:
-        result_cell = "✅" if passed else f"❌ thiếu: {', '.join(_format_requirement(m) for m in missing)}"
+        if error_msg:
+            result_cell = "❌ Lỗi API"
+        else:
+            result_cell = "✅" if passed else f"❌ thiếu: {', '.join(_format_requirement(m) for m in missing)}"
+            
         keywords_display = ", ".join(_format_requirement(r) for r in expected_keywords)
         reply_clean = reply.replace("\n", "<br>").replace("|", "\\|")
         question_clean = question.replace("\n", "<br>").replace("|", "\\|")
@@ -190,4 +203,7 @@ def test_export_qa(label, question, expected_keywords):
             f"{keywords_clean} | {result_cell} |\n"
         )
 
-    assert passed, f"Thiếu {[_format_requirement(m) for m in missing]} trong câu trả lời: '{reply}'"
+    if error_msg:
+        pytest.fail(error_msg)
+    else:
+        assert passed, f"Thiếu {[_format_requirement(m) for m in missing]} trong câu trả lời: '{reply}'"

@@ -26,6 +26,13 @@ COMPAT_TRIGGERS = [
     'có sao không', 'phối với', 'ghép với', 'chạy chung'
 ]
 
+SPEC_TRIGGERS = [
+    'vram', 'xung', 'socket', 'lõi', 'nhân', 'tdp', 'bộ nhớ', 'thông số',
+    'mượt', 'khỏe', 'băng thông', 'tốc độ', 'chuẩn', 'giao tiếp', 'kích cỡ',
+    'kích thước', 'chiều dài', 'dài bao nhiêu', 'màu', 'watt', 'điện năng',
+    'công suất', 'chạy ở', 'gb ram', 'khe cắm'
+]
+
 CPU_REGEX = r'(amd ryzen\s*[3579]\s+\d{4,5}[a-z0-9]*|intel core i[3579][-\s]?\d{4,5}[a-z0-9]*|ryzen\s*[3579]\s+\d{4,5}[a-z0-9]*|i[3579][-\s]?\d{4,5}[a-z0-9]*|ryzen\s+[3579])'
 GPU_REGEX = r'((?:geforce\s+)?(?:rtx|gtx)\s*\d{3,4}(?:\s*ti|\s*super)?(?:\s*gaming)?(?:\s*\d{1,2}g)?|radeon\s+rx\s*\d{3,4}(?:\s*xt)?|rx\s*\d{3,4}(?:\s*xt)?)'
 MAIN_REGEX = r'(asus\s+[bzhx]\d{2,3}m?(?:-[a-z0-9]+)?|gigabyte\s+[bzhx]\d{2,3}m?(?:-[a-z0-9]+)?|msi\s+[bzhx]\d{2,3}m?(?:-[a-z0-9]+)?|asrock\s+[bzhx]\d{2,3}m?(?:-[a-z0-9]+)?|[bzhx]\d{2,3}m?(?:-[a-z0-9]+)?|mainboard\s+[a-z0-9-]+|main\s+[a-z0-9-]+)'
@@ -53,15 +60,15 @@ class MasterIntentSchema(BaseModel):
     
     target_product: str = Field(
         default="none", 
-        description="Tên linh kiện chính khi ý định là 'specification' hoặc 'price_check' (VD: 'i9 14900k'). Nếu câu hỏi hiện tại thiếu chủ ngữ, HÃY TÌM TRONG LỊCH SỬ HỘI THOẠI để điền vào. Mặc định 'none'."
+        description="Tên linh kiện chính khi ý định là 'specification' hoặc 'price_check' (VD: 'i9 14900k'). Nếu câu hỏi hiện tại thiếu chủ ngữ, HÃY LẤY TỪ MỤC [TRẠNG THÁI ĐÃ XÁC NHẬN] để điền vào. Tuyệt đối không lấy linh kiện cũ đã bị thay thế (trừ khi khách yêu cầu rõ là 'lấy lại cái cũ'). Mặc định 'none'."
     )
     spec_detail: str = Field(
         default="none", 
-        description="Từ khóa thông số khách hỏi (vd: 'lõi', 'vram', 'socket', 'xung tối đa'). Nếu câu hỏi hiện tại đang nói tiếp chủ đề của câu trước (VD: 'vậy con ABC thì sao?') nhưng thiếu thông số/mục đích, HÃY TÌM TRONG LỊCH SỬ HỘI THOẠI để điền vào (VD: lấy lại chữ 'mượt không', 'socket'). Nếu hỏi chung chung điền 'all'. Mặc định 'none'."
+        description="Từ khóa thông số khách hỏi (vd: 'lõi', 'vram', 'socket', 'xung tối đa'). Nếu câu hỏi hiện tại đang nói tiếp chủ đề của câu trước nhưng thiếu thông số, HÃY LẤY TỪ MỤC [TRẠNG THÁI ĐÃ XÁC NHẬN] hoặc lịch sử gần nhất. Mặc định 'none'."
     )
-    cpu: str = Field(default="none", description="LUÔN trích xuất tên CPU nếu có trong câu (VD: 'i9 14900k', 'ryzen 7 9800x3d'). Nếu câu trước đang hỏi tương thích và câu này đổi linh kiện khác nhưng thiếu CPU, HÃY TÌM TRONG LỊCH SỬ HỘI THOẠI để giữ lại CPU cũ. Mặc định 'none'.")
-    mainboard: str = Field(default="none", description="LUÔN trích xuất tên Mainboard nếu có trong câu (VD: 'asus b760m', 'msi b850 pro'). Nếu câu trước đang hỏi tương thích và thiếu Mainboard, HÃY TÌM TRONG LỊCH SỬ HỘI THOẠI để giữ lại. Mặc định 'none'.")
-    gpu: str = Field(default="none", description="LUÔN trích xuất tên GPU/VGA nếu có trong câu (VD: 'rtx 5070 ti', 'rx 7900 xt'). Nếu thiếu GPU và đang hỏi tương thích tiếp nối, HÃY TÌM TRONG LỊCH SỬ HỘI THOẠI để giữ lại. Mặc định 'none'.")
+    cpu: str = Field(default="none", description="LUÔN trích xuất tên CPU nếu có trong câu (VD: 'i9 14900k', 'ryzen 7 9800x3d'). Nếu đang hỏi tiếp nối mà thiếu CPU, HÃY LẤY TỪ MỤC [TRẠNG THÁI ĐÃ XÁC NHẬN] để giữ lại CPU mới nhất (trừ khi khách yêu cầu lấy lại CPU cũ). Mặc định 'none'.")
+    mainboard: str = Field(default="none", description="LUÔN trích xuất tên Mainboard nếu có trong câu (VD: 'asus b760m', 'msi b850 pro'). Nếu đang hỏi tiếp nối mà thiếu Mainboard, HÃY LẤY TỪ MỤC [TRẠNG THÁI ĐÃ XÁC NHẬN] để giữ lại (trừ khi khách yêu cầu lấy lại Mainboard cũ). Mặc định 'none'.")
+    gpu: str = Field(default="none", description="LUÔN trích xuất tên GPU/VGA nếu có trong câu (VD: 'rtx 5070 ti', 'rx 7900 xt'). Nếu thiếu GPU và đang hỏi tiếp nối, HÃY LẤY TỪ MỤC [TRẠNG THÁI ĐÃ XÁC NHẬN] để giữ lại (trừ khi khách yêu cầu lấy lại GPU cũ). Mặc định 'none'.")
     budget_amount: int = Field(
         default=0,
         description="Ngân sách khách yêu cầu. BẮT BUỘC CHUYỂN ĐỔI thành số nguyên VNĐ. Ví dụ: '20 triệu', '20tr', 'tầm 20' → 20000000. '500k' → 500000. Mặc định 0."
@@ -104,8 +111,13 @@ def _count_components(msg_l: str) -> tuple:
 def _apply_pre_extraction_guards(msg_l: str, comp_count: int, intent_pass1: str, history_context: str) -> str:
     has_compat_trigger = any(t in msg_l for t in COMPAT_TRIGGERS)
     if has_compat_trigger and comp_count >= 2 and intent_pass1 != "compatibility":
-        print(f"\u26a0\ufe0f [GUARD] Pass 1 phân loại nhầm ({intent_pass1}). Ép thành 'compatibility'.")
+        print(f"⚠️ [GUARD] Pass 1 phân loại nhầm ({intent_pass1}). Ép thành 'compatibility'.")
         return "compatibility"
+
+    has_spec_trigger = any(t in msg_l for t in SPEC_TRIGGERS)
+    if has_spec_trigger and intent_pass1 not in ["specification", "compatibility"]:
+        print(f"⚠️ [GUARD] Phát hiện từ khóa thông số/chuẩn giao tiếp. Ép thành 'specification'.")
+        return "specification"
 
     # Nếu nhắc đích danh linh kiện cụ thể (comp_count >= 1) thì không thể là tìm kiếm chung chung.
     # Nếu Pass-1 ra build_pc nhưng không hề có chữ 'build', 'bộ', 'pc', 'dàn', 'máy' -> Ảo giác.

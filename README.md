@@ -117,22 +117,25 @@ pytest tests/test_restful_chat_api.py -v -s
 # 2. Kiểm thử tích hợp trực tiếp API tra cứu Knowledge Base (/test-knowledge-base)
 pytest tests/test_knowledge_base_api.py -v -s
 
-# 3. Kiểm thử chất lượng phản hồi tư vấn PC Builder
+# 3. Kiểm thử chất lượng phản hồi tư vấn PC Builder (Single-turn)
 python -m pytest tests/test_pc_builder_api.py -v
 
-# 4. Kiểm thử nhận diện và trích xuất thông số linh kiện
+# 4. Kiểm thử chất lượng tư vấn PC Builder (Multi-turn - Nâng cấp, Khóa, Đổi linh kiện)
+python -m pytest tests/test_pc_builder_multi_turn_api.py -v
+
+# 5. Kiểm thử nhận diện và trích xuất thông số linh kiện
 pytest tests/test_specification.py -v
 
-# 5. Kiểm thử thuật toán kiểm tra tương thích linh kiện (Compatibility)
+# 6. Kiểm thử thuật toán kiểm tra tương thích linh kiện (Compatibility)
 pytest tests/test_compatibility.py -v
 
-# 6. Kiểm thử tra cứu độ tương đồng Cosine Similarity (Knowledge Base)
+# 7. Kiểm thử tra cứu độ tương đồng Cosine Similarity (Knowledge Base)
 pytest tests/test_cosine_similarity.py -v
 
-# 7. Kiểm thử chức năng tra cứu giá cả linh kiện
+# 8. Kiểm thử chức năng tra cứu giá cả linh kiện
 pytest tests/test_price_check.py -v
 
-# 8. Kiểm tra hiểu ngữ nghĩa context
+# 9. Kiểm tra hiểu ngữ nghĩa context
 pytest tests/test_context_tracking_api.py -v
 ```
 ---

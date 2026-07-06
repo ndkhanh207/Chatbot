@@ -2,7 +2,7 @@
 Chat endpoint logic — dùng LangChain ChatOllama + ChatPromptTemplate.
 """
 
-from pandas.core.indexes import category
+from anyio import NoEventLoopError
 import re
 import json
 import traceback
@@ -17,7 +17,7 @@ from app.core.search_engine import hybrid_search
 from app.compatibility.compatibility import build_compatibility_context, build_suggestion_context
 from app.price.price_calculator import build_price_calculation_context
 from app.price.pricing import build_budget_search_context, build_price_check_context  
-from app.specification.specification import build_specification_context 
+from app.specification.specification import build_specification_context, build_general_search_context
 
 from app.core.llm_chains import get_basic_search_chain, get_compat_check_chain, get_suggestion_chain
 from app.specification.context_builder import build_product_context
@@ -53,17 +53,24 @@ def handle_chat(user_message: str, knowledge_base,
 
     msg_clean = user_message.strip().lower()
 
+    # Lấy lịch sử chat sớm để dùng cho các logic kiểm tra ngữ cảnh
+    chat_history = get_trimmed_history(user_uid, session_id)
+
     # ── FEATURE: Giao tiếp cơ bản (Không gọi DB / LLM) ──
     CASUAL_GREETINGS = ['xin chào', 'chào bạn', 'hi', 'hello', 'chào em', 'chào bot']
-    CASUAL_THANKS = ['cảm ơn', 'thank', 'tks', 'ok', 'oke', 'okela', 'dạ', 'vâng', 'tuyệt vời', 'đã hiểu', 'hay quá']
-    CASUAL_BYE = ['tạm biệt', 'bye', 'hẹn gặp lại']
+    CASUAL_THANKS_EXACT = ['cảm ơn', 'cám ơn', 'thank', 'tks', 'ok', 'oke', 'okela', 'dạ', 'vâng', 'tuyệt vời', 'đã hiểu', 'hay quá', 'ok bạn', 'cảm ơn bạn', 'dạ vâng', 'cảm ơn bot', 'thank you']
+    CASUAL_BYE_EXACT = ['tạm biệt', 'bye', 'hẹn gặp lại', 'chào nhé']
 
     if len(msg_clean) < 30:
+        # Không chặn nếu câu AI trước đó là câu hỏi
+        last_ai_msg = next((m.content for m in reversed(chat_history) if getattr(m, 'type', '') == 'ai'), "")
+        is_answering_question = '?' in last_ai_msg or "không ạ" in last_ai_msg or "được không" in last_ai_msg
+        
         if any(msg_clean == g or msg_clean.startswith(g + ' ') for g in CASUAL_GREETINGS):
             return {"chatbot_reply": "Dạ em chào bạn! Em là trợ lý tư vấn máy tính, em có thể giúp gì cho bạn hôm nay ạ? 😊"}
-        if any(msg_clean == t or msg_clean.startswith(t + ' ') for t in CASUAL_THANKS):
+        if msg_clean in CASUAL_THANKS_EXACT and not is_answering_question:
             return {"chatbot_reply": "Dạ vâng ạ! Nếu bạn cần tư vấn cấu hình hay linh kiện gì thêm cứ nhắn em nhé. 😊"}
-        if any(msg_clean == b or msg_clean.startswith(b + ' ') for b in CASUAL_BYE):
+        if msg_clean in CASUAL_BYE_EXACT:
             return {"chatbot_reply": "Dạ tạm biệt bạn! Chúc bạn một ngày tốt lành ạ! 😊"}
 
     # ── FEATURE: Off-topic guard rail ──
@@ -91,8 +98,8 @@ def handle_chat(user_message: str, knowledge_base,
         msg_lower          = normalize_text(user_message_fixed)
         category = get_category(msg_lower)
 
-        # 2. Lấy lịch sử TRƯỚC khi search (để reformulate)
-        chat_history = get_trimmed_history(user_uid, session_id)
+        print("════════════════════════════════════════════════════════════")
+        print(f"🔍 Cau hoi goc: '{user_message}'")
 
         # 3. Bóc tách ý định bằng LLM sớm với lịch sử chat (Thay thế hoàn toàn reformulate_query)
         parsed_intent = parse_master_intent(user_message_fixed, chat_history)
@@ -106,7 +113,7 @@ def handle_chat(user_message: str, knowledge_base,
                 if field.lower() not in msg_l_fixed:
                     q_parts.append(field)
                 
-        if q_parts:
+        if q_parts and parsed_intent.intent != "build_pc":
             search_query = " ".join(q_parts) + " " + user_message_fixed
         else:
             search_query = user_message_fixed
@@ -144,8 +151,8 @@ def handle_chat(user_message: str, knowledge_base,
 
         # Ưu tiên: tin tưởng LLM (Pass-1). Regex đóng vai trò safety-net.
         is_build_pc = (parsed_intent.intent == "build_pc")
-        if not is_build_pc and parsed_intent.intent in ["none", "budget_search", "general_search"]:
-            # LLM bị nhầm lẫn giữa budget_search và build_pc, dùng regex cứu vớt
+        if not is_build_pc and parsed_intent.intent in ["none", "budget_search", "general_search", "price_check"]:
+            # LLM bị nhầm lẫn giữa budget_search/price_check và build_pc, dùng regex cứu vớt
             is_build_pc = detect_build_pc_intent(user_message_fixed)
             if is_build_pc:
                 print(f"[BUILD-PC-SAFETY-NET] Regex bắt được build intent mà LLM bỏ sót (Intent LLM cũ: {parsed_intent.intent}).")
@@ -178,7 +185,6 @@ def handle_chat(user_message: str, knowledge_base,
             chain = get_compat_check_chain()
 
         # 🔹 NHÁNH 2: de xuat linh kien phu hop
-        # 🔹 NHÁNH 2: de xuat linh kien phu hop
         elif parsed_intent.intent == "suggestion":
             context = build_suggestion_context(parsed_intent, knowledge_base, vector_store)
             chain = get_suggestion_chain() 
@@ -186,7 +192,7 @@ def handle_chat(user_message: str, knowledge_base,
         # 🔹 NHÁNH 3: TÍNH TỔNG TIỀN
         elif parsed_intent.intent == "price_calculation":
             context = build_price_calculation_context(parsed_intent, knowledge_base, vector_store)
-            chain = get_basic_search_chain() # Hoặc một chain chuyên tính toán
+            chain = None
 
         # 🔹 NHÁNH 4: HỎI THÔNG SỐ CỤ THỂ
         elif parsed_intent.intent == "specification":
@@ -200,10 +206,11 @@ def handle_chat(user_message: str, knowledge_base,
             context, format_hint = build_price_check_context(
                 parsed_intent, category, knowledge_base, vector_store, search_query
             )
-            chain = get_basic_search_chain()
+            chain = None
 
         # Nhánh 5: Tìm kiếm cấu hình theo ví tiền/ngân sách (cho 1 linh kiện đơn lẻ)
-        elif parsed_intent.intent == "budget_search":
+        elif parsed_intent.intent == "budget_search" or (parsed_intent.intent == "general_search" and getattr(parsed_intent, 'budget_amount', 0) > 0):
+            parsed_intent.intent = "budget_search"
             context, format_hint = build_budget_search_context(
                 parsed_intent, msg_lower, category, knowledge_base, user_message, search_query
             )
@@ -211,8 +218,9 @@ def handle_chat(user_message: str, knowledge_base,
 
         # 🔹 NHÁNH 6: TÌM KIẾM/HỎI GIÁ CHUNG CHUNG (Fallback)
         else:
-            matched_items = hybrid_search(q_clean, category, 4, knowledge_base, vector_store) or []
-            context = build_product_context(search_query, category, matched_items, include_all_fields=False)
+            context, format_hint = build_general_search_context(
+                parsed_intent, msg_lower, category, knowledge_base, vector_store, q_clean
+            )
             chain = get_basic_search_chain()
         
         if not context or parsed_intent.intent == "none":
@@ -253,8 +261,6 @@ def handle_chat(user_message: str, knowledge_base,
                 "intent":      parsed_intent.intent,
             }
         # 6. Debug Log ra màn hình console để theo dõi luồng đi
-        print("\n" + "═"*60)
-        print(f"🔍 Cau hoi goc: {user_message}")
         print(f"🔹 2. Từ khóa dùng để Search (q_clean): '{q_clean}'")
         print(f"🔍 [HỆ THỐNG DEBUG MASTER ROUTER] - Session: {session_id}")
         print(f"🔹 Ý định nhận diện: {parsed_intent.intent.upper()}")
@@ -265,15 +271,21 @@ def handle_chat(user_message: str, knowledge_base,
         print("═"*60 + "\n")
 
         # Gọi AI xử lý với đúng Trạm đã chọn có áp dụng retry 
-        response = chain_invoke(chain, context, format_hint, user_message_fixed, chat_history, parsed_intent)
+        if parsed_intent.intent == "price_calculation" or parsed_intent.intent == "price_check":
+            response = context
+        else:
+            response = chain_invoke(chain, context, format_hint, user_message_fixed, chat_history, parsed_intent)
+    
+            # nếu bot hỏi vặn lại khách lần 1 thì retry với template emergency
+            # nếu bot hỏi vặn lại khách lần 2 thì bypass LLM hoàn toàn
+            
+            if response is None:
+                response = _format_context_directly(context, parsed_intent.intent)
 
-        # nếu bot hỏi vặn lại khách lần 1 thì retry với template emergency
-        # nếu bot hỏi vặn lại khách lần 2 thì bypass LLM hoàn toàn
-        
-        if response is None:
-            response = _format_context_directly(context, parsed_intent.intent)
-
-        clean_reply = word_filter(response)
+        if parsed_intent.intent == "price_calculation" or parsed_intent.intent == "price_check":
+            clean_reply = response
+        else:
+            clean_reply = word_filter(response)
         if parsed_intent.intent != "none":
             save_message(user_uid, session_id, user_message_fixed, clean_reply)
             print(f"[HISTORY SAVED] AI reply lưu vào DB ({len(clean_reply)} ký tự gốc)")

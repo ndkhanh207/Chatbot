@@ -32,7 +32,7 @@ def build_product_context(user_message: str, category: str | None, matched_items
 
     wants_all_specs = include_all_fields or any(w in msg_lower for w in ["thông số", "chi tiết", "cấu hình", "specs", "đặc điểm", "toàn bộ"])
 
-    lines = ["Danh sách linh kiện thực tế đang có sẵn tại cửa hàng:"]
+    lines = ["Dạ, danh sách linh kiện thực tế đang có sẵn tại cửa hàng:"]
     for item in matched_items:
         p_format = item.get('price_formatted') or format_currency_vietnam(
             item.get('giá') if 'giá' in item else item.get('price', 0)
@@ -97,10 +97,10 @@ def build_product_context(user_message: str, category: str | None, matched_items
         if not extra_parts:
             show_price = True
             
-        price_str = f" | Giá: {p_format} VNĐ" if show_price else ""
+        price_str = f" | **Giá:** {p_format} VNĐ" if show_price else ""
         
         lines.append(
-            f"- [{item.get('category')}] {name}{price_str}{extra}"
+            f"- **[{item.get('category')}]** {name}{price_str}{extra}"
         )
 
     return "\n".join(lines)

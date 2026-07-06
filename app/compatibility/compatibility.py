@@ -61,6 +61,8 @@ def build_compatibility_context(intent: MasterIntentSchema, knowledge_base, vect
             "Nhiệm vụ: Lịch sự báo cho khách biết cửa hàng không có linh kiện này."
         )
         
+    context += "\n📌 QUAN TRỌNG: Trả lời NGẮN GỌN, TRỰC TIẾP là 'tương thích' hoặc 'không tương thích'. KHÔNG yapping, KHÔNG giải thích dài dòng lan man."
+        
     return context
 
 

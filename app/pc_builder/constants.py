@@ -24,6 +24,15 @@ BUILD_PC_TRIGGERS = [
     'build phần còn lại', 'phần còn lại', 'giữ lại', 'tận dụng'
 ]
 
+# ──────────────────────────────────────────────
+# Từ khóa điều chỉnh PC (Multi-turn adjustments)
+# ──────────────────────────────────────────────
+ADJUSTMENT_LOCK_KEYWORDS = ['giữ nguyên', 'đừng đổi', 'giữ lại', 'không đổi', 'không muốn đổi', 'không cần đổi', 'ko đổi', 'giữ', 'chốt', 'chọn']
+ADJUSTMENT_SWAP_KEYWORDS = ['đổi sang', 'đổi', 'thay bằng', 'chuyển sang', 'nâng cấp', 'lấy']
+ADJUSTMENT_PRIORITY_KEYWORDS = ['ưu tiên', 'tập trung', 'đổ tiền', 'dồn tiền', 'tối ưu']
+ADJUSTMENT_BUDGET_KEYWORDS = ['tăng ngân sách', 'giảm', 'thôi', 'còn', 'rẻ hơn', 'đắt hơn', 'lên', 'xuống']
+BRAND_SWITCH_KEYWORDS = ['đổi sang amd', 'quay lại amd', 'đổi sang intel', 'quay lại intel', 'đổi sang nvidia', 'chuyển sang amd', 'chuyển sang intel', 'chuyển sang nvidia']
+
 # Regex pattern linh hoạt hơn cho build PC — bắt nhiều biến thể tự nhiên
 BUILD_PC_REGEX_PATTERNS = [
     r'build\s*\d*\s*(bộ|máy|may|pc|cái)',                     # "build 1 bộ", "build 1 may", "build máy"
@@ -88,7 +97,7 @@ PURPOSE_KEYWORD_MAP = {
     'ai': [
         'deep learning', 'huấn luyện ai', 'ai', 'machine learning',
         'ml', 'dl', 'train model', 'training model',
-        'data science', 'xử lý dữ liệu nặng', 'workstation ai',
+        'data science', 'xử lý dữ liệu nặng', 'data nặng', 'workstation ai',
         'neural network', 'pytorch', 'tensorflow',
         'llm', 'stable diffusion', 'hugging face', 'cuda training',
     ],
@@ -124,10 +133,11 @@ PERIPHERAL_BRAND_MAP = {
 }
 
 # ──────────────────────────────────────────────
-# Từ khóa "tốt nhất / rẻ nhất"
+# Từ khóa "tốt nhất / rẻ nhất / đắt nhất"
 # ──────────────────────────────────────────────
 BEST_KEYWORDS    = ['tốt nhất', 'ngon nhất', 'mạnh nhất', 'đỉnh nhất', 'cao cấp nhất']
-CHEAPEST_KEYWORDS = ['rẻ nhất', 'giá thấp nhất', 'thấp nhất', 'tiết kiệm nhất', 'bèo nhất']
+CHEAPEST_KEYWORDS = ['rẻ nhất', 'giá thấp nhất', 'thấp nhất', 'tiết kiệm nhất', 'bèo nhất', 'the cheapest']
+EXPENSIVE_KEYWORDS = ['đắt nhất', 'mắc nhất', 'giá cao nhất', 'cao nhất', 'the most expensive']
 
 # ──────────────────────────────────────────────
 # Regex nhận diện câu hỏi ngân sách từ AI (thay thế list cứng)

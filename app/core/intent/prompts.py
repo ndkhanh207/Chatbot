@@ -16,6 +16,7 @@ _SYSTEM_CLASSIFY = (
     "(linh kiện này có thể nằm trong Lịch sử hội thoại).\n"
     "- 'price_check': Khách hỏi GIÁ BÁN của 1 linh kiện cụ thể.\n"
     "- 'budget_search': Khách tìm MỘT LINH KIỆN ĐƠN LẺ (chỉ 1 món CPU, GPU, mainboard...) dựa trên NGÂN SÁCH/TẦM GIÁ. "
+    "NẾU CÂU HỎI CÓ CHỨA CÁC TỪ KHÓA CHỈ NGÂN SÁCH (VD: 'dưới 5 triệu', 'tầm 8 triệu', 'khoảng X', 'giá rẻ nhất dưới', 'từ X đến Y triệu', 'đắt nhất từ X đến Y') THÌ BẮT BUỘC PHẢI PHÂN LOẠI LÀ 'budget_search', KHÔNG ĐƯỢC DÙNG 'general_search'. "
     "KHÁC VỚI 'build_pc': budget_search CHỈ DÀNH CHO 1 LINH KIỆN.\n"
     "- 'build_pc': Khách muốn tư vấn/lắp ráp BỘ PC TRỌN BỘ (thường chứa các từ khóa: 'build pc', 'bộ pc', 'cả máy', 'dàn máy', 'bộ máy'). "
     "Bao gồm cả: trả lời ngân sách/mục đích khi AI đang hỏi trong luồng tư vấn PC.\n"
@@ -57,6 +58,8 @@ _FEWSHOT_CLASSIFY = [
     {"role": "assistant", "content": '{"intent": "price_check"}'},
     {"role": "user", "content": "<user_input>con vga rtx 4080 super giá nhiêu shop</user_input>"},
     {"role": "assistant", "content": '{"intent": "price_check"}'},
+    {"role": "user", "content": "<user_input>main msi b850 pro giá sao shop</user_input>"},
+    {"role": "assistant", "content": '{"intent": "price_check"}'},
     # ── Budget search (1 linh kiện) ──
     {"role": "user", "content": "<user_input>tư vấn em con card đồ họa tầm 8 triệu</user_input>"},
     {"role": "assistant", "content": '{"intent": "budget_search"}'},
@@ -83,6 +86,11 @@ _FEWSHOT_CLASSIFY = [
     {"role": "assistant", "content": '{"intent": "build_pc"}'},
     {"role": "user", "content": "LỊCH SỬ HỘI THOẠI TRƯỚC ĐÓ:\nKhách: build pc tầm 25 triệu\nAI: Dạ với ngân sách 25 triệu, bạn dùng máy chủ yếu để làm gì ạ?\n\n<user_input>văn phòng thôi</user_input>"},
     {"role": "assistant", "content": '{"intent": "build_pc"}'},
+    # ── Build PC: thay đổi linh kiện từ cấu hình trước ──
+    {"role": "user", "content": "[TRẠNG THÁI ĐÃ XÁC NHẬN]:\nCPU=i9 99900k, LAST_INTENT=build_pc\n\nLỊCH SỬ HỘI THOẠI TRƯỚC ĐÓ:\nKhách: build pc dùng i9 99900k giá 40 triệu\nAI: Dạ đây là cấu hình...\n\n<user_input>đổi main sang msi b990</user_input>"},
+    {"role": "assistant", "content": '{"intent": "build_pc"}'},
+    {"role": "user", "content": "[TRẠNG THÁI ĐÃ XÁC NHẬN]:\nLAST_INTENT=build_pc\n\nLỊCH SỬ HỘI THOẠI TRƯỚC ĐÓ:\nKhách: build pc 25 triệu\nAI: Dạ cấu hình...\n\n<user_input>nâng cấp cpu</user_input>"},
+    {"role": "assistant", "content": '{"intent": "build_pc"}'},
     # ── General search ──
     {"role": "user", "content": "<user_input>tìm cho tôi ssd của samsung</user_input>"},
     {"role": "assistant", "content": '{"intent": "general_search"}'},
@@ -104,7 +112,9 @@ _SYSTEM_EXTRACT = (
     "QUY TẮC TRÍCH XUẤT:\n"
     "- Hãy đọc kỹ định nghĩa và mô tả (description) của từng trường dữ liệu được yêu cầu.\n"
     "- Điền 'none' hoặc 0 nếu không có thông tin.\n"
-    "CẢNH BÁO: TRÍCH XUẤT CHÍNH XÁC TỪ KHÓA CỦA KHÁCH. Không tự ý ghép thêm hãng nếu khách không viết."
+    "CẢNH BÁO TỐI QUAN TRỌNG: \n"
+    "1. TRÍCH XUẤT CHÍNH XÁC TỪ KHÓA CỦA KHÁCH. Không tự ý ghép thêm hãng nếu khách không viết.\n"
+    "2. TUYỆT ĐỐI KHÔNG bịa đặt, KHÔNG sao chép linh kiện từ các ví dụ mẫu (như rtx 4060, i9 14900k) nếu khách không hề nhắc đến."
 )
 
 _FEWSHOT_BY_INTENT = {
@@ -119,6 +129,8 @@ _FEWSHOT_BY_INTENT = {
         {"role": "assistant", "content": '{"reasoning": "Đổi mainboard, kế thừa CPU và ý định tương thích từ trạng thái đã xác nhận.", "intent": "compatibility", "target_product": "none", "spec_detail": "none", "cpu": "i5 12400f", "mainboard": "b760m", "gpu": "none", "budget_amount": 0, "category": "none"}'},
         {"role": "user", "content": "[TRẠNG THÁI ĐÃ XÁC NHẬN]:\nCPU=ryzen 7 7800x3d, MAINBOARD=b650m, LAST_INTENT=compatibility\n\nLỊCH SỬ HỘI THOẠI TRƯỚC ĐÓ:\nKhách: 7800x3d lắp với b650m ổn không\nAI: Dạ ổn\n\n<user_input>thế đi với con x670e thì sao</user_input>"},
         {"role": "assistant", "content": '{"reasoning": "Đổi mainboard sang x670e, kế thừa CPU từ context.", "intent": "compatibility", "target_product": "none", "spec_detail": "none", "cpu": "ryzen 7 7800x3d", "mainboard": "x670e", "gpu": "none", "budget_amount": 0, "category": "none"}'},
+        {"role": "user", "content": "[TRẠNG THÁI ĐÃ XÁC NHẬN]:\nCPU=ryzen 5 7600x, MAINBOARD=b650m, LAST_INTENT=compatibility\n\nLỊCH SỬ HỘI THOẠI TRƯỚC ĐÓ:\nKhách: ryzen 5 7600x lắp với b650m được không\nAI: Dạ được\n\n<user_input>vậy đi với i7 14700k?</user_input>"},
+        {"role": "assistant", "content": '{"reasoning": "Đổi CPU sang i7 14700k, kế thừa Mainboard từ context.", "intent": "compatibility", "target_product": "none", "spec_detail": "none", "cpu": "i7 14700k", "mainboard": "b650m", "gpu": "none", "budget_amount": 0, "category": "none"}'},
     ],
     "suggestion": [
         {"role": "user", "content": "<user_input>tôi có cpu ryzen 9 9950x3d rồi, tìm gpu phù hợp</user_input>"},
@@ -133,21 +145,17 @@ _FEWSHOT_BY_INTENT = {
     "price_calculation": [
         {"role": "user", "content": "<user_input>tôi lấy main asus z790 và i9 14900k tổng bao nhiêu</user_input>"},
         {"role": "assistant", "content": '{"reasoning": "Liệt kê nhiều linh kiện và hỏi tổng.", "intent": "price_calculation", "target_product": "none", "spec_detail": "none", "cpu": "i9 14900k", "mainboard": "asus z790", "gpu": "none", "budget_amount": 0, "category": "none"}'},
-        {"role": "user", "content": "[TRẠNG THÁI ĐÃ XÁC NHẬN]:\nCPU=i9 14900k, MAINBOARD=asus z790, LAST_INTENT=price_calculation\n\nLỊCH SỬ HỘI THOẠI TRƯỚC ĐÓ:\nKhách: i9 14900k và asus z790 tổng bao nhiêu\nAI: Dạ tổng 20 triệu\n\n<user_input>nếu đổi main sang msi z790 thì tổng bao nhiêu</user_input>"},
-        {"role": "assistant", "content": '{"reasoning": "Thay mainboard, kế thừa CPU.", "intent": "price_calculation", "target_product": "none", "spec_detail": "none", "cpu": "i9 14900k", "mainboard": "msi z790", "gpu": "none", "budget_amount": 0, "category": "none"}'},
-        {"role": "user", "content": "[TRẠNG THÁI ĐÃ XÁC NHẬN]:\nCPU=ryzen 5 7600x, GPU=rtx 4060, LAST_INTENT=price_calculation\n\nLỊCH SỬ HỘI THOẠI TRƯỚC ĐÓ:\nKhách: ryzen 5 7600x và rtx 4060 giá nhiu\nAI: Dạ tổng là\n\n<user_input>thế nếu lấy cpu i5 12400f thì sao</user_input>"},
-        {"role": "assistant", "content": '{"reasoning": "Thay CPU, kế thừa GPU.", "intent": "price_calculation", "target_product": "none", "spec_detail": "none", "cpu": "i5 12400f", "mainboard": "none", "gpu": "rtx 4060", "budget_amount": 0, "category": "none"}'},
     ],
     "specification": [
         {"role": "user", "content": "<user_input>ryzen 7 7700x dùng socket nào vậy shop</user_input>"},
         {"role": "assistant", "content": '{"reasoning": "Hỏi thông số socket của CPU.", "intent": "specification", "target_product": "ryzen 7 7700x", "spec_detail": "socket", "cpu": "none", "mainboard": "none", "gpu": "none", "budget_amount": 0, "category": "none"}'},
         {"role": "user", "content": "<user_input>card msi rtx 5070 ti này thiết kế màu gì thế shop</user_input>"},
         {"role": "assistant", "content": '{"reasoning": "Hỏi thông số màu sắc của GPU.", "intent": "specification", "target_product": "msi rtx 5070 ti", "spec_detail": "màu", "cpu": "none", "mainboard": "none", "gpu": "msi rtx 5070 ti", "budget_amount": 0, "category": "none"}'},
-        {"role": "user", "content": "LỊCH SỬ HỘI THOẠI TRƯỚC ĐÓ:\nKhách: RTX 4090 giá bao nhiêu\nAI: Dạ giá 50 triệu\n\n<user_input>Nó có mấy gb vram</user_input>"},
+        {"role": "user", "content": "[TRẠNG THÁI ĐÃ XÁC NHẬN]:\nGPU=rtx 4090, LAST_INTENT=price_check\n\nLỊCH SỬ HỘI THOẠI TRƯỚC ĐÓ:\nKhách: RTX 4090 giá bao nhiêu\nAI: Dạ giá 50 triệu\n\n<user_input>Nó có mấy gb vram</user_input>"},
         {"role": "assistant", "content": '{"reasoning": "Hỏi thông số (ẩn chủ ngữ).", "intent": "specification", "target_product": "rtx 4090", "spec_detail": "vram", "cpu": "none", "mainboard": "none", "gpu": "none", "budget_amount": 0, "category": "none"}'},
-        {"role": "user", "content": "LỊCH SỬ HỘI THOẠI TRƯỚC ĐÓ:\nKhách: RTX 3060 Ti chơi pubg mượt không\nAI: Dạ chiến mượt\n\n<user_input>vậy rtx 4070 thì sao</user_input>"},
+        {"role": "user", "content": "[TRẠNG THÁI ĐÃ XÁC NHẬN]:\nGPU=rtx 3060 ti, LAST_INTENT=specification\n\nLỊCH SỬ HỘI THOẠI TRƯỚC ĐÓ:\nKhách: RTX 3060 Ti chơi pubg mượt không\nAI: Dạ chiến mượt\n\n<user_input>vậy rtx 4070 thì sao</user_input>"},
         {"role": "assistant", "content": '{"reasoning": "Hỏi tiếp tục hiệu năng (mượt) cho GPU khác.", "intent": "specification", "target_product": "rtx 4070", "spec_detail": "mượt", "cpu": "none", "mainboard": "none", "gpu": "rtx 4070", "budget_amount": 0, "category": "none"}'},
-        {"role": "user", "content": "LỊCH SỬ HỘI THOẠI TRƯỚC ĐÓ:\nKhách: i9 14900k xung cơ bản bao nhiêu\nAI: Dạ 3.2 GHz\n\n<user_input>thế còn i7 14700k thì sao</user_input>"},
+        {"role": "user", "content": "[TRẠNG THÁI ĐÃ XÁC NHẬN]:\nCPU=i9 14900k, LAST_INTENT=specification\n\nLỊCH SỬ HỘI THOẠI TRƯỚC ĐÓ:\nKhách: i9 14900k xung cơ bản bao nhiêu\nAI: Dạ 3.2 GHz\n\n<user_input>thế còn i7 14700k thì sao</user_input>"},
         {"role": "assistant", "content": '{"reasoning": "Kế thừa thông số (xung cơ bản) từ câu hỏi trước cho CPU mới.", "intent": "specification", "target_product": "i7 14700k", "spec_detail": "xung cơ bản", "cpu": "i7 14700k", "mainboard": "none", "gpu": "none", "budget_amount": 0, "category": "none"}'},
     ],
     "price_check": [
@@ -187,6 +195,15 @@ _FEWSHOT_BY_INTENT = {
         # Muốn bộ máy mới kiểu tự nhiên
         {"role": "user", "content": "muốn có một bộ máy để làm đồ họa"},
         {"role": "assistant", "content": '{"reasoning": "Tư vấn bộ máy cho mục đích đồ họa.", "intent": "build_pc", "target_product": "none", "spec_detail": "none", "cpu": "none", "mainboard": "none", "gpu": "none", "budget_amount": 0, "category": "none"}'},
+        # Điều chỉnh cấu hình ở các lượt sau (Multi-turn adjustments)
+        {"role": "user", "content": "[TRẠNG THÁI ĐÃ XÁC NHẬN]:\nLAST_INTENT=build_pc\n\nLỊCH SỬ HỘI THOẠI TRƯỚC ĐÓ:\nKhách: build pc 30 triệu\nAI: Dạ đây là bộ máy với CPU Core i5 và GPU RTX 4060\n\n<user_input>giữ nguyên cpu nhưng đổi gpu mạnh hơn</user_input>"},
+        {"role": "assistant", "content": '{"reasoning": "Khách muốn điều chỉnh cấu hình: giữ CPU và thay đổi GPU.", "intent": "build_pc", "target_product": "none", "spec_detail": "none", "cpu": "none", "mainboard": "none", "gpu": "none", "budget_amount": 0, "category": "none"}'},
+        {"role": "user", "content": "[TRẠNG THÁI ĐÃ XÁC NHẬN]:\nLAST_INTENT=build_pc\n\nLỊCH SỬ HỘI THOẠI TRƯỚC ĐÓ:\nKhách: tư vấn pc\nAI: Dạ bộ này dùng RTX 4070\n\n<user_input>tôi không muốn đổi cpu mà chỉ đổi gpu</user_input>"},
+        {"role": "assistant", "content": '{"reasoning": "Khách muốn điều chỉnh cấu hình: khóa CPU và thay đổi GPU.", "intent": "build_pc", "target_product": "none", "spec_detail": "none", "cpu": "none", "mainboard": "none", "gpu": "none", "budget_amount": 0, "category": "none"}'},
+        {"role": "user", "content": "[TRẠNG THÁI ĐÃ XÁC NHẬN]:\nCPU=i9 14900k, LAST_INTENT=build_pc\n\nLỊCH SỬ HỘI THOẠI TRƯỚC ĐÓ:\nKhách: build pc 40 triệu\nAI: Dạ đây là bộ máy với CPU i9 14900k và GPU RTX 4080\n\n<user_input>đổi main sang msi b850</user_input>"},
+        {"role": "assistant", "content": '{"reasoning": "Khách muốn điều chỉnh cấu hình (thay đổi mainboard) trong luồng tư vấn PC.", "intent": "build_pc", "target_product": "none", "spec_detail": "none", "cpu": "i9 14900k", "mainboard": "msi b850", "gpu": "none", "budget_amount": 0, "category": "none"}'},
+        {"role": "user", "content": "[TRẠNG THÁI ĐÃ XÁC NHẬN]:\nLAST_INTENT=build_pc\n\nLỊCH SỬ HỘI THOẠI TRƯỚC ĐÓ:\nKhách: build pc 25 triệu\nAI: Dạ bộ này dùng RTX 4070\n\n<user_input>nâng cấp cpu</user_input>"},
+        {"role": "assistant", "content": '{"reasoning": "Khách muốn điều chỉnh cấu hình: yêu cầu thay đổi CPU.", "intent": "build_pc", "target_product": "none", "spec_detail": "none", "cpu": "none", "mainboard": "none", "gpu": "none", "budget_amount": 0, "category": "none"}'},
     ],
     "general_search": [
         {"role": "user", "content": "tìm cho tôi ssd của samsung"},

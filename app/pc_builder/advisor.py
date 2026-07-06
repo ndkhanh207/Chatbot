@@ -6,6 +6,7 @@ Tìm kiếm bộ PC phù hợp nhất dựa trên ngân sách và mục đích s
 """
 
 import pandas as pd
+from app.compatibility.compat_logic import parse_cpu_profile, parse_gpu_profile
 
 # Re-export các hằng số
 from .constants import (
@@ -32,6 +33,46 @@ __all__ = [
     # advisor (self)
     "find_best_build"
 ]
+
+# ──────────────────────────────────────────────
+# Tính điểm ưu tiên linh kiện (Priority Bias)
+# ──────────────────────────────────────────────
+def _apply_priority_bias(df: pd.DataFrame, priority_bias: dict) -> None:
+    def get_cpu_tier(model_name: str) -> int:
+        p = parse_cpu_profile(model_name)
+        return p['tier_rank'] if p and 'tier_rank' in p else 1
+        
+    def get_gpu_tier(model_name: str) -> int:
+        p = parse_gpu_profile(model_name)
+        return p['tier_rank'] if p and 'tier_rank' in p else 1
+
+    df.loc[:, '_cpu_tier'] = df['CPU_Model'].apply(get_cpu_tier)
+    df.loc[:, '_gpu_tier'] = df['GPU_Model'].apply(get_gpu_tier)
+    
+    # Thưởng điểm cho mục đích cụ thể
+    if priority_bias.get('purpose_bias') == 'esport':
+        df.loc[:, '_priority_score'] += df['_cpu_tier'] * 1.0
+        mask = df['Build_Notes'].str.lower().str.contains('esport|moba|fps', na=False)
+        df.loc[mask, '_priority_score'] += 2.0
+        
+    elif priority_bias.get('purpose_bias') == 'workstation':
+        df.loc[:, '_priority_score'] += df['_cpu_tier'] * 2.0
+        mask = df['Build_Notes'].str.lower().str.contains('render|máy trạm|workstation', na=False)
+        df.loc[mask, '_priority_score'] += 2.0
+        
+    elif priority_bias.get('purpose_bias') == 'game_aaa':
+        df.loc[:, '_priority_score'] += df['_gpu_tier'] * 2.0
+        mask = df['Build_Notes'].str.lower().str.contains('4k|2k|aaa', na=False)
+        df.loc[mask, '_priority_score'] += 2.0
+    
+    # Thưởng điểm cho bias linh kiện
+    if priority_bias.get('gpu_heavy'):
+        ratio = (df['Component_Price_GPU'] / df['Component_Price_CPU'].clip(lower=1)).clip(upper=5)
+        df.loc[:, '_priority_score'] += (df['_gpu_tier'] * 2.0) + ratio
+        
+    elif priority_bias.get('cpu_heavy'):
+        ratio = (df['Component_Price_CPU'] / df['Component_Price_GPU'].clip(lower=1)).clip(upper=5)
+        df.loc[:, '_priority_score'] += (df['_cpu_tier'] * 2.0) + ratio
 
 # ──────────────────────────────────────────────
 # Tính điểm phù hợp mục đích
@@ -74,98 +115,99 @@ def find_best_build(
     exclude_builds: list = None,
     brand_filter: dict = None,
     component_filter: dict = None,
-    find_cheapest: bool = False,
+    priority_bias: dict = None,
 ) -> dict | None:
     """
-    Tìm bộ PC phù hợp nhất trong DataFrame.
+    Tìm bộ PC phù hợp nhất dựa trên các tiêu chí lọc:
+    1. Lọc theo linh kiện bắt buộc (CPU, GPU, Mainboard)
+    2. Lọc theo thương hiệu (Brand)
+    3. Loại bỏ các bộ máy đã gợi ý trước đó
+    4. Kiểm tra giới hạn ngân sách (75% -> 115%)
+    5. Chấm điểm các bộ máy hợp lệ để chọn ra bộ tốt nhất
     """
     if build_df is None or build_df.empty:
         return None
 
-    filtered = build_df.copy()
+    df = build_df.copy()
 
-    # Filter theo component model cụ thể trước
+    # 1. Lọc theo linh kiện bắt buộc
     if component_filter:
-        gpu_model_req = component_filter.get('gpu_model')
-        cpu_model_req = component_filter.get('cpu_model')
-        if gpu_model_req:
-            mask = filtered['GPU_Model'].str.lower().str.contains(gpu_model_req, na=False)
-            filtered = filtered[mask]
-        if cpu_model_req:
-            mask = filtered['CPU_Model'].str.lower().str.contains(cpu_model_req, na=False)
-            filtered = filtered[mask]
-        # Nếu sau filter không còn row nào → báo không có
-        if filtered.empty:
-            return None
+        if gpu := component_filter.get('gpu_model'):
+            df = df[df['GPU_Model'].str.contains(gpu, case=False, na=False)]
+        if cpu := component_filter.get('cpu_model'):
+            df = df[df['CPU_Model'].str.contains(cpu, case=False, na=False)]
+        if main := component_filter.get('mainboard'):
+            df = df[df['Motherboard_Model'].str.contains(main, case=False, na=False)]
 
-    # Filter theo brand CPU/GPU
-    if brand_filter:
-        cpu_brand = brand_filter.get('cpu_brand')
-        gpu_brand = brand_filter.get('gpu_brand')
-        any_brand = brand_filter.get('any_brand')
-
-        if cpu_brand:
-            filtered = filtered[filtered['CPU_Brand'].str.lower() == cpu_brand.lower()]
-        if gpu_brand:
-            filtered = filtered[filtered['GPU_Brand'].str.lower() == gpu_brand.lower()]
-        if any_brand:
-            filtered = filtered[
-                (filtered['CPU_Brand'].str.lower() == any_brand.lower()) |
-                (filtered['GPU_Brand'].str.lower() == any_brand.lower()) |
-                (filtered['Motherboard_Model'].str.lower().str.contains(any_brand.lower(), na=False))
-            ]
-        
-        if filtered.empty:
-            return None
-
-    # Nếu tìm rẻ nhất → không filter theo budget
-    if find_cheapest:
-        if filtered.empty:
-            return None
-        best_row = filtered.sort_values('Total_Price', ascending=True).iloc[0]
-        result = best_row.to_dict()
-        return result
-
-    # Lọc theo khoảng ngân sách: 75% → 115% của budget user
-    budget_min = budget * 0.75
-    budget_max = budget * 1.15
-
-    filtered = filtered[
-        (filtered['Total_Price'] >= budget_min) &
-        (filtered['Total_Price'] <= budget_max)
-    ]
-
-    # Loại bỏ các bộ PC đã gợi ý trước đó (nếu có)
-    if exclude_builds and not filtered.empty:
-        filtered = filtered[~filtered['BuildID'].isin(exclude_builds)]
-
-    if filtered.empty:
+    if df.empty: 
         return None
 
-    user_msg_lower = user_message.lower()
+    # 2. Lọc theo thương hiệu
+    if brand_filter:
+        if cb := brand_filter.get('cpu_brand'):
+            df = df[df['CPU_Brand'].str.casefold() == cb.casefold()]
+        if gb := brand_filter.get('gpu_brand'):
+            df = df[df['GPU_Brand'].str.casefold() == gb.casefold()]
+        if ab := brand_filter.get('any_brand'):
+            ab = ab.casefold()
+            df = df[
+                (df['CPU_Brand'].str.casefold() == ab) |
+                (df['GPU_Brand'].str.casefold() == ab) |
+                (df['Motherboard_Model'].str.contains(ab, case=False, na=False))
+            ]
 
-    # Tính điểm mục đích
-    filtered.loc[:, '_purpose_score'] = filtered['Build_Notes'].fillna('').apply(
+    if df.empty: 
+        return None
+
+    # 3. Loại bỏ các bộ PC đã từng gợi ý
+    if exclude_builds:
+        df = df[~df['BuildID'].isin(exclude_builds)]
+        if df.empty: 
+            return None
+
+    # 4. Kiểm tra khoảng ngân sách an toàn (75% - 115%)
+    budget_min = budget * 0.75
+    budget_max = budget * 1.15
+    df_budget = df[(df['Total_Price'] >= budget_min) & (df['Total_Price'] <= budget_max)].copy()
+
+    if df_budget.empty:
+        df_cheaper = df[df['Total_Price'] < budget_min].copy()
+        if not df_cheaper.empty:
+            df_budget = df_cheaper
+        else:
+            return {"out_of_budget": True, "min_price": df['Total_Price'].min()}
+
+    # 5. Chấm điểm các bộ máy hợp lệ
+    user_msg_lower = user_message.lower()
+    
+    # - Điểm mục đích (Purpose Score)
+    df_budget.loc[:, '_purpose_score'] = df_budget['Build_Notes'].fillna('').apply(
         lambda notes: _score_purpose(notes, user_msg_lower)
     )
 
-    # Tính điểm gần budget (càng gần budget gốc càng tốt)
+    # - Điểm sát ngân sách (Budget Score)
     safe_budget = max(budget, 1)
-    filtered.loc[:, '_budget_score'] = 1.0 - (
-        (filtered['Total_Price'] - budget).abs() / safe_budget
+    df_budget.loc[:, '_budget_score'] = 1.0 - (
+        (df_budget['Total_Price'] - budget).abs() / safe_budget
     ).clip(upper=1.0)
+    
+    # - Điểm ưu tiên linh kiện (Priority Score)
+    df_budget.loc[:, '_priority_score'] = 0.0
+    if priority_bias:
+        _apply_priority_bias(df_budget, priority_bias)
 
-    # Điểm tổng hợp: mục đích ưu tiên cao hơn, budget là tiebreaker
-    filtered.loc[:, '_combined_score'] = (
-        filtered['_purpose_score'] * 2.0 +
-        filtered['_budget_score'] * 1.0
+    # 6. Tổng kết điểm và chọn bộ tốt nhất
+    df_budget.loc[:, '_combined_score'] = (
+        df_budget['_purpose_score'] * 2.0 +
+        df_budget['_budget_score'] * 1.0 +
+        df_budget['_priority_score'] * 1.5
     )
 
-    best_row = filtered.sort_values('_combined_score', ascending=False).iloc[0]
+    best_row = df_budget.sort_values('_combined_score', ascending=False).iloc[0]
 
     # Dọn dẹp cột tạm trước khi trả về
     result = best_row.to_dict()
-    for col in ['_purpose_score', '_budget_score', '_combined_score']:
+    for col in ['_purpose_score', '_budget_score', '_priority_score', '_cpu_tier', '_gpu_tier', '_combined_score']:
         result.pop(col, None)
 
     return result
