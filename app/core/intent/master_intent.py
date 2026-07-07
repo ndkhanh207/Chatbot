@@ -182,9 +182,9 @@ def _check_retry_condition(parsed: MasterIntentSchema) -> str | None:
             
     return None
 
-def _handle_retry(user_msg: str, history_context: str, parsed: MasterIntentSchema, fallback_intent: str) -> MasterIntentSchema:
+async def _handle_retry(user_msg: str, history_context: str, parsed: MasterIntentSchema, fallback_intent: str) -> MasterIntentSchema:
     print(f"\u26a0\ufe0f [RETRY] Guard detected mismatch ({parsed.intent} \u2192 {fallback_intent}). Retrying Pass 2...")
-    new_parsed = _run_extraction_pass(user_msg, fallback_intent, history_context)
+    new_parsed = await _run_extraction_pass(user_msg, fallback_intent, history_context)
     new_parsed.intent = fallback_intent
     
     if fallback_intent == "suggestion" and new_parsed.target_product != "none":
@@ -204,14 +204,19 @@ def _handle_retry(user_msg: str, history_context: str, parsed: MasterIntentSchem
 # PIPELINE EXECUTION
 # ==============================================================================
 
-def _run_classification_pass(user_msg: str, history_context: str) -> str:
+def _run_classification_pass_sync(user_msg: str, history_context: str) -> str:
+    # Deprecated sync version if still needed elsewhere
+    pass
+
+async def _run_classification_pass(user_msg: str, history_context: str) -> str:
     """Pass 1: Phân loại Intent"""
     messages = (
         [{"role": "system", "content": _SYSTEM_CLASSIFY}]
         + _FEWSHOT_CLASSIFY
         + [{"role": "user", "content": f"{history_context}<user_input>{user_msg}</user_input>"}]
     )
-    response = ollama.chat(
+    client = ollama.AsyncClient()
+    response = await client.chat(
         model=get_ollama_model(),
         messages=messages,
         options={"temperature": 0.0, "num_predict": MAX_TOKENS_CLASSIFY},
@@ -226,7 +231,7 @@ def _run_classification_pass(user_msg: str, history_context: str) -> str:
         return "none"
 
 
-def _run_extraction_pass(user_msg: str, intent: str, history_context: str) -> MasterIntentSchema:
+async def _run_extraction_pass(user_msg: str, intent: str, history_context: str) -> MasterIntentSchema:
     """Pass 2: Trích xuất Entity"""
     fewshots = _FEWSHOT_BY_INTENT.get(intent, _FEWSHOT_BY_INTENT["none"])
     prompt_msg = f"{history_context}<system_hint>Intent = {intent}</system_hint>\n<user_input>{user_msg}</user_input>"
@@ -236,7 +241,8 @@ def _run_extraction_pass(user_msg: str, intent: str, history_context: str) -> Ma
         + fewshots
         + [{"role": "user", "content": prompt_msg}]
     )
-    response = ollama.chat(
+    client = ollama.AsyncClient()
+    response = await client.chat(
         model=get_ollama_model(),
         messages=messages,
         options={"temperature": 0.0, "num_predict": MAX_TOKENS_EXTRACT},
@@ -248,7 +254,7 @@ def _run_extraction_pass(user_msg: str, intent: str, history_context: str) -> Ma
     return MasterIntentSchema.model_validate_json(raw)
 
 
-def parse_master_intent(user_msg: str, chat_history: list = None) -> MasterIntentSchema:
+async def parse_master_intent(user_msg: str, chat_history: list = None) -> MasterIntentSchema:
     """
     Bóc tách tên linh kiện + ý định bằng LLM 2-Stage Pipeline.
     Orchestrates Pass 1, Pre-Guards, Pass 2, Post-Guards, and Retry Logic.
@@ -257,7 +263,7 @@ def parse_master_intent(user_msg: str, chat_history: list = None) -> MasterInten
 
     try:
         # 1. PASS 1
-        intent_pass1 = _run_classification_pass(user_msg, history_context)
+        intent_pass1 = await _run_classification_pass(user_msg, history_context)
         
         # 2. Pre-extraction Guards
         msg_l = user_msg.lower()
@@ -265,7 +271,7 @@ def parse_master_intent(user_msg: str, chat_history: list = None) -> MasterInten
         intent_pass1 = _apply_pre_extraction_guards(msg_l, comp_count, intent_pass1, history_context)
             
         # 3. PASS 2
-        parsed = _run_extraction_pass(user_msg, intent_pass1, history_context)
+        parsed = await _run_extraction_pass(user_msg, intent_pass1, history_context)
         parsed.intent = intent_pass1 
         
         # 4. Post-extraction Guards
@@ -274,7 +280,7 @@ def parse_master_intent(user_msg: str, chat_history: list = None) -> MasterInten
         # 5. Retry Logic
         fallback_intent = _check_retry_condition(parsed)
         if fallback_intent:
-            parsed = _handle_retry(user_msg, history_context, parsed, fallback_intent)
+            parsed = await _handle_retry(user_msg, history_context, parsed, fallback_intent)
 
         return parsed
         

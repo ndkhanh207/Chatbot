@@ -7,7 +7,7 @@ import re
 import json
 import traceback
 from app.guard.response_formatter import word_filter, build_range_summary
-from app.guard.clarify import chain_invoke, chain_stream, _format_context_directly, _session_context_cache, _is_clarification_rejection
+from app.guard.clarify import chain_invoke_async, chain_stream, _format_context_directly, _session_context_cache, _is_clarification_rejection
 from app.core.intent.master_intent import parse_master_intent
 from app.core.query_parser import normalize_text, normalize_user_message, get_category
 from app.memory.memory_store import get_trimmed_history, save_message
@@ -34,7 +34,7 @@ MAX_INPUT_LENGTH = 500  # Ký tự tối đa
 # ──────────────────────────────────────────────
 # Main entry point
 # ──────────────────────────────────────────────
-def handle_chat(user_message: str, knowledge_base,
+async def handle_chat(user_message: str, knowledge_base,
                 vector_store,
                 user_uid: str,
                 session_id: str = "default",
@@ -102,7 +102,7 @@ def handle_chat(user_message: str, knowledge_base,
         print(f"🔍 Cau hoi goc: '{user_message}'")
 
         # 3. Bóc tách ý định bằng LLM sớm với lịch sử chat (Thay thế hoàn toàn reformulate_query)
-        parsed_intent = parse_master_intent(user_message_fixed, chat_history)
+        parsed_intent = await parse_master_intent(user_message_fixed, chat_history)
 
         # Xây dựng search_query thông minh từ các linh kiện LLM đã nhận diện được trong ngữ cảnh
         q_parts = []
@@ -274,7 +274,7 @@ def handle_chat(user_message: str, knowledge_base,
         if parsed_intent.intent == "price_calculation" or parsed_intent.intent == "price_check":
             response = context
         else:
-            response = chain_invoke(chain, context, format_hint, user_message_fixed, chat_history, parsed_intent)
+            response = await chain_invoke_async(chain, context, format_hint, user_message_fixed, chat_history, parsed_intent)
     
             # nếu bot hỏi vặn lại khách lần 1 thì retry với template emergency
             # nếu bot hỏi vặn lại khách lần 2 thì bypass LLM hoàn toàn

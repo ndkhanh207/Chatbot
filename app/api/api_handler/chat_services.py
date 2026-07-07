@@ -65,10 +65,9 @@ async def process_chat_message(request: Request, data: ChatRequest, user_uid: st
     build_df = getattr(request.app.state, "build_data", None)
 
     try:
-        # Chạy handle_chat (hàm đồng bộ) trong thread pool với timeout 30 giây
+        # Chạy handle_chat (hàm async) trực tiếp với timeout 60 giây
         result = await asyncio.wait_for(
-            asyncio.to_thread(
-                handle_chat,
+            handle_chat(
                 data.user_message,
                 kb,
                 vector_store,
@@ -92,6 +91,10 @@ async def process_chat_message(request: Request, data: ChatRequest, user_uid: st
                 code="LLM_GENERATION_TIMEOUT"
             ).model_dump()
         )
+    except asyncio.CancelledError:
+        print("⚠️ [REQUEST CANCELLED] Client ngắt kết nối. LLM Async Pipeline sẽ tự động đóng socket và giải phóng VRAM.")
+        # Nếu muốn chắc chắn, có thể gọi torch.cuda.empty_cache() tại đây nhưng thường Ollama sẽ tự xử lý khi socket đóng
+        raise
     except Exception as e:
         print(f"❌ [INTERNAL ERROR] {str(e)}") # Log lỗi chi tiết ở Backend
         return JSONResponse(

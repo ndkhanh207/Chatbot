@@ -185,7 +185,7 @@ def _remove_repetitive_paragraphs(text: str) -> str:
             result.append(s)
     return " ".join(result).strip()
 
-def chain_invoke(chain, context, format_hint, user_message_fixed, chat_history, parsed_intent):
+async def chain_invoke_async(chain, context, format_hint, user_message_fixed, chat_history, parsed_intent):
     """
     Gọi lại chain đã lưu trước đó khi user từ chối yêu cầu bổ sung thông tin.
     """
@@ -201,7 +201,7 @@ def chain_invoke(chain, context, format_hint, user_message_fixed, chat_history, 
         # Context hợp lệ → mới áp dụng output guard
         MAX_RETRY = 1
         for attempt in range(MAX_RETRY + 1):
-            response = chain.invoke({
+            response = await chain.ainvoke({
                 "context":      context,
                     "format_hint":  format_hint,
                     "user_message": user_message_fixed,
