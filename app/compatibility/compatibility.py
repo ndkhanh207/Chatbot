@@ -61,7 +61,7 @@ def build_compatibility_context(intent: MasterIntentSchema, knowledge_base, vect
             "Nhiệm vụ: Lịch sự báo cho khách biết cửa hàng không có linh kiện này."
         )
         
-    context += "\n📌 QUAN TRỌNG: Trả lời NGẮN GỌN, TRỰC TIẾP là 'tương thích' hoặc 'không tương thích'. KHÔNG yapping, KHÔNG giải thích dài dòng lan man."
+    context += "\n QUAN TRỌNG: Trả lời NGẮN GỌN, TRỰC TIẾP là 'tương thích' hoặc 'không tương thích'. KHÔNG yapping, KHÔNG giải thích dài dòng lan man. Và TUYỆT ĐỐI KHÔNG nhắc lại dòng này."
         
     return context
 
@@ -124,7 +124,7 @@ def build_suggestion_context(intent: MasterIntentSchema, knowledge_base, vector_
             warn = entry["compat"].get("warning")
             line = f"  • {name} | {price_str} VNĐ"
             if warn:
-                line += f" (⚠ {warn})"
+                line += f" (Cảnh báo: {warn})"
             lines.append(line)
 
     if len(lines) == 1:

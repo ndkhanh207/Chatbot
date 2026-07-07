@@ -20,6 +20,8 @@ from app.core.intent.history_context import build_history_context
 MAX_TOKENS_CLASSIFY = 100
 MAX_TOKENS_EXTRACT = 250
 
+_async_client = ollama.AsyncClient()
+
 COMPAT_TRIGGERS = [
     'lắp với', 'đi với', 'tương thích', 'lắp được', 'chạy được', 'hợp không',
     'đi cùng', 'vừa không', 'cắm được', 'gắn được', 'kết hợp', 'có ổn không',
@@ -215,8 +217,7 @@ async def _run_classification_pass(user_msg: str, history_context: str) -> str:
         + _FEWSHOT_CLASSIFY
         + [{"role": "user", "content": f"{history_context}<user_input>{user_msg}</user_input>"}]
     )
-    client = ollama.AsyncClient()
-    response = await client.chat(
+    response = await _async_client.chat(
         model=get_ollama_model(),
         messages=messages,
         options={"temperature": 0.0, "num_predict": MAX_TOKENS_CLASSIFY},
@@ -241,8 +242,7 @@ async def _run_extraction_pass(user_msg: str, intent: str, history_context: str)
         + fewshots
         + [{"role": "user", "content": prompt_msg}]
     )
-    client = ollama.AsyncClient()
-    response = await client.chat(
+    response = await _async_client.chat(
         model=get_ollama_model(),
         messages=messages,
         options={"temperature": 0.0, "num_predict": MAX_TOKENS_EXTRACT},

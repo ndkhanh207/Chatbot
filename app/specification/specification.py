@@ -100,15 +100,15 @@ def build_specification_context(parsed_intent, category, knowledge_base, vector_
         
         if detected_field_key:
             if not _is_valid_val(detected_field_val):
-                format_hint += f"\n⚠️ LƯU Ý: Thông số '{spec_detail}' của sản phẩm này hiện chưa có trong cơ sở dữ liệu. Hãy trả lời lịch sự rằng bạn chưa có thông tin này."
+                format_hint += f"\nLƯU Ý: Thông số '{spec_detail}' của sản phẩm này hiện chưa có trong cơ sở dữ liệu. Hãy trả lời lịch sự rằng bạn chưa có thông tin này."
             else:
-                format_hint += f"\n✅ DỮ LIỆU THỰC TẾ: Thông số '{spec_detail}' = '{detected_field_val}'. Hãy trả lời DỰA TRÊN GIÁ TRỊ NÀY, giữ nguyên số và đơn vị."
+                format_hint += f"\nDỮ LIỆU THỰC TẾ: Thông số '{spec_detail}' = '{detected_field_val}'. Hãy trả lời DỰA TRÊN GIÁ TRỊ NÀY, giữ nguyên số và đơn vị."
                     
-            format_hint += "\n📌 QUAN TRỌNG: Chỉ trả lời thẳng vào thông tin số liệu. Giữ nguyên đơn vị."
+            format_hint += "\nQUAN TRỌNG: Chỉ trả lời thẳng vào thông tin số liệu. Giữ nguyên đơn vị. KHÔNG giải thích thêm."
         else:
-            format_hint += "\n📌 QUAN TRỌNG: Hãy tư vấn khách quan dựa trên thông số hiện có của sản phẩm. KHÔNG tự bịa thông số, và TUYỆT ĐỐI KHÔNG TỰ ĐỘNG QUY ĐỔI ĐƠN VỊ (Ví dụ: phải giữ nguyên MHz, tuyệt đối không đổi sang GHz)."
+            format_hint += "\nQUAN TRỌNG: Hãy liệt kê trực tiếp các thông số kỹ thuật của sản phẩm dưới dạng danh sách gạch đầu dòng (bullet points). TUYỆT ĐỐI KHÔNG GIẢI THÍCH ý nghĩa của bất kỳ thông số nào (ví dụ: không giải thích TPU là gì, kiến trúc là gì). KHÔNG TỰ BỊA THÊM THÔNG SỐ ngoài [DỮ LIỆU THỰC TẾ], và TUYỆT ĐỐI KHÔNG TỰ ĐỘNG QUY ĐỔI ĐƠN VỊ (Ví dụ: phải giữ nguyên MHz)."
         
-        format_hint += "\n[TUYỆT ĐỐI TUÂN THỦ]: TRẢ LỜI NGẮN GỌN TỐI ĐA, đi thẳng vào các thông số. KHÔNG yapping, KHÔNG chào hỏi dài dòng, KHÔNG phân tích hay đưa ra công thức tính toán."
+        format_hint += "\n[TUYỆT ĐỐI TUÂN THỦ]: TRẢ LỜI NGẮN GỌN TỐI ĐA. KHÔNG yapping, KHÔNG chào hỏi dài dòng, KHÔNG phân tích, KHÔNG kết luận thừa thãi."
         
     return context, format_hint
 
