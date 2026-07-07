@@ -1,9 +1,17 @@
+# pyrefly: ignore [missing-import]
 from fastapi import APIRouter, Request, status, Depends, HTTPException
 from app.utils.unit_converter import convert_unit
 from app.memory.memory_store import clear_session
 
 # Import từ các module đã tách bạch
 from app.api.model.chat_models import ChatRequest, EvalChatRequest, ChatResponse, ErrorResponse
+from pydantic import BaseModel
+from typing import Union, List
+
+class EmbeddingRequest(BaseModel):
+    input: Union[str, List[str]]
+    model: str = "local"
+
 from app.api.api_handler.chat_services import (
     process_chat_message,
     search_knowledge_base,
@@ -21,6 +29,35 @@ def test_kb(request: Request, q: str = None, category: str = None, top_k: int = 
     if getattr(request.app.state, "knowledge_base", None) is None:
         return {'status': 'Kho hàng trống!'}
     return search_knowledge_base(request, q, category, top_k)
+
+@router.post("/v1/embeddings")
+def get_embeddings(request: Request, data: EmbeddingRequest):
+    """
+    OpenAI-compatible embeddings endpoint.
+    Allows Ragas to use the Chatbot's loaded embedding model without duplicating it in VRAM.
+    """
+    if getattr(request.app.state, "vector_store", None) is None:
+        raise HTTPException(status_code=500, detail="Embedding model not initialized.")
+    
+    embedder = request.app.state.vector_store.embeddings
+    inputs = data.input if isinstance(data.input, list) else [data.input]
+    
+    embeddings = embedder.embed_documents(inputs)
+    
+    data_list = []
+    for i, emb in enumerate(embeddings):
+        data_list.append({
+            "object": "embedding",
+            "index": i,
+            "embedding": emb
+        })
+        
+    return {
+        "object": "list",
+        "data": data_list,
+        "model": data.model,
+        "usage": {"prompt_tokens": 0, "total_tokens": 0}
+    }
 
 @router.post(
     "/chat",
