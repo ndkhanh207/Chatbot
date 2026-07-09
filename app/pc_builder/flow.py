@@ -434,63 +434,14 @@ class PcBuildEngine:
             return fallback_reply
 
     def _build_reply(self, best_build: dict, purpose_str: str) -> dict:
-        from app.core.llm_chains import get_llm
-        from app.templates.prompt_templates import PC_BUILD_TEMPLATE
-        from app.guard.response_formatter import word_filter, check_missing_components
-        
-        # Bắt buộc LLM phải bám sát dữ liệu trong mọi trường hợp (kể cả khách chỉ nói "chơi game")
-        base_llm_user_message = (
-            f"Khách nói: '{self.user_message}'\n"
-            f"LỆNH BẮT BUỘC: Hãy lấy chính xác thông tin từ DỮ LIỆU BỘ PC bên dưới để trình bày, KHÔNG ĐƯỢC tự chế linh kiện."
-        )
-            
         build_context = format_reply_body(best_build, self.budget or 0, purpose_str, self.quantity)
-        
-        llm = get_llm()
-        
+
         print(f"🔍 [HỆ THỐNG DEBUG PC BUILDER] - Context saved")
         print(f"🔹 Nội dung [build_context] nạp vào:\n{build_context}")
         print("════════════════════════════════════════════════════════════\n")
-        
-        content_str = build_context
-        max_retries = 1
-        llm_user_message = base_llm_user_message
 
-        for attempt in range(max_retries + 1):
-            prompt = PC_BUILD_TEMPLATE.invoke({
-                "user_message": llm_user_message,
-                "build_context": build_context
-            })
-            
-            try:
-                response = llm.invoke(prompt)
-                content_str = response.content
-                
-                # --- POST PC BUILD CHECK ---
-                missing_components = check_missing_components(content_str, best_build)
-                    
-                if missing_components:
-                    print(f"❌ [LLM Error] Hallucination detected! Missing components: {missing_components}.")
-                    if attempt < max_retries:
-                        print(f"⚠️ [LLM Retry] Attempt {attempt + 1}/{max_retries}...")
-                        llm_user_message = base_llm_user_message + f"\nLƯU Ý NGHIÊM TRỌNG: Lần trước bạn đã quên liệt kê {', '.join(missing_components).upper()}. YÊU CẦU BẠN BẮT BUỘC PHẢI TRÌNH BÀY ĐẦY ĐỦ!"
-                        continue
-                    else:
-                        print("❌ [LLM Error] Max retries reached. Fallback to raw context.")
-                        content_str = build_context
-                        break
-                else:
-                    break # Success!
-                    
-            except Exception as e:
-                print(f"❌ [LLM Error] Lỗi khi sinh reply: {e}")
-                if attempt == max_retries:
-                    content_str = build_context
-                continue
-            
-        filtered_content = word_filter(content_str)
         build_id = best_build.get('BuildID', 'N/A')
-        final_reply = f"- Mã bộ: {build_id}\n\n{filtered_content}"
+        final_reply = build_context
         
         if self.is_upgrade_scenario and self.upgrade_info:
             comp_name = self.upgrade_info.get('cpu_model') or self.upgrade_info.get('gpu_model') or "linh kiện của bạn"

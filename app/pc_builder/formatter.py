@@ -37,7 +37,7 @@ def format_build_context(build: dict) -> str:
     )
 
 def format_reply_body(best_build: dict, budget: int, purpose_str: str, quantity: int = 1) -> str:
-    """Format phần thân câu trả lời."""
+    """Format câu trả lời tư vấn PC ổn định, không cần LLM rewrite."""
     cpu_model      = best_build.get('CPU_Model', 'N/A')
     cpu_price      = format_approx_million(best_build.get('Component_Price_CPU', 0))
     gpu_model      = best_build.get('GPU_Model', 'N/A')
@@ -53,14 +53,11 @@ def format_reply_body(best_build: dict, budget: int, purpose_str: str, quantity:
                if quantity > 1 else ""
 
     return (
+        f"Dạ, em gợi ý bộ PC này cho nhu cầu {purpose_str} trong tầm {budget_str}:\n\n"
         f"- Mã bộ: {build_id}\n"
-        f"- Ngân sách khách muốn: {budget_str}\n"
-        f"- Mục đích sử dụng: {purpose_str}\n"
-        f"- Số lượng: {quantity} bộ\n"
-        f"--- CHI TIẾT BỘ PC ---\n"
-        f"- CPU: {cpu_model} (Giá: {cpu_price})\n"
-        f"- GPU: {gpu_model} (Giá: {gpu_price})\n"
-        f"- Mainboard: {main_model} (Giá: {main_price})\n"
-        f"- Phí lắp ráp: {assembly_price}\n"
-        f"- Tổng cộng: {total_price}{qty_note}"
+        f"- CPU: {cpu_model} - {cpu_price}\n"
+        f"- GPU: {gpu_model} - {gpu_price}\n"
+        f"- Mainboard: {main_model} - {main_price}\n"
+        f"- Phí lắp ráp: {assembly_price}\n\n"
+        f"Tổng cộng: {total_price}{qty_note}"
     )
