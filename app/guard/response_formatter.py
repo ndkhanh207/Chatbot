@@ -252,8 +252,6 @@ def word_filter(reply: str) -> str:
     # Làm mượt output thô thiển thành lời tư vấn cực kỳ tự nhiên, lịch sự!
     if "[THÔNG TIN BẮT BUỘC PHẢI THÔNG BÁO CHO KHÁCH HÀNG]" in reply:
         reply = reply.replace("[THÔNG TIN BẮT BUỘC PHẢI THÔNG BÁO CHO KHÁCH HÀNG]", "").strip()
-        if "Bạn cần tư vấn" not in reply:
-            reply = f"{reply}\n\nBạn cần tư vấn thêm gì cứ bảo em nhé!"
 
     return reply
 

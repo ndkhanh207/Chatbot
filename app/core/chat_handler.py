@@ -30,6 +30,38 @@ from app.pc_builder.flow import handle_pc_build_flow
 from app.guard.injection_guard import sanitize_input
 
 MAX_INPUT_LENGTH = 500  # Ký tự tối đa
+FOLLOW_UP_MARKERS = ("vậy", "thì sao", "thế còn", "còn", "nó", "con này", "của")
+EXPLICIT_FOCUS_MARKERS = (
+    "giá", "bao nhiêu", "xung", "vram", "socket", "tdp", "bộ nhớ",
+    "triệu", "tr", "tầm", "khoảng", "dưới", "trên", "mượt",
+)
+
+def _build_recent_user_focus(user_message: str, chat_history: list, max_chars: int = 180) -> str:
+    msg_lower = user_message.lower()
+    if not any(marker in msg_lower for marker in FOLLOW_UP_MARKERS):
+        return ""
+
+    previous_user_msg = next(
+        (m.content.strip() for m in reversed(chat_history) if getattr(m, "type", "") == "human" and m.content.strip()),
+        ""
+    )
+    if not previous_user_msg:
+        return ""
+
+    previous_user_msg = previous_user_msg.replace("\n", " ")
+    if len(previous_user_msg) > max_chars:
+        previous_user_msg = previous_user_msg[:max_chars].rstrip() + "..."
+
+    if any(marker in msg_lower for marker in EXPLICIT_FOCUS_MARKERS):
+        return (
+            f"Câu hỏi hiện tại có nhu cầu mới rõ ràng; chỉ kế thừa linh kiện/danh mục còn thiếu từ câu trước: "
+            f"'{previous_user_msg}'. Ưu tiên đúng nội dung câu hiện tại."
+        )
+
+    return (
+        f"Câu hỏi hiện tại đang nối tiếp cùng nhu cầu/chủ đề của câu trước: '{previous_user_msg}'. "
+        "Hãy trả lời đúng nhu cầu đó cho câu hiện tại; không tự chuyển sang giá hoặc xung nếu khách không hỏi."
+    )
 
 # ──────────────────────────────────────────────
 # Main entry point
@@ -247,6 +279,10 @@ async def handle_chat(user_message: str, knowledge_base,
 
         # 7. Lưu context vào cache để dùng khi user từ chối khi bot hỏi lại thông tin
         # Centralize injecting the original question to help LLM understand context better
+        recent_user_focus = _build_recent_user_focus(user_message, chat_history)
+        if recent_user_focus and recent_user_focus not in format_hint:
+            format_hint = f"{format_hint}\n{recent_user_focus}" if format_hint else recent_user_focus
+
         if format_hint:
             if "Câu hỏi gốc:" not in format_hint:
                 format_hint += f"\nCâu hỏi gốc: '{user_message}'"

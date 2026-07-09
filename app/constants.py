@@ -20,8 +20,8 @@ FIELD_ALIAS_MAP = {
 
 FIELD_KEYWORD_ALIASES = {
     'tdp':          ['tdp', 'điện năng', 'điện năng tiêu thụ', 'công suất'],
-    'xung cơ bản':  ['xung cơ bản', 'base clock'],
-    'xung boost':   ['xung boost', 'boost clock'],
+    'xung cơ bản':  ['xung cơ bản', 'xung nhịp', 'xung', 'base clock'],
+    'xung boost':   ['xung boost', 'xung nhịp', 'xung', 'boost clock'],
     'bộ nhớ':       ['bộ nhớ', 'memory', 'vram', 'dung lượng vram', 'dung lượng ram card', 'chuẩn ram', 'loại ram'],
     'socket':       ['socket', 'socket type', 'loại socket'],
     'số lõi':       ['lõi', 'nhân', 'core', 'số lõi', 'mấy nhân'],

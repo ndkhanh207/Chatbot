@@ -152,7 +152,6 @@ def _is_compatibility_hallucination(raw: str, context: str) -> bool:
 
     return False
 
-
 def _format_context_directly(context: str, intent: str) -> str:
     """Bypass LLM — format context thành reply đọc được."""
     if not context:

@@ -11,7 +11,6 @@ def _fmt_cpu_main(cpu: dict, main: dict, check: dict) -> str:
     total_str = calculate_total_price(cpu_price, main_price)
 
     lines = [
-        "[THÔNG TIN BẮT BUỘC PHẢI THÔNG BÁO CHO KHÁCH HÀNG]",
         f"- CPU: '{_get_field(cpu, 'tên', 'name', default='')}'{cpu_price_str}",
         f"- Mainboard: '{_get_field(main, 'tên', 'name', default='')}' (Chipset: {check.get('chipset') or 'không rõ'}){main_price_str}",
     ]
@@ -30,7 +29,6 @@ def _fmt_gpu_main(gpu: dict, main: dict, check: dict) -> str:
     total_str = calculate_total_price(gpu_price, main_price)
 
     lines = [
-        "[THÔNG TIN BẮT BUỘC PHẢI THÔNG BÁO CHO KHÁCH HÀNG]",
         f"- GPU: '{_get_field(gpu, 'tên', 'name', default='')}' (PCIe: {check.get('gpu_pcie_gen') or '?'}){gpu_price_str}",
         f"- Mainboard: '{_get_field(main, 'tên', 'name', default='')}' (PCIe: {check.get('main_pcie_gen') or '?'}){main_price_str}",
     ]
@@ -51,7 +49,6 @@ def _fmt_cpu_gpu(cpu: dict, gpu: dict, check: dict) -> str:
     total_str = calculate_total_price(cpu_price, gpu_price)
 
     lines = [
-        "[THÔNG TIN BẮT BUỘC PHẢI THÔNG BÁO CHO KHÁCH HÀNG]",
         f"- CPU: '{_get_field(cpu, 'tên', 'name', default='')}'{cpu_price_str}",
         f"- GPU: '{_get_field(gpu, 'tên', 'name', default='')}'{gpu_price_str}",
     ]

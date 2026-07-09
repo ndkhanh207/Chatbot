@@ -94,6 +94,8 @@ _FEWSHOT_CLASSIFY = [
     # ── General search ──
     {"role": "user", "content": "<user_input>tìm cho tôi ssd của samsung</user_input>"},
     {"role": "assistant", "content": '{"intent": "general_search"}'},
+    {"role": "user", "content": "<user_input>tìm cho mình card đồ họa nvidia</user_input>"},
+    {"role": "assistant", "content": '{"intent": "general_search"}'},
     {"role": "user", "content": "[TRẠNG THÁI ĐÃ XÁC NHẬN]:\nCATEGORY=ram, LAST_INTENT=general_search\n\nLỊCH SỬ HỘI THOẠI TRƯỚC ĐÓ:\nKhách: có loại ram ddr5 nào không\nAI: Dạ bên em có nhiều mẫu\n\n<user_input>thế còn của hãng corsair thì sao?</user_input>"},
     {"role": "assistant", "content": '{"intent": "general_search"}'},
     # ── None ──
@@ -149,6 +151,8 @@ _FEWSHOT_BY_INTENT = {
     "specification": [
         {"role": "user", "content": "<user_input>ryzen 7 7700x dùng socket nào vậy shop</user_input>"},
         {"role": "assistant", "content": '{"reasoning": "Hỏi thông số socket của CPU.", "intent": "specification", "target_product": "ryzen 7 7700x", "spec_detail": "socket", "cpu": "none", "mainboard": "none", "gpu": "none", "budget_amount": 0, "category": "none"}'},
+        {"role": "user", "content": "<user_input>rtx 5070 ti vram bao nhiêu?</user_input>"},
+        {"role": "assistant", "content": '{"reasoning": "Hỏi thông số VRAM của GPU.", "intent": "specification", "target_product": "rtx 5070 ti", "spec_detail": "vram", "cpu": "none", "mainboard": "none", "gpu": "rtx 5070 ti", "budget_amount": 0, "category": "none"}'},
         {"role": "user", "content": "<user_input>card msi rtx 5070 ti này thiết kế màu gì thế shop</user_input>"},
         {"role": "assistant", "content": '{"reasoning": "Hỏi thông số màu sắc của GPU.", "intent": "specification", "target_product": "msi rtx 5070 ti", "spec_detail": "màu", "cpu": "none", "mainboard": "none", "gpu": "msi rtx 5070 ti", "budget_amount": 0, "category": "none"}'},
         {"role": "user", "content": "[TRẠNG THÁI ĐÃ XÁC NHẬN]:\nGPU=rtx 4090, LAST_INTENT=price_check\n\nLỊCH SỬ HỘI THOẠI TRƯỚC ĐÓ:\nKhách: RTX 4090 giá bao nhiêu\nAI: Dạ giá 50 triệu\n\n<user_input>Nó có mấy gb vram</user_input>"},
@@ -208,6 +212,8 @@ _FEWSHOT_BY_INTENT = {
     "general_search": [
         {"role": "user", "content": "tìm cho tôi ssd của samsung"},
         {"role": "assistant", "content": '{"reasoning": "Tìm kiếm chung chung.", "intent": "general_search", "target_product": "none", "spec_detail": "none", "cpu": "none", "mainboard": "none", "gpu": "none", "budget_amount": 0, "category": "ssd"}'},
+        {"role": "user", "content": "tìm cho mình card đồ họa nvidia"},
+        {"role": "assistant", "content": '{"reasoning": "Tìm kiếm chung chung hãng card đồ họa.", "intent": "general_search", "target_product": "nvidia", "spec_detail": "none", "cpu": "none", "mainboard": "none", "gpu": "none", "budget_amount": 0, "category": "gpu"}'},
         {"role": "user", "content": "có loại ram ddr5 nào không"},
         {"role": "assistant", "content": '{"reasoning": "Tìm kiếm chung chung loại linh kiện.", "intent": "general_search", "target_product": "none", "spec_detail": "none", "cpu": "none", "mainboard": "none", "gpu": "none", "budget_amount": 0, "category": "ram"}'},
         {"role": "user", "content": "[TRẠNG THÁI ĐÃ XÁC NHẬN]:\nCATEGORY=ram, LAST_INTENT=general_search\n\nLỊCH SỬ HỘI THOẠI TRƯỚC ĐÓ:\nKhách: có loại ram ddr5 nào không\nAI: Dạ bên em có nhiều mẫu\n\n<user_input>thế còn của hãng corsair thì sao?</user_input>"},

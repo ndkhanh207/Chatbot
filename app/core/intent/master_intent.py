@@ -35,9 +35,14 @@ SPEC_TRIGGERS = [
     'công suất', 'chạy ở', 'gb ram', 'khe cắm'
 ]
 
-CPU_REGEX = r'(amd ryzen\s*[3579]\s+\d{4,5}[a-z0-9]*|intel core i[3579][-\s]?\d{4,5}[a-z0-9]*|ryzen\s*[3579]\s+\d{4,5}[a-z0-9]*|i[3579][-\s]?\d{4,5}[a-z0-9]*|ryzen\s+[3579])'
-GPU_REGEX = r'((?:geforce\s+)?(?:rtx|gtx)\s*\d{3,4}(?:\s*ti|\s*super)?(?:\s*gaming)?(?:\s*\d{1,2}g)?|radeon\s+rx\s*\d{3,4}(?:\s*xt)?|rx\s*\d{3,4}(?:\s*xt)?)'
-MAIN_REGEX = r'(asus\s+[bzhx]\d{2,3}m?(?:-[a-z0-9]+)?|gigabyte\s+[bzhx]\d{2,3}m?(?:-[a-z0-9]+)?|msi\s+[bzhx]\d{2,3}m?(?:-[a-z0-9]+)?|asrock\s+[bzhx]\d{2,3}m?(?:-[a-z0-9]+)?|[bzhx]\d{2,3}m?(?:-[a-z0-9]+)?|mainboard\s+[a-z0-9-]+|main\s+[a-z0-9-]+)'
+FOLLOW_UP_MARKERS = ['vậy', 'thì sao', 'thế còn', 'còn', 'nó', 'của']
+PRICE_TRIGGERS = ['giá', 'bao nhiêu tiền', 'nhiêu tiền']
+BUDGET_TRIGGERS = ['triệu', 'tr', 'tầm', 'khoảng', 'dưới', 'trên']
+BUILD_TRIGGERS = ['build', 'bộ', 'dàn', 'máy', 'pc']
+
+CPU_PATTERN = re.compile(r'(amd ryzen\s*[3579]\s+\d{4,5}[a-z0-9]*|intel core i[3579][-\s]?\d{4,5}[a-z0-9]*|ryzen\s*[3579]\s+\d{4,5}[a-z0-9]*|i[3579][-\s]?\d{4,5}[a-z0-9]*|ryzen\s+[3579])', re.IGNORECASE)
+GPU_PATTERN = re.compile(r'((?:geforce\s+)?(?:rtx|gtx)\s*\d{3,4}(?:\s*ti|\s*super)?(?:\s*gaming)?(?:\s*\d{1,2}g)?|radeon\s+rx\s*\d{3,4}(?:\s*xt)?|rx\s*\d{3,4}(?:\s*xt)?)', re.IGNORECASE)
+MAIN_PATTERN = re.compile(r'(asus\s+[bzhx]\d{2,3}m?(?:-[a-z0-9]+)?|gigabyte\s+[bzhx]\d{2,3}m?(?:-[a-z0-9]+)?|msi\s+[bzhx]\d{2,3}m?(?:-[a-z0-9]+)?|asrock\s+[bzhx]\d{2,3}m?(?:-[a-z0-9]+)?|[bzhx]\d{2,3}m?(?:-[a-z0-9]+)?|mainboard\s+[a-z0-9-]+|main\s+[a-z0-9-]+)', re.IGNORECASE)
 
 # ==============================================================================
 # SCHEMAS
@@ -104,14 +109,17 @@ class MasterIntentSchema(BaseModel):
 # ==============================================================================
 
 def _count_components(msg_l: str) -> tuple:
-    cpu_match = re.search(CPU_REGEX, msg_l)
-    gpu_match = re.search(GPU_REGEX, msg_l)
-    main_match = re.search(MAIN_REGEX, msg_l)
+    cpu_match = CPU_PATTERN.search(msg_l)
+    gpu_match = GPU_PATTERN.search(msg_l)
+    main_match = MAIN_PATTERN.search(msg_l)
     comp_count = sum(1 for x in [cpu_match, gpu_match, main_match] if x)
     return comp_count, cpu_match, gpu_match, main_match
 
 def _apply_pre_extraction_guards(msg_l: str, comp_count: int, intent_pass1: str, history_context: str) -> str:
     has_compat_trigger = any(t in msg_l for t in COMPAT_TRIGGERS)
+    has_budget_trigger = any(t in msg_l for t in BUDGET_TRIGGERS)
+    is_explicit_build = any(w in msg_l for w in BUILD_TRIGGERS)
+
     if has_compat_trigger and comp_count >= 2 and intent_pass1 != "compatibility":
         print(f"⚠️ [GUARD] Pass 1 phân loại nhầm ({intent_pass1}). Ép thành 'compatibility'.")
         return "compatibility"
@@ -121,9 +129,30 @@ def _apply_pre_extraction_guards(msg_l: str, comp_count: int, intent_pass1: str,
         print(f"⚠️ [GUARD] Phát hiện từ khóa thông số/chuẩn giao tiếp. Ép thành 'specification'.")
         return "specification"
 
+    if intent_pass1 == "build_pc" and has_budget_trigger and not is_explicit_build:
+        match = re.search(r'LAST_INTENT=([a-z_]+)', history_context)
+        last_intent = match.group(1) if match else "none"
+        if "CATEGORY=" in history_context and last_intent != "build_pc":
+            print("⚠️ [GUARD] Budget follow-up theo danh mục. Ép thành 'budget_search'.")
+            return "budget_search"
+
+    is_follow_up = any(t in msg_l for t in FOLLOW_UP_MARKERS)
+    has_explicit_new_intent = (
+        has_compat_trigger
+        or has_spec_trigger
+        or any(t in msg_l for t in PRICE_TRIGGERS)
+        or has_budget_trigger
+        or is_explicit_build
+    )
+    if is_follow_up and not has_explicit_new_intent:
+        match = re.search(r'LAST_INTENT=([a-z_]+)', history_context)
+        if match and match.group(1) != "none":
+            inherited = match.group(1)
+            print(f"⚠️ [GUARD] Câu hỏi nối tiếp mơ hồ. Ép kế thừa intent: {inherited}")
+            return inherited
+
     # Nếu nhắc đích danh linh kiện cụ thể (comp_count >= 1) thì không thể là tìm kiếm chung chung.
     # Nếu Pass-1 ra build_pc nhưng không hề có chữ 'build', 'bộ', 'pc', 'dàn', 'máy' -> Ảo giác.
-    is_explicit_build = any(w in msg_l for w in ['build', 'bộ', 'dàn', 'máy', 'pc'])
     if comp_count >= 1 and (intent_pass1 in ["general_search", "none"] or (intent_pass1 == "build_pc" and not is_explicit_build)):
         match = re.search(r'LAST_INTENT=([a-z_]+)', history_context)
         if match:
@@ -158,11 +187,11 @@ def _apply_post_extraction_guards(parsed: MasterIntentSchema, cpu_match, gpu_mat
     if parsed.mainboard == "none" and main_match: parsed.mainboard = main_match.group(1)
 
     # Sửa lỗi LLM điền sai slot (vd: rx 7600 bị nhét vào slot CPU)
-    if parsed.cpu != "none" and re.search(GPU_REGEX, parsed.cpu, re.I):
+    if parsed.cpu != "none" and GPU_PATTERN.search(parsed.cpu):
         parsed.gpu = parsed.cpu
         parsed.cpu = "none"
         if parsed.category == "cpu": parsed.category = "gpu"
-    elif parsed.gpu != "none" and re.search(CPU_REGEX, parsed.gpu, re.I):
+    elif parsed.gpu != "none" and CPU_PATTERN.search(parsed.gpu):
         parsed.cpu = parsed.gpu
         parsed.gpu = "none"
         if parsed.category == "gpu": parsed.category = "cpu"
@@ -206,9 +235,6 @@ async def _handle_retry(user_msg: str, history_context: str, parsed: MasterInten
 # PIPELINE EXECUTION
 # ==============================================================================
 
-def _run_classification_pass_sync(user_msg: str, history_context: str) -> str:
-    # Deprecated sync version if still needed elsewhere
-    pass
 
 async def _run_classification_pass(user_msg: str, history_context: str) -> str:
     """Pass 1: Phân loại Intent"""
@@ -228,7 +254,8 @@ async def _run_classification_pass(user_msg: str, history_context: str) -> str:
     print(f"\n\U0001f50d [PASS-1] Raw: {raw}")
     try:
         return IntentOnlySchema.model_validate_json(raw).intent
-    except:
+    except Exception as e:
+        print(f"\u26a0\ufe0f [PASS-1] Lỗi parse JSON intent ({e}). Fallback 'none'.")
         return "none"
 
 

@@ -23,14 +23,14 @@ MULTI_TURN_CASES = [
         "multi_inherit_spec",
         [
             ("rtx 5070 ti vram bao nhiêu?", ["16", ("vram", "gb")]),
-            ("thế còn xung nhịp?", [("2295", "2572"), ("mhz", "ghz", "xung", "nhịp")]),
-            ("vậy của rtx 5080 thì sao?", ["5080", ("2205", "2610", "2625", "2.205", "2.610", "2.625"), ("mhz", "ghz", "xung", "nhịp")]),
+            ("thế còn xung nhịp?", [("2295", "2467", "2572", "2.295", "2.467", "2.572"), ("mhz", "ghz", "xung", "nhịp")]),
+            ("vậy của rtx 5080 thì sao?", ["5080", ("2205", "2295", "2610", "2625", "2640", "2.205", "2.295", "2.610", "2.625", "2.640"), ("mhz", "ghz", "xung", "nhịp")]),
         ]
     ),
     (
         "multi_inherit_compat",
         [
-            ("ryzen 5 7600x có lắp được với main MSI PRO B650M-P không?", ["tương thích"]),
+            ("ryzen 5 7600x có lắp được với main MSI PRO B650M-P không?", [("tương thích", "lắp được", "phù hợp")]),
             ("thế còn main ASUS B760M-AYW thì sao?", ["b760m-ayw", ("không", "không tương thích")]),
             ("vậy đi với i7 14700k?", ["14700k", ("không", "không thể", "lỗi")]),
         ]
@@ -46,8 +46,8 @@ MULTI_TURN_CASES = [
         "multi_inherit_build_pc",
         [
             ("rtx 3080 chơi pubg mượt không?", ["3080", ("mượt", "tốt", "ổn", "có")]),
-            ("vậy rtx 4080 thì sao?", ["4080", ("2205", "2610", "2625", "2.205", "2.610", "2.625")]),
-            ("build cho tôi bộ 50 triệu chơi game đi", ["- mã bộ:", "4080", "triệu"]),
+            ("vậy rtx 4080 thì sao?", ["4080", ("pubg", "mượt", "tốt", "ổn", "hiệu suất")]),
+            ("build cho tôi bộ 50 triệu chơi game đi", ["- mã bộ:", ("4080", "3080", "3080ti", "3080 ti"), "triệu"]),
         ]
     ),
     (

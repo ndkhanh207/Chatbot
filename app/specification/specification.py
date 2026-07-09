@@ -50,6 +50,26 @@ def _find_spec_field(query_lower: str, spec_detail_llm: str, item: dict) -> tupl
     return None, None, "tất cả thông số"
 
 
+def _is_generic_clock_question(query_lower: str, spec_detail_llm: str) -> bool:
+    asked = f"{query_lower} {spec_detail_llm or ''}".lower()
+    if any(term in asked for term in ["xung boost", "boost clock", "xung cơ bản", "base clock"]):
+        return False
+    return any(term in asked for term in ["xung nhịp", "xung", "tốc độ"])
+
+
+def _build_clock_hint(item: dict) -> str:
+    base_clock = item.get("xung cơ bản")
+    boost_clock = item.get("xung boost")
+    if not (_is_valid_val(base_clock) and _is_valid_val(boost_clock)):
+        return ""
+    return (
+        "DỮ LIỆU THỰC TẾ: xung cơ bản = "
+        f"'{base_clock} MHz', xung boost = '{boost_clock} MHz'. "
+        "Hãy trả lời đúng cả 2 giá trị này, giữ nguyên số và đơn vị. "
+        "Không thêm Lý do, không nhắc hệ thống/dữ liệu."
+    )
+
+
 def build_specification_context(parsed_intent, category, knowledge_base, vector_store, search_query) -> tuple[str, str]:
     """
     Container xử lý riêng cho luồng hỏi thông số kỹ thuật.
@@ -87,24 +107,33 @@ def build_specification_context(parsed_intent, category, knowledge_base, vector_
     if matched_items:
         item = matched_items[0]
         actual_name = item.get('tên') or item.get('name') or lookup_term
-        
+        query_lower = search_query.lower()
+
         detected_field_key, detected_field_val, spec_detail = _find_spec_field(
-            query_lower=search_query.lower(),
+            query_lower=query_lower,
             spec_detail_llm=parsed_intent.spec_detail,
             item=item
         )
+        has_open_spec_detail = parsed_intent.spec_detail and parsed_intent.spec_detail.strip().lower() != "none"
         if not detected_field_key:
-            spec_detail = "tất cả thông số"
+            spec_detail = parsed_intent.spec_detail if has_open_spec_detail else "tất cả thông số"
 
         format_hint = f"THÔNG TIN HỆ THỐNG: Khách đang hỏi thông số '{spec_detail}' của '{actual_name}'."
+        clock_hint = _build_clock_hint(item) if _is_generic_clock_question(query_lower, parsed_intent.spec_detail) else ""
         
-        if detected_field_key:
+        if clock_hint:
+            format_hint += f"\n{clock_hint}"
+            format_hint += "\nQUAN TRỌNG: Chỉ trả lời thẳng vào thông tin số liệu. Giữ nguyên đơn vị. KHÔNG giải thích thêm."
+        elif detected_field_key:
             if not _is_valid_val(detected_field_val):
                 format_hint += f"\nLƯU Ý: Thông số '{spec_detail}' của sản phẩm này hiện chưa có trong cơ sở dữ liệu. Hãy trả lời lịch sự rằng bạn chưa có thông tin này."
             else:
                 format_hint += f"\nDỮ LIỆU THỰC TẾ: Thông số '{spec_detail}' = '{detected_field_val}'. Hãy trả lời DỰA TRÊN GIÁ TRỊ NÀY, giữ nguyên số và đơn vị."
                     
             format_hint += "\nQUAN TRỌNG: Chỉ trả lời thẳng vào thông tin số liệu. Giữ nguyên đơn vị. KHÔNG giải thích thêm."
+        elif has_open_spec_detail:
+            format_hint += "\nQUAN TRỌNG: Đây là câu hỏi tư vấn theo thuộc tính/nhu cầu không có cột dữ liệu trực tiếp trong DB."
+            format_hint += "\nHãy dùng dữ liệu sản phẩm trong context và kiến thức chung của bạn để trả lời ngắn, đúng câu hỏi. Nếu thiếu điều kiện phụ (CPU/RAM/độ phân giải...) thì nhắc thật ngắn, không hỏi vặn."
         else:
             format_hint += "\nQUAN TRỌNG: Hãy liệt kê trực tiếp các thông số kỹ thuật của sản phẩm dưới dạng danh sách gạch đầu dòng (bullet points). TUYỆT ĐỐI KHÔNG GIẢI THÍCH ý nghĩa của bất kỳ thông số nào (ví dụ: không giải thích TPU là gì, kiến trúc là gì). KHÔNG TỰ BỊA THÊM THÔNG SỐ ngoài [DỮ LIỆU THỰC TẾ], và TUYỆT ĐỐI KHÔNG TỰ ĐỘNG QUY ĐỔI ĐƠN VỊ (Ví dụ: phải giữ nguyên MHz)."
         
