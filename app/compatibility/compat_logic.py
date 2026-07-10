@@ -116,11 +116,23 @@ def parse_gpu_profile(text: str) -> Optional[Dict[str, Any]]:
     if m:
         num = m.group(1)
         tier_band = int(num[-2:])
-        return {"brand": "nvidia", "tier_band": tier_band, "tier_rank": GPU_TIER_RANK.get(tier_band)}
+        generation_rank = int(num[:2]) // 10 if len(num) == 4 else None
+        return {
+            "brand": "nvidia", "tier_band": tier_band,
+            "tier_rank": GPU_TIER_RANK.get(tier_band),
+            "generation_rank": generation_rank,
+        }
     m = _GPU_AMD_PATTERN.search(text)
     if m and len(m.group(1)) >= 2:
-        tier_band = int(m.group(1)[1]) * 10
-        return {"brand": "amd", "tier_band": tier_band, "tier_rank": GPU_TIER_RANK.get(tier_band)}
+        num = m.group(1)
+        tier_band = int(num[1]) * 10
+        generation = int(num[0])
+        generation_rank = min(5, (generation + 1) // 2)
+        return {
+            "brand": "amd", "tier_band": tier_band,
+            "tier_rank": GPU_TIER_RANK.get(tier_band),
+            "generation_rank": generation_rank,
+        }
     return None
 
 
@@ -142,10 +154,17 @@ def parse_cpu_profile(name: str) -> Optional[Dict[str, Any]]:
     for pattern, brand in ((_CPU_INTEL_PATTERN, "intel"), (_CPU_AMD_PATTERN, "amd")):
         m = pattern.search(name)
         if m:
-            line, suffix = m.group(1), m.group(3).upper()
+            line, model, suffix = m.group(1), m.group(2), m.group(3).upper()
             modifier = _match_cpu_suffix(suffix)
             has_k = modifier > 0 or suffix in ["X", "XT"]
-            return {"brand": brand, "tier_rank": max(1, CPU_LINE_TIER[line] + modifier), "has_k_modifier": has_k}
+            generation = int(model[:-3]) if brand == "intel" else int(model[0])
+            generation_rank = max(1, generation - 10) if brand == "intel" else (generation + 1) // 2
+            return {
+                "brand": brand,
+                "tier_rank": max(1, CPU_LINE_TIER[line] + modifier),
+                "generation_rank": generation_rank,
+                "has_k_modifier": has_k,
+            }
     return None
 
 
@@ -163,6 +182,49 @@ def is_compatibility_query(message: str) -> bool:
     return any(t in message for t in COMPATIBILITY_TRIGGERS)
 
 
+def assess_cpu_mainboard_tier(cpu_name: str, mainboard_name: str) -> Dict[str, Any]:
+    """Assess CPU/mainboard power-tier fit using names only.
+
+    This is useful outside the full compatibility path where socket fields may
+    not be available, such as prebuilt PC review rows.
+    """
+    cpu_profile = parse_cpu_profile(cpu_name) or {}
+    cpu_tier = cpu_profile.get("tier_rank")
+    chipset = extract_chipset_code(mainboard_name)
+    main_tier = chipset_tier(chipset)
+
+    if cpu_tier is not None:
+        required_tier = max(1, min(3, cpu_tier) - 1)
+        tier_source = f"CPU Tier {cpu_tier}"
+    else:
+        required_tier = 1
+        tier_source = "CPU Tier không rõ"
+
+    tier_ok = main_tier is not None and main_tier >= required_tier
+    return {
+        "chipset": chipset,
+        "main_tier": main_tier,
+        "cpu_tier": cpu_tier,
+        "required_tier": required_tier,
+        "tier_source": tier_source,
+        "tier_ok": tier_ok,
+    }
+
+
+def assess_cpu_gpu_balance(cpu_name: str, gpu_name: str) -> Dict[str, Any]:
+    """Assess CPU/GPU balance using the same tier logic as compatibility."""
+    check = check_cpu_gpu_compat(
+        {"name": cpu_name, "tên": cpu_name},
+        {"name": gpu_name, "tên": gpu_name, "chipset": gpu_name},
+    )
+    return {
+        "cpu_tier": check.get("cpu_tier"),
+        "gpu_tier": check.get("gpu_tier"),
+        "warning": check.get("warning"),
+        "is_compatible": check.get("is_compatible", True),
+    }
+
+
 # ──────────────────────────────────────────────
 # Check 2 linh kiện cụ thể
 # ──────────────────────────────────────────────
@@ -178,13 +240,7 @@ def check_cpu_main_compat(cpu: dict, main: dict) -> Dict[str, Any]:
     if cpu_p and "tier_rank" in cpu_p:
         cpu_tier = cpu_p["tier_rank"]
         tier_source = f"CPU Tier {cpu_tier}"
-        # Required tier clamp ở 3 vì Z/X (Tier 3) đủ cân hết các dòng Core i/Ryzen cao nhất.
-        required_tier = min(3, cpu_tier)
-        # [QUY TẮC TỔNG QUÁT]: CPU không có hậu tố K/X (non-K) tiêu thụ ít điện hơn đáng kể
-        # so với bản unlocked → mainboard chỉ cần thấp hơn 1 tier so với CPU tier là đủ gánh.
-        # VD: i5 non-K (tier 2) chạy tốt trên H610 (tier 1), i7 non-K (tier 3) chạy tốt trên B660 (tier 2).
-        if not cpu_p.get("has_k_modifier"):
-            required_tier = max(1, required_tier - 1)
+        required_tier = max(1, min(3, cpu_tier) - 1)
     else:
         cpu_tdp = float(_get_field(cpu, "tdp", default=0) or 0)
         required_tier = min(3, required_tier_for_tdp(cpu_tdp))
@@ -236,15 +292,24 @@ def check_cpu_gpu_compat(cpu: dict, gpu: dict) -> Dict[str, Any]:
     gpu_p = parse_gpu_profile(_get_field(gpu, "chipset", "tên", "name", default=""))
     cpu_tier = cpu_p["tier_rank"] if cpu_p else None
     gpu_tier = gpu_p["tier_rank"] if gpu_p else None
+    cpu_generation = cpu_p.get("generation_rank") if cpu_p else None
+    gpu_generation = gpu_p.get("generation_rank") if gpu_p else None
 
     warning = None
     if cpu_tier is not None and gpu_tier is not None:
-        if gpu_tier < cpu_tier -1 :
-            warning = "GPU khá yếu so với CPU — GPU có thể là điểm nghẽn hiệu năng."
-        elif cpu_tier < gpu_tier - 1:
-            warning = "GPU khá mạnh so với CPU — CPU có thể là điểm nghẽn hiệu năng."
+        cpu_score = cpu_tier + (cpu_generation or 0)
+        gpu_score = gpu_tier + (gpu_generation or 0)
+        if gpu_score < cpu_score - 1:
+            warning = "GPU thuộc thế hệ cũ hoặc yếu hơn đáng kể so với CPU — GPU có thể là điểm nghẽn hiệu năng."
+        elif cpu_score < gpu_score - 1:
+            warning = "CPU thuộc thế hệ cũ hoặc yếu hơn đáng kể so với GPU — CPU có thể là điểm nghẽn hiệu năng."
 
-    return {"is_compatible": True, "cpu_tier": cpu_tier, "gpu_tier": gpu_tier, "warning": warning}
+    return {
+        "is_compatible": True,
+        "cpu_tier": cpu_tier, "gpu_tier": gpu_tier,
+        "cpu_generation": cpu_generation, "gpu_generation": gpu_generation,
+        "warning": warning,
+    }
 
 
 # ──────────────────────────────────────────────
@@ -295,10 +360,7 @@ def find_compatible_cpus(main: dict, kb: pd.DataFrame, top_k: int = 10):
         cpu_p = parse_cpu_profile(_get_field(cpu, "tên", "name", default=""))
         if cpu_p and "tier_rank" in cpu_p:
             cpu_tier = cpu_p["tier_rank"]
-            required_tier = min(3, cpu_tier)
-            # Non-K CPU → mainboard chỉ cần thấp hơn 1 tier
-            if not cpu_p.get("has_k_modifier"):
-                required_tier = max(1, required_tier - 1)
+            required_tier = max(1, min(3, cpu_tier) - 1)
         else:
             cpu_tdp = float(_get_field(cpu, "tdp", default=0) or 0)
             required_tier = min(3, required_tier_for_tdp(cpu_tdp))

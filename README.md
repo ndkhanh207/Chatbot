@@ -61,6 +61,8 @@ python -m uvicorn main:app
 Sử dụng Ngrok để forward cổng `8000` ra public URL với domain cố định:
 
 ```bash
+ngrok http --url=<YOUR_URL_HERE> 8000
+Ex:
 ngrok http --url=customer-outskirts-blubber.ngrok-free.dev 8000
 ```
 

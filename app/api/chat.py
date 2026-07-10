@@ -1,7 +1,7 @@
 # pyrefly: ignore [missing-import]
 from fastapi import APIRouter, Request, status, Depends, HTTPException
 from app.utils.unit_converter import convert_unit
-from app.memory.memory_store import clear_session
+from app.memory.memory_store import clear_session, get_full_history_api
 
 # Import từ các module đã tách bạch
 from app.api.model.chat_models import ChatRequest, EvalChatRequest, ChatResponse, ErrorResponse
@@ -71,7 +71,7 @@ def get_embeddings(request: Request, data: EmbeddingRequest):
     summary="Gửi tin nhắn tới AI Chatbot (Non-streaming)",
     description="Xử lý câu hỏi của người dùng, kiểm tra tương thích linh kiện và trả về câu trả lời trọn vẹn theo chuẩn RESTful."
 )
-@limiter.limit("60/minute")
+@limiter.limit("10/minute")
 async def chat_with_bot(request: Request, data: ChatRequest, current_user: dict = Depends(verify_firebase_token)):
     user_uid = current_user["uid"]
     return await process_chat_message(request, data, user_uid, include_contexts=False)

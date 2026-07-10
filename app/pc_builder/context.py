@@ -6,6 +6,7 @@ from app.memory.memory_store import save_message, get_latest_metadata, get_trimm
 class PcBuildContext(BaseModel):
     """Deep module state for PC Builder multi-turn context."""
     build_id: Optional[str] = None
+    preset_id: Optional[str] = None
     budget: Optional[int] = None
     exclude_builds: List[str] = Field(default_factory=list)
     
@@ -18,6 +19,7 @@ class PcBuildContext(BaseModel):
     last_suggested_cpu: Optional[str] = None
     last_suggested_gpu: Optional[str] = None
     last_suggested_mainboard: Optional[str] = None
+    pending_question: Optional[str] = None
 
 
 class ConversationMemory:

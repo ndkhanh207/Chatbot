@@ -9,9 +9,12 @@ from app.core.intent.prompts import (
     _FEWSHOT_CLASSIFY,
     _SYSTEM_EXTRACT,
     _FEWSHOT_BY_INTENT,
-    _FALLBACK_MAP
 )
-from app.core.intent.history_context import build_history_context
+from app.core.intent.history_context import build_history_context, extract_structured_state
+
+# ==============================================================================
+# CONSTANTS & CONFIG
+# ==============================================================================
 
 # ==============================================================================
 # CONSTANTS & CONFIG
@@ -28,6 +31,11 @@ COMPAT_TRIGGERS = [
     'có sao không', 'phối với', 'ghép với', 'chạy chung'
 ]
 
+REVIEW_TRIGGERS = [
+    'đánh giá', 'nhận xét', 'review', 'ổn không', 'tốt không', 'nghẽn', 
+    'bottleneck', 'cân bằng', 'đáng mua', 'chấm điểm'
+]
+
 SPEC_TRIGGERS = [
     'vram', 'xung', 'socket', 'lõi', 'nhân', 'tdp', 'bộ nhớ', 'thông số',
     'mượt', 'khỏe', 'băng thông', 'tốc độ', 'chuẩn', 'giao tiếp', 'kích cỡ',
@@ -41,7 +49,7 @@ BUDGET_TRIGGERS = ['triệu', 'tr', 'tầm', 'khoảng', 'dưới', 'trên']
 BUILD_TRIGGERS = ['build', 'bộ', 'dàn', 'máy', 'pc']
 
 CPU_PATTERN = re.compile(r'(amd ryzen\s*[3579]\s+\d{4,5}[a-z0-9]*|intel core i[3579][-\s]?\d{4,5}[a-z0-9]*|ryzen\s*[3579]\s+\d{4,5}[a-z0-9]*|i[3579][-\s]?\d{4,5}[a-z0-9]*|ryzen\s+[3579])', re.IGNORECASE)
-GPU_PATTERN = re.compile(r'((?:geforce\s+)?(?:rtx|gtx)\s*\d{3,4}(?:\s*ti|\s*super)?(?:\s*gaming)?(?:\s*\d{1,2}g)?|radeon\s+rx\s*\d{3,4}(?:\s*xt)?|rx\s*\d{3,4}(?:\s*xt)?)', re.IGNORECASE)
+GPU_PATTERN = re.compile(r'((?:(?:asus|msi|gigabyte|galax|sapphire|powercolor|asrock|zotac|evga|palit|inno3d)\s+(?:\w+\s+){0,4})?(?:geforce\s+)?(?:rtx|gtx)\s*\d{3,4}(?:\s*ti|\s*super)?(?:\s*(?:\d{1,2}gb?|\d{1,2}g|gddr\d+x?|black|white|oc|gaming|trio))*|radeon\s+rx\s*\d{3,4}(?:\s*xt)?|rx\s*\d{3,4}(?:\s*xt)?)', re.IGNORECASE)
 MAIN_PATTERN = re.compile(r'(asus\s+[bzhx]\d{2,3}m?(?:-[a-z0-9]+)?|gigabyte\s+[bzhx]\d{2,3}m?(?:-[a-z0-9]+)?|msi\s+[bzhx]\d{2,3}m?(?:-[a-z0-9]+)?|asrock\s+[bzhx]\d{2,3}m?(?:-[a-z0-9]+)?|[bzhx]\d{2,3}m?(?:-[a-z0-9]+)?|mainboard\s+[a-z0-9-]+|main\s+[a-z0-9-]+)', re.IGNORECASE)
 
 # ==============================================================================
@@ -56,6 +64,7 @@ class IntentOnlySchema(BaseModel):
         "specification",      # Hỏi thông số của 1 món cụ thể (vd: vram, socket)
         "price_check",        # Hỏi giá của 1 món cụ thể
         "budget_search",      # Tìm 1 linh kiện đơn lẻ theo ngân sách tối đa
+        "combo_review",       # Đánh giá combo CPU + GPU + Mainboard có sẵn
         "build_pc",           # Tư vấn/lắp BỘ PC TRỌN BỘ (CPU+GPU+Mainboard)
         "general_search",     # Tìm linh kiện chung chung (không kèm giá/thông số)
         "none"                # Giao tiếp thông thường / Không rõ
@@ -115,8 +124,9 @@ def _count_components(msg_l: str) -> tuple:
     comp_count = sum(1 for x in [cpu_match, gpu_match, main_match] if x)
     return comp_count, cpu_match, gpu_match, main_match
 
-def _apply_pre_extraction_guards(msg_l: str, comp_count: int, intent_pass1: str, history_context: str) -> str:
+def _apply_pre_extraction_guards(msg_l: str, comp_count: int, intent_pass1: str, history_context: str, structured_state: dict) -> str:
     has_compat_trigger = any(t in msg_l for t in COMPAT_TRIGGERS)
+    has_review_trigger = any(t in msg_l for t in REVIEW_TRIGGERS)
     has_budget_trigger = any(t in msg_l for t in BUDGET_TRIGGERS)
     is_explicit_build = any(w in msg_l for w in BUILD_TRIGGERS)
 
@@ -124,10 +134,21 @@ def _apply_pre_extraction_guards(msg_l: str, comp_count: int, intent_pass1: str,
         print(f"⚠️ [GUARD] Pass 1 phân loại nhầm ({intent_pass1}). Ép thành 'compatibility'.")
         return "compatibility"
 
+    has_full_combo = structured_state.get("cpu", "none") != "none" and structured_state.get("gpu", "none") != "none" and structured_state.get("mainboard", "none") != "none"
+    if has_review_trigger and (comp_count >= 3 or has_full_combo):
+        print(f"⚠️ [GUARD] Phát hiện từ khóa review + có đủ combo. Ép thành 'combo_review'.")
+        return "combo_review"
+
     has_spec_trigger = any(t in msg_l for t in SPEC_TRIGGERS)
-    if has_spec_trigger and intent_pass1 not in ["specification", "compatibility"]:
-        print(f"⚠️ [GUARD] Phát hiện từ khóa thông số/chuẩn giao tiếp. Ép thành 'specification'.")
-        return "specification"
+    if has_spec_trigger and intent_pass1 not in ["specification", "compatibility", "combo_review"]:
+        is_follow_up = any(t in msg_l for t in FOLLOW_UP_MARKERS)
+        has_state_component = any(
+            structured_state.get(k, "none") != "none"
+            for k in ["cpu", "gpu", "mainboard", "target_product"]
+        )
+        if comp_count >= 1 or (is_follow_up and has_state_component):
+            print(f"⚠️ [GUARD] Phát hiện từ khóa thông số/chuẩn giao tiếp. Ép thành 'specification'.")
+            return "specification"
 
     if intent_pass1 == "build_pc" and has_budget_trigger and not is_explicit_build:
         match = re.search(r'LAST_INTENT=([a-z_]+)', history_context)
@@ -195,6 +216,46 @@ def _apply_post_extraction_guards(parsed: MasterIntentSchema, cpu_match, gpu_mat
         parsed.cpu = parsed.gpu
         parsed.gpu = "none"
         if parsed.category == "gpu": parsed.category = "cpu"
+
+    if parsed.intent in ["specification", "price_check"] and parsed.target_product == "none":
+        for field_value in [parsed.cpu, parsed.gpu, parsed.mainboard]:
+            if field_value != "none":
+                parsed.target_product = field_value
+                break
+
+
+def _pick_state_component(parsed: MasterIntentSchema, state: dict) -> str | None:
+    category = (parsed.category or "").lower()
+    target = (parsed.target_product or "").lower()
+    spec = (parsed.spec_detail or "").lower()
+    text = f"{category} {target} {spec}"
+
+    if any(k in text for k in ["gpu", "vga", "card", "rtx", "gtx", "rx"]):
+        return state.get("gpu")
+    if any(k in text for k in ["main", "mainboard", "bo mach", "motherboard", "socket"]):
+        return state.get("mainboard")
+    if any(k in text for k in ["cpu", "core", "loi", "nhan", "i3", "i5", "i7", "i9", "ryzen"]):
+        return state.get("cpu")
+    return state.get("target_product") or state.get("cpu") or state.get("gpu") or state.get("mainboard")
+
+
+def _inherit_structured_followup_state(parsed: MasterIntentSchema, state: dict, cpu_match, gpu_match, main_match):
+    if parsed.intent not in ["specification", "price_check", "compatibility", "suggestion"]:
+        return
+
+    if parsed.cpu == "none" and not cpu_match and state.get("cpu"):
+        parsed.cpu = state["cpu"]
+    if parsed.gpu == "none" and not gpu_match and state.get("gpu"):
+        parsed.gpu = state["gpu"]
+    if parsed.mainboard == "none" and not main_match and state.get("mainboard"):
+        parsed.mainboard = state["mainboard"]
+    if parsed.category == "none" and state.get("category"):
+        parsed.category = state["category"]
+
+    if parsed.intent in ["specification", "price_check"] and parsed.target_product == "none":
+        inherited = _pick_state_component(parsed, state)
+        if inherited:
+            parsed.target_product = inherited
 
 def _check_retry_condition(parsed: MasterIntentSchema) -> str | None:
     named_items = [parsed.cpu, parsed.mainboard, parsed.gpu]
@@ -287,6 +348,7 @@ async def parse_master_intent(user_msg: str, chat_history: list = None) -> Maste
     Orchestrates Pass 1, Pre-Guards, Pass 2, Post-Guards, and Retry Logic.
     """
     history_context = build_history_context(chat_history)
+    structured_state = extract_structured_state(chat_history)
 
     try:
         # 1. PASS 1
@@ -295,7 +357,7 @@ async def parse_master_intent(user_msg: str, chat_history: list = None) -> Maste
         # 2. Pre-extraction Guards
         msg_l = user_msg.lower()
         comp_count, cpu_match, gpu_match, main_match = _count_components(msg_l)
-        intent_pass1 = _apply_pre_extraction_guards(msg_l, comp_count, intent_pass1, history_context)
+        intent_pass1 = _apply_pre_extraction_guards(msg_l, comp_count, intent_pass1, history_context, structured_state)
             
         # 3. PASS 2
         parsed = await _run_extraction_pass(user_msg, intent_pass1, history_context)
@@ -303,11 +365,14 @@ async def parse_master_intent(user_msg: str, chat_history: list = None) -> Maste
         
         # 4. Post-extraction Guards
         _apply_post_extraction_guards(parsed, cpu_match, gpu_match, main_match, comp_count)
+        _inherit_structured_followup_state(parsed, structured_state, cpu_match, gpu_match, main_match)
 
         # 5. Retry Logic
         fallback_intent = _check_retry_condition(parsed)
         if fallback_intent:
             parsed = await _handle_retry(user_msg, history_context, parsed, fallback_intent)
+            _apply_post_extraction_guards(parsed, cpu_match, gpu_match, main_match, comp_count)
+            _inherit_structured_followup_state(parsed, structured_state, cpu_match, gpu_match, main_match)
 
         return parsed
         

@@ -1,5 +1,6 @@
 import asyncio
 import re
+import threading
 from fastapi import Request, status
 from fastapi.responses import JSONResponse
 from app.core.search_engine import hybrid_search
@@ -8,6 +9,55 @@ from app.api.model.chat_models import ChatRequest, ErrorResponse
 
 # Bộ nhớ lưu các Session đang xử lý (Khóa Session chống Spam)
 PROCESSING_SESSIONS = set()
+_PROCESSING_LOCK = threading.Lock()
+_ACTIVE_MODEL_REQUEST: str | None = None
+
+
+def _lock_error(status_code: int, message: str, code: str) -> JSONResponse:
+    return JSONResponse(
+        status_code=status_code,
+        content=ErrorResponse(
+            error="Too Many Requests",
+            message=message,
+            code=code,
+        ).model_dump()
+    )
+
+
+def _acquire_processing_slot(user_uid: str, session_id: str) -> tuple[str | None, JSONResponse | None]:
+    global _ACTIVE_MODEL_REQUEST
+
+    session_key = f"{user_uid}:{session_id}"
+    with _PROCESSING_LOCK:
+        if session_key in PROCESSING_SESSIONS:
+            return None, _lock_error(
+                status.HTTP_429_TOO_MANY_REQUESTS,
+                "Bot đang xử lý câu hỏi trước trong phiên này, vui lòng đợi chút nhé!",
+                "SESSION_LOCKED",
+            )
+
+        if _ACTIVE_MODEL_REQUEST is not None:
+            return None, _lock_error(
+                status.HTTP_429_TOO_MANY_REQUESTS,
+                "Bot đang xử lý một câu hỏi khác, vui lòng gửi lại sau vài giây.",
+                "MODEL_BUSY",
+            )
+
+        PROCESSING_SESSIONS.add(session_key)
+        _ACTIVE_MODEL_REQUEST = session_key
+        return session_key, None
+
+
+def _release_processing_slot(session_key: str | None) -> None:
+    global _ACTIVE_MODEL_REQUEST
+
+    if session_key is None:
+        return
+
+    with _PROCESSING_LOCK:
+        PROCESSING_SESSIONS.discard(session_key)
+        if _ACTIVE_MODEL_REQUEST == session_key:
+            _ACTIVE_MODEL_REQUEST = None
 
 def validate_session_id(session_id: str) -> bool:
     """Chỉ cho phép chữ, số, gạch ngang/dưới, tối đa 64 ký tự."""
@@ -45,19 +95,9 @@ async def process_chat_message(request: Request, data: ChatRequest, user_uid: st
             ).model_dump()
         )
 
-    # 1. KIỂM TRA KHÓA SESSION (Chống Spam / Nhồi Request)
-    if data.session_id in PROCESSING_SESSIONS:
-        return JSONResponse(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            content=ErrorResponse(
-                error="Too Many Requests",
-                message="Bot đang suy nghĩ câu hỏi trước của bạn, vui lòng đợi chút nhé!",
-                code="SESSION_LOCKED"
-            ).model_dump()
-        )
-
-    # Khóa session này lại
-    PROCESSING_SESSIONS.add(data.session_id)
+    session_key, lock_response = _acquire_processing_slot(user_uid, data.session_id)
+    if lock_response is not None:
+        return lock_response
 
     kb = getattr(request.app.state, "knowledge_base", None)
 
@@ -106,5 +146,4 @@ async def process_chat_message(request: Request, data: ChatRequest, user_uid: st
             ).model_dump()
         )
     finally:
-        # Mở khóa session dù thành công hay thất bại
-        PROCESSING_SESSIONS.discard(data.session_id)
+        _release_processing_slot(session_key)

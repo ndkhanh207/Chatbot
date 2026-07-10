@@ -9,7 +9,7 @@ _SYSTEM_CLASSIFY = (
     "LƯU Ý VỀ HỎI TIẾP: Nếu khách hỏi tiếp tục chủ đề cũ cho 1 linh kiện khác (VD: 'thế còn rtx 4070 thì sao?', 'i5 12400f thì sao?'), HÃY GIỮ NGUYÊN Ý ĐỊNH CỦA CÂU HỎI TRƯỚC ĐÓ trong lịch sử.\n"
     "LUẬT PHÂN LOẠI TUYỆT ĐỐI (Strict Intent Mapping):\n"
     "- 'compatibility': Khách hỏi về TƯƠNG THÍCH, ĐỘ HỢP NHAU (từ khóa: 'có lắp được với', 'đi với', 'chạy chung', 'tương thích không'). "
-    "Nếu câu hỏi có chứa 2 LINH KIỆN CỤ THỂ TRỞ LÊN, ĐÓ TUYỆT ĐỐI LÀ 'compatibility', KHÔNG BAO GIỜ là 'specification'.\n"
+    "Nếu khách CHỈ hỏi các linh kiện có lắp/chạy chung được không, dù có đủ 3 món, vẫn là 'compatibility'.\n"
     "- 'suggestion': Khách CHỈ CÓ SẴN 1 LINH KIỆN và nhờ tìm 1 linh kiện MỚI (chưa biết tên) để ghép cùng. CHỈ CÓ 1 linh kiện cụ thể xuất hiện.\n"
     "- 'price_calculation': Khách liệt kê nhiều linh kiện và muốn tính TỔNG GIÁ tiền.\n"
     "- 'specification': Khách hỏi về THÔNG SỐ (số nhân, VRAM, điện năng, xung, socket, chuẩn...) của 1 linh kiện "
@@ -18,8 +18,9 @@ _SYSTEM_CLASSIFY = (
     "- 'budget_search': Khách tìm MỘT LINH KIỆN ĐƠN LẺ (chỉ 1 món CPU, GPU, mainboard...) dựa trên NGÂN SÁCH/TẦM GIÁ. "
     "NẾU CÂU HỎI CÓ CHỨA CÁC TỪ KHÓA CHỈ NGÂN SÁCH (VD: 'dưới 5 triệu', 'tầm 8 triệu', 'khoảng X', 'giá rẻ nhất dưới', 'từ X đến Y triệu', 'đắt nhất từ X đến Y') THÌ BẮT BUỘC PHẢI PHÂN LOẠI LÀ 'budget_search', KHÔNG ĐƯỢC DÙNG 'general_search'. "
     "KHÁC VỚI 'build_pc': budget_search CHỈ DÀNH CHO 1 LINH KIỆN.\n"
-    "- 'build_pc': Khách muốn tư vấn/lắp ráp BỘ PC TRỌN BỘ (thường chứa các từ khóa: 'build pc', 'bộ pc', 'cả máy', 'dàn máy', 'bộ máy'). "
-    "Bao gồm cả: trả lời ngân sách/mục đích khi AI đang hỏi trong luồng tư vấn PC.\n"
+    "- 'combo_review': Khách đã đưa sẵn CPU + GPU + mainboard hoặc mã BUILD và muốn review, phân tích, nhận xét, chấm điểm, hỏi hiệu năng/cân bằng/điểm nghẽn/mục đích/giá trị hoặc có nên mua. "
+    "Có chữ 'build', 'bộ PC' hay 'cấu hình' vẫn là combo_review nếu khách không yêu cầu tạo hoặc đổi linh kiện.\n"
+    "- 'build_pc': Khách muốn tạo một bộ PC mới, tìm cấu hình theo nhu cầu/ngân sách, hoặc thay đổi linh kiện trong luồng build đang diễn ra. KHÔNG dùng build_pc khi khách chỉ muốn đánh giá bộ đã đưa sẵn.\n"
     "- 'general_search': Khách tìm kiếm, hỏi mua, hoặc nhờ tư vấn chung chung về một loại linh kiện/sản phẩm.\n"
     "- 'none': Khách giao tiếp thông thường, hoặc hỏi ngoài lề."
 )
@@ -76,6 +77,17 @@ _FEWSHOT_CLASSIFY = [
     {"role": "assistant", "content": '{"intent": "build_pc"}'},
     {"role": "user", "content": "<user_input>muốn có một bộ máy để làm đồ họa</user_input>"},
     {"role": "assistant", "content": '{"intent": "build_pc"}'},
+    # ── Combo review (bộ có sẵn) ──
+    {"role": "user", "content": "<user_input>Hãy đánh giá bộ PC build sẵn này: AMD Ryzen 7 9800X3D + MSI B850 PRO B850M-VC WIFI6E AM5 DDR5 Micro ATX + MSI GAMING TRIO GeForce RTX 4080 16GB GDDR6X Black. Bộ này phù hợp nhu cầu nào, hiệu năng ra sao, giá trị so với chi phí thế nào và có nên mua không?</user_input>"},
+    {"role": "assistant", "content": '{"intent": "combo_review"}'},
+    {"role": "user", "content": "<user_input>BUILD-03909: Ryzen 7 9800X3D + MSI B850 + RTX 4080, nhận xét giúp mình cấu hình này</user_input>"},
+    {"role": "assistant", "content": '{"intent": "combo_review"}'},
+    {"role": "user", "content": "<user_input>i5 14600K + ASUS B760M + RTX 4070 SUPER có đáng mua không, chơi game 2K thế nào?</user_input>"},
+    {"role": "assistant", "content": '{"intent": "combo_review"}'},
+    {"role": "user", "content": "<user_input>phân tích điểm mạnh yếu của combo Ryzen 5 8600G, MSI B850M-VC và RTX 5070 Ti</user_input>"},
+    {"role": "assistant", "content": '{"intent": "combo_review"}'},
+    {"role": "user", "content": "<user_input>review giúp dàn i7 8700K / H310M-R / RTX 5070 Ti, có nghẽn và phù hợp làm gì?</user_input>"},
+    {"role": "assistant", "content": '{"intent": "combo_review"}'},
     # ── Build PC: trả lời ngắn khi AI đang hỏi ngân sách ──
     {"role": "user", "content": "LỊCH SỬ HỘI THOẠI TRƯỚC ĐÓ:\nKhách: tư vấn cho tôi bộ pc để chơi game\nAI: Dạ để build bộ máy tối ưu, bạn dự định đầu tư khoảng bao nhiêu tiền ạ?\n\n<user_input>20</user_input>"},
     {"role": "assistant", "content": '{"intent": "build_pc"}'},
@@ -116,7 +128,7 @@ _SYSTEM_EXTRACT = (
     "- Điền 'none' hoặc 0 nếu không có thông tin.\n"
     "CẢNH BÁO TỐI QUAN TRỌNG: \n"
     "1. TRÍCH XUẤT CHÍNH XÁC TỪ KHÓA CỦA KHÁCH. Không tự ý ghép thêm hãng nếu khách không viết.\n"
-    "2. TUYỆT ĐỐI KHÔNG bịa đặt, KHÔNG sao chép linh kiện từ các ví dụ mẫu (như rtx 4060, i9 14900k) nếu khách không hề nhắc đến."
+    "2. CHỈ TRÍCH XUẤT những gì XUẤT HIỆN NGUYÊN VĂN trong câu hỏi của khách. Không thêm thắt, không suy diễn tên sản phẩm."
 )
 
 _FEWSHOT_BY_INTENT = {
@@ -180,6 +192,20 @@ _FEWSHOT_BY_INTENT = {
         {"role": "user", "content": "[TRẠNG THÁI ĐÃ XÁC NHẬN]:\nCATEGORY=cpu, LAST_INTENT=budget_search\n\nLỊCH SỬ HỘI THOẠI TRƯỚC ĐÓ:\nKhách: tư vấn cpu\nAI: Dạ bên em có\n\n<user_input>khoảng 5 củ có con nào không</user_input>"},
         {"role": "assistant", "content": '{"reasoning": "Kế thừa danh mục CPU, ngân sách 5 củ = 5000000.", "intent": "budget_search", "target_product": "none", "spec_detail": "none", "cpu": "none", "mainboard": "none", "gpu": "none", "budget_amount": 5000000, "category": "none"}'},
     ],
+    "combo_review": [
+        {"role": "user", "content": "Hãy đánh giá bộ PC build sẵn này: AMD Ryzen 7 9800X3D + MSI B850 PRO B850M-VC WIFI6E AM5 DDR5 Micro ATX + MSI GAMING TRIO GeForce RTX 4080 16GB GDDR6X Black. Bộ này phù hợp nhu cầu nào, hiệu năng ra sao, giá trị so với chi phí thế nào và có nên mua không?"},
+        {"role": "assistant", "content": '{"reasoning": "Khách muốn đánh giá combo có sẵn.", "intent": "combo_review", "target_product": "none", "spec_detail": "none", "cpu": "amd ryzen 7 9800x3d", "mainboard": "msi b850 pro b850m-vc wifi6e am5 ddr5 micro atx", "gpu": "msi gaming trio geforce rtx 4080 16gb gddr6x black", "budget_amount": 0, "category": "none"}'},
+        {"role": "user", "content": "BUILD-03909: Ryzen 7 9800X3D + MSI B850 + RTX 4080, nhận xét giúp mình cấu hình này"},
+        {"role": "assistant", "content": '{"reasoning": "Khách muốn đánh giá combo có mã sẵn.", "intent": "combo_review", "target_product": "none", "spec_detail": "none", "cpu": "ryzen 7 9800x3d", "mainboard": "msi b850", "gpu": "rtx 4080", "budget_amount": 0, "category": "none"}'},
+        {"role": "user", "content": "i5 14600K + ASUS B760M + RTX 4070 SUPER có đáng mua không, chơi game 2K thế nào?"},
+        {"role": "assistant", "content": '{"reasoning": "Khách hỏi hiệu năng và giá trị combo có sẵn.", "intent": "combo_review", "target_product": "none", "spec_detail": "none", "cpu": "i5 14600k", "mainboard": "asus b760m", "gpu": "rtx 4070 super", "budget_amount": 0, "category": "none"}'},
+        {"role": "user", "content": "phân tích điểm mạnh yếu của combo Ryzen 5 8600G, MSI B850M-VC và RTX 5070 Ti"},
+        {"role": "assistant", "content": '{"reasoning": "Khách muốn phân tích combo có sẵn.", "intent": "combo_review", "target_product": "none", "spec_detail": "none", "cpu": "ryzen 5 8600g", "mainboard": "msi b850m-vc", "gpu": "rtx 5070 ti", "budget_amount": 0, "category": "none"}'},
+        {"role": "user", "content": "review giúp dàn Intel Core i7-8700K / ASUS H310M-R R2.0 / MSI GeForce RTX 5070 Ti, có nghẽn và phù hợp làm gì?"},
+        {"role": "assistant", "content": '{"reasoning": "Khách hỏi điểm nghẽn và mục đích của combo có sẵn.", "intent": "combo_review", "target_product": "none", "spec_detail": "none", "cpu": "intel core i7-8700k", "mainboard": "asus h310m-r r2.0", "gpu": "msi geforce rtx 5070 ti", "budget_amount": 0, "category": "none"}'},
+        {"role": "user", "content": "[TRẠNG THÁI ĐÃ XÁC NHẬN]:\nCPU=amd ryzen 7 9800x3d, MAINBOARD=msi b850 pro, GPU=gigabyte rtx 5070 ti, LAST_INTENT=compatibility\n\n<user_input>đánh giá bộ pc này cho mình</user_input>"},
+        {"role": "assistant", "content": '{"reasoning": "Kế thừa 3 linh kiện từ trạng thái đã xác nhận.", "intent": "combo_review", "target_product": "none", "spec_detail": "none", "cpu": "amd ryzen 7 9800x3d", "mainboard": "msi b850 pro", "gpu": "gigabyte rtx 5070 ti", "budget_amount": 0, "category": "none"}'},
+    ],
     "build_pc": [
         # Case chuẩn
         {"role": "user", "content": "build pc gaming tầm 30 triệu"},
@@ -206,7 +232,7 @@ _FEWSHOT_BY_INTENT = {
         {"role": "assistant", "content": '{"reasoning": "Khách muốn điều chỉnh cấu hình: khóa CPU và thay đổi GPU.", "intent": "build_pc", "target_product": "none", "spec_detail": "none", "cpu": "none", "mainboard": "none", "gpu": "none", "budget_amount": 0, "category": "none"}'},
         {"role": "user", "content": "[TRẠNG THÁI ĐÃ XÁC NHẬN]:\nCPU=i9 14900k, LAST_INTENT=build_pc\n\nLỊCH SỬ HỘI THOẠI TRƯỚC ĐÓ:\nKhách: build pc 40 triệu\nAI: Dạ đây là bộ máy với CPU i9 14900k và GPU RTX 4080\n\n<user_input>đổi main sang msi b850</user_input>"},
         {"role": "assistant", "content": '{"reasoning": "Khách muốn điều chỉnh cấu hình (thay đổi mainboard) trong luồng tư vấn PC.", "intent": "build_pc", "target_product": "none", "spec_detail": "none", "cpu": "i9 14900k", "mainboard": "msi b850", "gpu": "none", "budget_amount": 0, "category": "none"}'},
-        {"role": "user", "content": "[TRẠNG THÁI ĐÃ XÁC NHẬN]:\nLAST_INTENT=build_pc\n\nLỊCH SỬ HỘI THOẠI TRƯỚC ĐÓ:\nKhách: build pc 25 triệu\nAI: Dạ bộ này dùng RTX 4070\n\n<user_input>nâng cấp cpu</user_input>"},
+        {"role": "user", "content": "[TRẠNG THÁI ĐÃ XÁC NHẬN]:\nLAST_INTENT=build_pc\n\nLỊCH SỬ HỘI THOẠI TRƯỚC ĐÓ:\nKhách: build pc 25 triệu\nAI: Dạ cấu hình...\n\n<user_input>nâng cấp cpu</user_input>"},
         {"role": "assistant", "content": '{"reasoning": "Khách muốn điều chỉnh cấu hình: yêu cầu thay đổi CPU.", "intent": "build_pc", "target_product": "none", "spec_detail": "none", "cpu": "none", "mainboard": "none", "gpu": "none", "budget_amount": 0, "category": "none"}'},
     ],
     "general_search": [
@@ -225,11 +251,4 @@ _FEWSHOT_BY_INTENT = {
         {"role": "user", "content": "bạn là ai, bot à"},
         {"role": "assistant", "content": '{"reasoning": "Giao tiếp ngoài lề.", "intent": "none", "target_product": "none", "spec_detail": "none", "cpu": "none", "mainboard": "none", "gpu": "none", "budget_amount": 0, "category": "none"}'},
     ]
-}
-
-_FALLBACK_MAP = {
-    "specification": "compatibility",
-    "build_pc": "compatibility",
-    "compatibility": "suggestion",
-    "price_calculation": "price_check"
 }

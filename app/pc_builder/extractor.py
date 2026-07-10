@@ -4,6 +4,7 @@ from .constants import (
     ADJUSTMENT_LOCK_KEYWORDS, ADJUSTMENT_SWAP_KEYWORDS, ADJUSTMENT_BUDGET_KEYWORDS, BRAND_SWITCH_KEYWORDS
 )
 from app.core.intent.history_context import CPU_RE, GPU_RE, MAIN_RE, CAT_RE
+
 # ──────────────────────────────────────────────
 # Intent detection
 # ──────────────────────────────────────────────

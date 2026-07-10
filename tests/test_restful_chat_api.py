@@ -7,6 +7,7 @@ import sys
 import asyncio
 import json
 import pytest
+from types import SimpleNamespace
 from unittest.mock import patch
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -15,6 +16,9 @@ import pandas as pd
 # Thêm đường dẫn gốc của project vào sys.path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from app.api.chat import router as chat_router
+from app.api.api_handler import chat_services
+from app.api.api_handler.chat_services import process_chat_message
+from app.api.model.chat_models import ChatRequest
 
 REPORT_FILE = "tests/reports/report_restful_chat_api.md"
 
@@ -211,6 +215,63 @@ def test_internal_server_error_500():
     })
     _update_md_report()
     assert passed, f"Lỗi test_internal_server_error_500: {err}"
+
+def test_busy_session_returns_429():
+    """Second request while the first one is still running should fail fast."""
+    async def run_case():
+        chat_services.PROCESSING_SESSIONS.clear()
+        chat_services._ACTIVE_MODEL_REQUEST = None
+
+        fake_request = SimpleNamespace(
+            app=SimpleNamespace(
+                state=SimpleNamespace(
+                    knowledge_base=pd.DataFrame({"name": ["mock"]}),
+                    vector_store=None,
+                    build_data=None,
+                )
+            )
+        )
+        payload = ChatRequest(user_message="build pc 30 triệu chơi game", session_id="busy_session")
+        other_payload = ChatRequest(user_message="rtx 4080 giá bao nhiêu", session_id="other_busy_session")
+
+        async def slow_handle_chat(*args, **kwargs):
+            await asyncio.sleep(0.05)
+            return {"chatbot_reply": "ok"}
+
+        with patch("app.api.api_handler.chat_services.handle_chat", side_effect=slow_handle_chat):
+            first = asyncio.create_task(process_chat_message(fake_request, payload, "test_user"))
+            await asyncio.sleep(0.01)
+            second = await process_chat_message(fake_request, payload, "test_user")
+            third = await process_chat_message(fake_request, other_payload, "test_user")
+            first_result = await first
+
+        chat_services.PROCESSING_SESSIONS.clear()
+        chat_services._ACTIVE_MODEL_REQUEST = None
+        return first_result, second, third
+
+    first_result, second, third = asyncio.run(run_case())
+    second_body = json.loads(second.body.decode("utf-8"))
+    third_body = json.loads(third.body.decode("utf-8"))
+
+    passed = (
+        first_result == {"chatbot_reply": "ok"}
+        and second.status_code == 429
+        and second_body.get("code") == "SESSION_LOCKED"
+        and third.status_code == 429
+        and third_body.get("code") == "MODEL_BUSY"
+    )
+    _test_results.append({
+        "name": "test_busy_session_returns_429",
+        "description": "Gửi request thứ hai khi session đang xử lý",
+        "input": "2 x POST /chat same session",
+        "expected_status": 429,
+        "actual_status": second.status_code,
+        "response_body": json.dumps({"same_session": second_body, "other_session": third_body}, ensure_ascii=False),
+        "passed": passed,
+        "error": "None" if passed else f"Unexpected response: {second_body} / {third_body}",
+    })
+    _update_md_report()
+    assert passed, f"Lỗi test_busy_session_returns_429: {second_body} / {third_body}"
 
 def test_delete_session_history():
     """Tình huống 6: Xóa lịch sử phiên hội thoại -> Kỳ vọng mã 200 OK."""

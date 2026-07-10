@@ -12,18 +12,19 @@ from app.compatibility.compat_logic import (
     is_compatibility_query, find_compatible_build,
     CPU_TERMS, GPU_TERMS, MAIN_TERMS  # Expose cho chat_handler
 )
-from app.compatibility.compat_format import _fmt_cpu_main, _fmt_gpu_main, _fmt_cpu_gpu
+from app.compatibility.compat_format import _fmt_component_combo, _fmt_cpu_main, _fmt_gpu_main, _fmt_cpu_gpu
 from app.core.intent.master_intent import MasterIntentSchema
 from app.price.pricing_util import format_currency_vietnam
 
 __all__ = [
     "build_compatibility_context", "build_suggestion_context",
+    "resolve_component",
     "is_compatibility_query",
     "CPU_TERMS", "GPU_TERMS", "MAIN_TERMS",
 ]
 
 
-def _resolve_item(name: str, category: str, knowledge_base, vector_store) -> Optional[dict]:
+def resolve_component(name: str, category: str, knowledge_base, vector_store) -> Optional[dict]:
     """Tra cứu 1 linh kiện trong DB từ tên đã bóc tách. None nếu 'none'/rỗng
     hoặc hybrid_search không tìm thấy match nào."""
     if not name or name.strip().lower() == "none":
@@ -40,10 +41,20 @@ def _resolve_item(name: str, category: str, knowledge_base, vector_store) -> Opt
 # Tích hợp với chat_handler
 # ──────────────────────────────────────────────
 def build_compatibility_context(intent: MasterIntentSchema, knowledge_base, vector_store) -> str:
-    """Check 1 cặp cụ thể, dựa trên tên linh kiện đã bóc tách bởi parse_compat_intent."""
-    cpu  = _resolve_item(intent.cpu,       "CPU",       knowledge_base, vector_store)
-    main = _resolve_item(intent.mainboard, "MAINBOARD", knowledge_base, vector_store)
-    gpu  = _resolve_item(intent.gpu,       "GPU",       knowledge_base, vector_store)
+    """Check 1 cặp hoặc combo CPU/Mainboard/GPU từ tên linh kiện đã bóc tách."""
+    cpu  = resolve_component(intent.cpu,       "CPU",       knowledge_base, vector_store)
+    main = resolve_component(intent.mainboard, "MAINBOARD", knowledge_base, vector_store)
+    gpu  = resolve_component(intent.gpu,       "GPU",       knowledge_base, vector_store)
+
+    if cpu and main and gpu:
+        return _fmt_component_combo(
+            cpu,
+            main,
+            gpu,
+            check_cpu_main_compat(cpu, main),
+            check_gpu_main_compat(gpu, main),
+            check_cpu_gpu_compat(cpu, gpu),
+        )
 
     context = ""
     if cpu and main:
@@ -93,7 +104,7 @@ def build_suggestion_context(intent: MasterIntentSchema, knowledge_base, vector_
             f"Hiện tại, hệ thống kiểm tra tương thích tự động CHỈ HỖ TRỢ các linh kiện: CPU, Mainboard, và VGA (Card màn hình).\n"
             f"Nhiệm vụ: Hãy lịch sự thông báo cho khách rằng tính năng gợi ý/kiểm tra tương thích cho '{cat_name}' chưa được hỗ trợ và đang trong quá trình cập nhật."
         )
-    have_item = _resolve_item(have_name, CATEGORY_MAP[have_type], knowledge_base, vector_store)
+    have_item = resolve_component(have_name, CATEGORY_MAP[have_type], knowledge_base, vector_store)
     if not have_item:
         return (
             f"[CẢNH BÁO TỪ HỆ THỐNG]\n"

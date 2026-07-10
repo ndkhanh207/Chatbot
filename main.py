@@ -14,6 +14,7 @@ from langchain_huggingface import HuggingFaceEmbeddings
 
 from app.core.data_loader import load_knowledge_base, initialize_vector_db
 from app.api.chat import router as chat_router
+from app.api.health import router as health_router
 from app.guard.security import limiter
 
 from slowapi import _rate_limit_exceeded_handler
@@ -37,43 +38,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         )
         return response
 
-# ──────────────────────────────────────────────
-# DEPENDENCY HEALTH CHECKS
-# ──────────────────────────────────────────────
-async def check_ollama_status() -> bool:
-    """Kiểm tra dịch vụ Ollama đã bật chưa."""
-    print("🔄 [SYSTEM] Checking Ollama service status...")
-    try:
-        # Chạy ollama.list() trong thread riêng để tránh block event loop
-        await anyio.to_thread.run_sync(ollama.list)
-        print("✅ [SYSTEM] Ollama service is UP and RUNNING!")
-        return True
-    except Exception as e:
-        print(f"❌ [SYSTEM] Ollama check FAILED: Dịch vụ chưa bật hoặc lỗi kết nối! Chi tiết: {e}")
-        return False
-
-
-async def check_mysql_status() -> bool:
-    """Kiểm tra kết nối tới cơ sở dữ liệu MySQL."""
-    print("🔄 [SYSTEM] Checking MySQL connection...")
-    try:
-        import pymysql
-        connection = pymysql.connect(
-            host=Config.MYSQL_HOST,
-            port=int(Config.MYSQL_PORT),  # Ép kiểu sang int vì trong config đang là chuỗi
-            user=Config.MYSQL_USER,
-            password=Config.MYSQL_PASSWORD,
-            database=Config.MYSQL_DB,
-            connect_timeout=5
-        )
-        connection.close()
-
-        print("✅ [SYSTEM] MySQL database is UP and RUNNING!")
-        return True
-    except Exception as e:
-        print(f"❌ [SYSTEM] MySQL check FAILED: Không thể kết nối DB! Chi tiết: {e}")
-        return False
-
+from app.core.health import check_ollama_status, check_mysql_status
 
 # ──────────────────────────────────────────────
 # Lifespan
@@ -217,3 +182,4 @@ app.add_middleware(
 )
 
 app.include_router(chat_router)
+app.include_router(health_router)

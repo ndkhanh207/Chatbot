@@ -21,6 +21,7 @@ def _get_strict_llm() -> ChatOllama:
         temperature=0,        # ← không sáng tạo, chỉ làm theo lệnh
         request_timeout=85.0, # ← Giảm xuống 38s để ngắt thực sự
         top_p=0.05,           # ← càng hẹp càng ít "phiêu"
+        num_predict=512,
         repeat_penalty=1.3,   # ← tránh lặp câu hỏi vặn
     )
 
@@ -30,7 +31,7 @@ def get_llm() -> ChatOllama:
         temperature=0,
         request_timeout=85.0,
         top_p=0.05,
-        num_predict=2048,
+        num_predict=512,
         repeat_penalty=1.2,
     )
 
@@ -47,6 +48,7 @@ def _get_compat_llm() -> ChatOllama:
         temperature=0,
         request_timeout=85.0,
         top_p=0.05,
+        num_predict=512,
         repeat_penalty=1.05,  # ← Hạ repeat_penalty để LLM có thể lặp lại đúng nguyên văn cảnh báo
     )
 
@@ -82,5 +84,7 @@ def get_pc_build_qa_chain() -> RunnableSequence:
             ("system", "{system_prompt}"),
             ("human", "{user_message}")
         ])
-        _pc_build_qa_chain = prompt | ChatOllama(model=get_ollama_model(), temperature=0.1)
+        _pc_build_qa_chain = prompt | ChatOllama(
+            model=get_ollama_model(), temperature=0.1, request_timeout=30.0, num_predict=512
+        )
     return _pc_build_qa_chain

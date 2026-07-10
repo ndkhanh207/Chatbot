@@ -39,6 +39,9 @@ TEST_CASES = [
     ("build_rtx4080", "build pc có rtx 4080 tầm 60 triệu", ["- mã bộ:", "rtx 4080"]),
     ("build_gpu_not_found", "build pc có rtx 9090 tầm 30 triệu", [("chưa có", "không tìm được", "chưa có bộ pc nào sử dụng gpu")]),
     ("build_upgrade_scenario", "tôi đang có sẵn rtx 4070, hãy build phần còn lại với 15 triệu chơi game", [("- mã bộ:", "ghi nhận", "có sẵn", "rtx 4070")]),
+    ("build_combo_review", "Hãy đánh giá bộ PC build sẵn này: AMD Ryzen 7 9800X3D + MSI B850 PRO B850M-VC WIFI6E AM5 DDR5 Micro ATX + MSI GAMING TRIO GeForce RTX 4080 16GB GDDR6X Black. Bộ này phù hợp nhu cầu nào, hiệu năng ra sao, giá trị so với chi phí thế nào và có nên mua không?", ["đánh giá", "9800x3d", "rtx 4080", "b850", "60", ("nên", "phù hợp")]),
+    ("build_custom_combo_review", "AMD Ryzen 5 8600G + MSI B850 PRO B850M-VC WIFI6E AM5 DDR5 Micro ATX + MSI GeForce RTX 5070 Ti 16G MLG EDITION OC GDDR7 hãy đánh giá bộ pc này hiệu năng như thế nào", ["8600g", "rtx 5070 ti", "b850", "tương thích", ("điểm nghẽn", "yếu hơn")]),
+    ("build_id_combo_review", "BUILD-03909: AMD Ryzen 7 9800X3D + MSI B850 PRO B850M-VC WIFI6E AM5 DDR5 Micro ATX + MSI GAMING TRIO GeForce RTX 4080 16GB GDDR6X Black hãy đánh giá cấu hình này", ["9800x3d", "rtx 4080", "b850", "tương thích", "phù hợp"]),
     ("build_explicit_id", "cho mình hỏi bộ build-11 có ngon không", ["build-11", ("ngon", "tốt", "mạnh", "phù hợp", "cấu hình", "dạ")]),
 
     # ─── [NHÓM 5]: EDGE CASES — SỐ LƯỢNG BỘ PC ───
@@ -243,6 +246,8 @@ def test_single_turn(label, question, expected_keywords):
     if error_msg:
         pytest.fail(error_msg)
     else:
+        if label == "build_combo_review":
+            assert "850 triệu" not in reply_lower, f"Không được hiểu B850 là ngân sách: '{reply}'"
         assert passed, f"Thiếu {[_format_requirement(m) for m in missing]} trong câu trả lời: '{reply}'"
 
 

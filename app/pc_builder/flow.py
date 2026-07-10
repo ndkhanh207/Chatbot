@@ -1,5 +1,5 @@
 import re
-from app.pc_builder.context import ConversationMemory, PcBuildContext
+from app.pc_builder.context import ConversationMemory
 
 from .constants import (
     BEST_KEYWORDS, CHEAPEST_KEYWORDS, EXPENSIVE_KEYWORDS, PURPOSE_KEYWORD_MAP,
@@ -10,21 +10,16 @@ from .extractor import (
     extract_component_filter, extract_explicit_build_id, infer_purpose,
     is_reset_intent, extract_upgrade_component, extract_build_adjustment, extract_priority_bias
 )
-from .history import (
-    ai_asked_for_budget, ai_asked_for_purpose, is_build_context_active,
-    inherit_budget, inherit_quantity,
-    inherit_component_intent
-)
+from .history import inherit_budget, inherit_quantity
 from .formatter import format_approx_million, format_build_context, format_reply_body
 
 from app.pc_builder.advisor import find_best_build
-from app.pc_builder.presets import get_preset_reply
+from app.pc_builder.presets import get_preset_by_id, get_preset_reply
 from app.pc_builder.multi_turn import apply_build_adjustment
-
 BUILD_REPLY_HEADER = '[GỢI Ý BỘ PC TỐI ƯU]'
 
 class PcBuildEngine:
-    def __init__(self, user_uid: str, session_id: str, user_message: str, user_message_fixed: str, msg_lower: str, search_query: str, chat_history: list, build_df, is_build_pc: bool):
+    def __init__(self, user_uid: str, session_id: str, user_message: str, user_message_fixed: str, msg_lower: str, search_query: str, chat_history: list, build_df, is_build_pc: bool, recognized_intent: str = "none"):
         self.user_uid = user_uid
         self.session_id = session_id
         self.user_message = user_message
@@ -34,6 +29,7 @@ class PcBuildEngine:
         self.chat_history = chat_history
         self.build_df = build_df
         self.is_build_pc = is_build_pc
+        self.recognized_intent = recognized_intent
         
         self.memory = ConversationMemory(user_uid, session_id)
         self.ctx = self.memory.load_context()
@@ -94,11 +90,18 @@ class PcBuildEngine:
 
         # 8. Check presets
         if not self.skip_presets:
-            preset_reply = get_preset_reply(self.budget, self.combined_message_for_purpose, self.brand_filter, self.component_filter)
-            if preset_reply:
+            preset = get_preset_reply(self.budget, self.combined_message_for_purpose, self.brand_filter, self.component_filter)
+            if preset:
                 print(f"⚠️ [PRESET MATCHED] Trả về bộ PC có sẵn cho ngân sách {self.budget}")
-                self.memory.commit_turn(self.user_message, preset_reply, self.ctx)
-                return {'chatbot_reply': preset_reply}
+                self.ctx.build_id = preset["id"]
+                self.ctx.preset_id = preset["id"]
+                self.ctx.budget = self.budget
+                self.ctx.last_suggested_cpu = preset.get("cpu")
+                self.ctx.last_suggested_gpu = preset.get("gpu")
+                self.ctx.last_suggested_mainboard = preset.get("mainboard")
+                self.ctx.pending_question = None
+                self.memory.commit_turn(self.user_message, preset["reply"], self.ctx)
+                return {'chatbot_reply': preset["reply"]}
 
         # 9. Find best build
         return self._find_and_reply_best_build()
@@ -114,27 +117,24 @@ class PcBuildEngine:
         if not self.chat_history:
             return None
 
-        ai_asked_to_drop_filter = False
-        for msg in reversed(self.chat_history):
-            if getattr(msg, 'type', '') == 'ai':
-                content = msg.content.lower()
-                if "gợi ý bộ pc dùng" in content or "thử điều chỉnh ngân sách hoặc bỏ yêu cầu hãng" in content:
-                    ai_asked_to_drop_filter = True
-                break
-                
+        if self.recognized_intent in {"specification", "price_check", "compatibility"}:
+            return None
+
+        ai_asked_to_drop_filter = self.ctx.pending_question == "drop_filter"
         user_agrees = any(kw in self.msg_lower for kw in ['ok', 'đồng ý', 'được', 'triển', 'gợi ý', 'tìm đi'])
         if ai_asked_to_drop_filter and user_agrees:
             print("⚠️ [CONTEXT] Khách hàng đồng ý bỏ filter linh kiện/hãng không tìm thấy.")
             self.ctx.user_cpu = None
             self.ctx.user_gpu = None
             self.ctx.user_mainboard = None
+            self.ctx.pending_question = None
             self.is_build_pc = True
 
         if self.is_build_pc:
             return None
 
-        asked_budget = ai_asked_for_budget(self.chat_history)
-        asked_purpose = ai_asked_for_purpose(self.chat_history)
+        asked_budget = self.ctx.pending_question == "budget"
+        asked_purpose = self.ctx.pending_question == "purpose"
         wants_cheapest = any(kw in self.msg_lower for kw in CHEAPEST_KEYWORDS)
         wants_best = any(kw in self.msg_lower for kw in BEST_KEYWORDS)
         has_purpose = any(kw in self.msg_lower for kw_list in PURPOSE_KEYWORD_MAP.values() for kw in kw_list)
@@ -147,19 +147,7 @@ class PcBuildEngine:
             self.is_build_pc = True
 
 
-        recent_build_context = False
-        ai_msg_count = 0
-        for msg in reversed(self.chat_history):
-            if getattr(msg, 'type', '') == 'ai':
-                ai_msg_count += 1
-                if getattr(msg, 'additional_kwargs', {}) and msg.additional_kwargs.get('build_id'):
-                    recent_build_context = True
-                    break
-                if BUILD_REPLY_HEADER in msg.content or '- Mã bộ: BUILD-' in msg.content:
-                    recent_build_context = True
-                    break
-            if ai_msg_count >= 3:
-                break
+        recent_build_context = bool(self.ctx.build_id and self.ctx.build_id != "BUILD-PENDING")
 
         is_question_about_current_build = False
         if recent_build_context:
@@ -183,12 +171,12 @@ class PcBuildEngine:
                 print(f"⚠️ [FALLBACK OVERRIDE] Context-Aware: Có keyword điều chỉnh PC đang build, ép luồng BUILD_PC.")
                 self.is_build_pc = True
 
-        if is_question_about_current_build and not self.is_build_pc:
+        if is_question_about_current_build and not has_explicit_adj and not wants_adjustment:
             return self._answer_about_current_build()
         return None
 
     def _resolve_budget_and_quantity(self, wants_best: bool) -> dict | None:
-        _asked_budget = ai_asked_for_budget(self.chat_history) if self.chat_history else False
+        _asked_budget = self.ctx.pending_question == "budget"
         self.budget = extract_budget(self.user_message, context_aware=_asked_budget)
         self.quantity = extract_quantity(self.user_message)
         
@@ -200,7 +188,7 @@ class PcBuildEngine:
                     "em cần biết ngân sách bạn muốn đầu tư là bao nhiêu ạ? "
                     "(ví dụ: 30 triệu, 50 triệu...)"
                 )
-                return self._commit_early_reply(reply)
+                return self._commit_early_reply(reply, pending_question="budget")
             self.budget = inherited_budget
         else:
             if self.budget is None:
@@ -217,7 +205,7 @@ class PcBuildEngine:
                             f"Ngân sách không hợp lệ ạ! Em hiển thị lại bộ PC trước đó cho bạn tham khảo:\n\n"
                             + format_reply_body(best_build, 0, 'sử dụng')
                         )
-                        return self._commit_early_reply(reply)
+                        return self._commit_early_reply(reply, pending_question="budget")
                 reply = "Dạ, ngân sách không hợp lệ ạ. Bạn vui lòng nhập lại tầm giá mong muốn nhé!"
             else:
                 reply = (
@@ -225,7 +213,7 @@ class PcBuildEngine:
                     "Hiện tại các bộ PC bên em đang phân phối có giá từ 10 triệu trở lên. "
                     "Bạn cân nhắc nâng thêm chút ngân sách nhé!"
                 )
-            return self._commit_early_reply(reply)
+            return self._commit_early_reply(reply, pending_question="budget")
 
         if self.quantity == 1 and self.chat_history:
             self.quantity = inherit_quantity(self.chat_history)
@@ -239,7 +227,7 @@ class PcBuildEngine:
                     "Hiện tại cấu hình PC bên em phân phối có giá thấp nhất từ 10 triệu/bộ ạ. "
                     "Bạn có thể tăng ngân sách hoặc giảm số lượng không?"
                 )
-                return self._commit_early_reply(reply)
+                return self._commit_early_reply(reply, pending_question="budget")
             self.budget = budget_per_unit
         return None
 
@@ -275,8 +263,9 @@ class PcBuildEngine:
 
         self.has_specific_component = bool(self.component_filter.get('cpu_model') or self.component_filter.get('gpu_model') or self.component_filter.get('mainboard'))
 
-    def _commit_early_reply(self, reply: str) -> dict:
+    def _commit_early_reply(self, reply: str, pending_question: str | None = None) -> dict:
         self.ctx.build_id = 'BUILD-PENDING'
+        self.ctx.pending_question = pending_question
         if self.component_filter.get('cpu_model'): self.ctx.user_cpu = self.component_filter.get('cpu_model')
         if self.component_filter.get('gpu_model'): self.ctx.user_gpu = self.component_filter.get('gpu_model')
         if self.component_filter.get('mainboard'): self.ctx.user_mainboard = self.component_filter.get('mainboard')
@@ -324,14 +313,14 @@ class PcBuildEngine:
                 "bạn dự định đầu tư tổng ngân sách mới cho bộ máy là khoảng bao nhiêu tiền ạ? "
                 "(ví dụ: 30 triệu, 40 triệu...)"
             )
-            return self._commit_early_reply(reply)
+            return self._commit_early_reply(reply, pending_question="budget")
 
         if self.budget is None and not self.has_final_purpose and not self.has_specific_component:
             reply = (
                 "Dạ, để em tư vấn bộ PC chuẩn nhất, bạn cho em biết bạn dùng máy chủ yếu "
                 "để làm gì (chơi game, làm đồ họa...) và tầm giá khoảng bao nhiêu nhé!"
             )
-            return self._commit_early_reply(reply)
+            return self._commit_early_reply(reply, pending_question="budget")
 
         if self.budget is None and (self.has_final_purpose or self.has_specific_component):
             if self.has_specific_component and not self.has_final_purpose:
@@ -346,7 +335,7 @@ class PcBuildEngine:
                     f"Dạ để build bộ máy tối ưu cho nhu cầu {purpose_str}, "
                     "bạn dự định đầu tư khoảng bao nhiêu tiền ạ? (ví dụ: 20 triệu, 30 triệu...)"
                 )
-            return self._commit_early_reply(reply)
+            return self._commit_early_reply(reply, pending_question="budget")
 
         if self.budget is not None and not self.has_final_purpose and not self.has_specific_component:
             reply = (
@@ -354,7 +343,7 @@ class PcBuildEngine:
                 "cho các mục đích khác nhau. Bạn dự định dùng máy chủ yếu để làm gì ạ? "
                 "(ví dụ: chơi game AAA, văn phòng, làm đồ họa 3D, hay lập trình...)"
             )
-            return self._commit_early_reply(reply)
+            return self._commit_early_reply(reply, pending_question="purpose")
         return None
 
     def _handle_extreme_price_build(self, wants_cheapest: bool) -> dict:
@@ -385,10 +374,15 @@ class PcBuildEngine:
             return self._build_not_found_reply()
 
         if best_build.get("out_of_budget"):
-            min_price = best_build["min_price"] / 1_000_000
-            cur_budget = self.budget / 1_000_000
-            reply = f"Dạ, bộ PC rẻ nhất đáp ứng yêu cầu của bạn hiện có giá khoảng {min_price:g} triệu, cao hơn ngân sách {cur_budget:g} triệu hiện tại. Bạn có muốn tăng ngân sách lên mức này để em tiếp tục gợi ý không ạ?"
-            return self._commit_early_reply(reply)
+            min_price = format_approx_million(best_build["min_price"])
+            cur_budget = format_approx_million(self.budget)
+            prefix = ""
+            if self.is_upgrade_scenario and self.upgrade_info:
+                comp_name = self.upgrade_info.get('cpu_model') or self.upgrade_info.get('gpu_model')
+                if comp_name:
+                    prefix = f"em ghi nhận bạn đã có sẵn {comp_name.upper()}, nhưng "
+            reply = f"Dạ, {prefix}bộ PC rẻ nhất đáp ứng yêu cầu của bạn hiện có giá khoảng {min_price}, cao hơn ngân sách {cur_budget} hiện tại. Bạn có muốn tăng ngân sách lên mức này để em tiếp tục gợi ý không ạ?"
+            return self._commit_early_reply(reply, pending_question="budget")
             
         purpose_str = infer_purpose(self.combined_message_for_purpose)
         return self._build_reply(best_build, purpose_str)
@@ -461,24 +455,34 @@ class PcBuildEngine:
         return {'chatbot_reply': final_reply}
 
     def _answer_about_current_build(self) -> dict:
-        last_build_msg = ""
-        for msg in reversed(self.chat_history):
-            if getattr(msg, 'type', '') == 'ai' and ('- Mã bộ: ' in msg.content or BUILD_REPLY_HEADER in msg.content):
-                last_build_msg = msg.content
-                break
-                
-        if not last_build_msg or "- Mã bộ: " not in last_build_msg:
+        if not self.ctx.build_id or self.ctx.build_id == 'BUILD-PENDING':
             reply = "Dạ, em không tìm thấy thông tin bộ PC nào gần đây cả. Bạn có thể nhắc lại yêu cầu hoặc cung cấp mã bộ PC giúp em được không ạ?"
+            self.memory.commit_turn(self.user_message, reply, self.ctx)
+            return {'chatbot_reply': reply}
+
+        build_context = ""
+        preset = get_preset_by_id(self.ctx.build_id)
+        if preset:
+            build_context = preset.get("reply", "")
+        elif self.build_df is not None and not self.build_df.empty:
+            rows = self.build_df[self.build_df['BuildID'].str.upper() == self.ctx.build_id.upper()]
+            if not rows.empty:
+                matched_build = rows.iloc[0].to_dict()
+                build_context = format_build_context(matched_build)
+                
+        if not build_context:
+            reply = "Dạ, em không tìm thấy thông tin chi tiết về bộ PC gần nhất. Bạn có thể nhắc lại yêu cầu được không ạ?"
             self.memory.commit_turn(self.user_message, reply, self.ctx)
             return {'chatbot_reply': reply}
 
         system_prompt = (
             "Bạn là chuyên gia tư vấn linh kiện máy tính tại cửa hàng. Dưới đây là thông số bộ PC mà bạn vừa gợi ý cho khách:\n\n"
-            f"<build_context>\n{last_build_msg}\n</build_context>\n\n"
+            f"<build_context>\n{build_context}\n</build_context>\n\n"
             "Hãy trả lời câu hỏi của khách hàng về bộ PC này một cách thật ngắn gọn, chính xác, súc tích và thân thiện. Không được tự bịa ra thông số không có trong bộ PC.\n"
             "[QUY TẮC BẮT BUỘC]\n"
             "1. TUYỆT ĐỐI KHÔNG in lại 'Mã bộ' trong câu trả lời.\n"
-            "2. Bắt đầu câu trả lời trực tiếp vào vấn đề."
+            "2. Bắt đầu câu trả lời trực tiếp vào vấn đề.\n"
+            "3. Bỏ qua các ký hiệu kỹ thuật nội bộ (như = 120 B). Chỉ dùng giá trị gốc (120W)."
         )
         fallback = "Dạ bộ PC này rất ngon trong tầm giá ạ! Bạn có muốn lấy bộ này luôn không?"
         

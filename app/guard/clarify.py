@@ -4,6 +4,8 @@ from app.core.llm_chains import get_emergency_chain
 from app.memory.memory_store import get_trimmed_history
 from langchain_core.runnables import RunnableSequence
 from collections import OrderedDict
+import asyncio
+import re
 
 class LRUCache(OrderedDict):
     """
@@ -166,7 +168,6 @@ def _format_context_directly(context: str, intent: str) -> str:
 
 def _remove_repetitive_paragraphs(text: str) -> str:
     """Loại bỏ các câu văn bị LLM lặp lại vô tận (repetition collapse)."""
-    import re
     # Tách văn bản thành các câu dựa trên dấu chấm, hỏi, chấm than
     sentences = re.split(r'(?<=[.?!])\s+', text)
     seen = set()
@@ -200,12 +201,28 @@ async def chain_invoke_async(chain, context, format_hint, user_message_fixed, ch
         # Context hợp lệ → mới áp dụng output guard
         MAX_RETRY = 1
         for attempt in range(MAX_RETRY + 1):
-            response = await chain.ainvoke({
-                "context":      context,
-                    "format_hint":  format_hint,
-                    "user_message": user_message_fixed,
-                    "chat_history": chat_history,
-                })
+            try:
+                response = await asyncio.wait_for(
+                    chain.ainvoke({
+                        "context":      context,
+                        "format_hint":  format_hint,
+                        "user_message": user_message_fixed,
+                        "chat_history": chat_history,
+                    }),
+                    timeout=45.0
+                )
+            except asyncio.TimeoutError:
+                print(f"🚨 [OUTPUT-GUARD] Ollama server bị treo (Timeout) ở lần thử {attempt+1}!")
+                if attempt >= MAX_RETRY:
+                    print("🚨 [OUTPUT-GUARD] Hết lượt retry → bypass LLM, format trực tiếp")
+                    reply = _format_context_directly(context, parsed_intent.intent)
+                    break
+                continue
+            except Exception as e:
+                print(f"🚨 [OUTPUT-GUARD] Lỗi gọi LLM: {e}")
+                reply = _format_context_directly(context, parsed_intent.intent)
+                break
+
             raw = response.content
             raw = _remove_repetitive_paragraphs(raw)
             print(f"[RAW LLM OUTPUT - attempt {attempt}]: {raw}")

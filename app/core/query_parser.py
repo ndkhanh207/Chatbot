@@ -8,17 +8,8 @@ _MODEL_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
-def remove_weird_characters(text: str) -> str:
-    """Chỉ giữ lại chữ cái, chữ số (bao gồm tiếng Việt), khoảng trắng và các dấu câu cơ bản. Xóa toàn bộ ký tự rác."""
-    if not text: return ""
-    # \w: Chữ cái và số (hỗ trợ trọn vẹn tiếng Việt Unicode)
-    # \s: Khoảng trắng (space, tab, newline)
-    # Cụm dấu câu cơ bản: . , ? ! - _ : ; ( ) " ' + * / % = < > ~ & [ ]
-    safe_pattern = r'[^\w\s.,?!\-_:;()"\'+*/%=<>~&\[\]]'
-    return re.sub(safe_pattern, '', text)
-
 def normalize_user_message(user_message: str) -> str:
-    msg = remove_weird_characters(user_message).lower()
+    msg = user_message.lower()
     # Thay thế compound trước, rồi mới thay từ đơn
     # (tránh "mainboard" bị tách thành "bo mạch chủboard")
     # main 
@@ -98,3 +89,36 @@ def detect_model_query(msg_lower: str) -> Optional[dict]:
     if not m:
         return None
     return {"digits": m.group(2), "suffix": m.group(3) or None}
+
+FOLLOW_UP_MARKERS = ("vậy", "thì sao", "thế còn", "còn", "nó", "con này", "của")
+EXPLICIT_FOCUS_MARKERS = (
+    "giá", "bao nhiêu", "xung", "vram", "socket", "tdp", "bộ nhớ",
+    "triệu", "tr", "tầm", "khoảng", "dưới", "trên", "mượt",
+)
+
+def build_recent_user_focus(user_message: str, chat_history: list, max_chars: int = 180) -> str:
+    msg_lower = user_message.lower()
+    if not any(marker in msg_lower for marker in FOLLOW_UP_MARKERS):
+        return ""
+
+    previous_user_msg = next(
+        (m.content.strip() for m in reversed(chat_history) if getattr(m, "type", "") == "human" and m.content.strip()),
+        ""
+    )
+    if not previous_user_msg:
+        return ""
+
+    previous_user_msg = previous_user_msg.replace("\n", " ")
+    if len(previous_user_msg) > max_chars:
+        previous_user_msg = previous_user_msg[:max_chars].rstrip() + "..."
+
+    if any(marker in msg_lower for marker in EXPLICIT_FOCUS_MARKERS):
+        return (
+            f"Câu hỏi hiện tại có nhu cầu mới rõ ràng; chỉ kế thừa linh kiện/danh mục còn thiếu từ câu trước: "
+            f"'{previous_user_msg}'. Ưu tiên đúng nội dung câu hiện tại."
+        )
+
+    return (
+        f"Câu hỏi hiện tại đang nối tiếp cùng nhu cầu/chủ đề của câu trước: '{previous_user_msg}'. "
+        "Hãy trả lời đúng nhu cầu đó cho câu hiện tại; không tự chuyển sang giá hoặc xung nếu khách không hỏi."
+    )

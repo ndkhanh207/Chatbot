@@ -46,6 +46,11 @@ COMPAT_TEST_CASES = [
      "AMD Ryzen 7 9800X3D đi với GPU GIGABYTE GeForce RTX 5070 Ti GAMING 16G có ổn không",
      [("phù hợp", "ổn", "tương thích")]),
 
+    # ─── CPU + MAINBOARD + GPU: kiểm tra đủ 3 cạnh tương thích ───
+    ("compat_cpu_main_gpu_combo",
+     "AMD Ryzen 7 9800X3D + MSI B850 PRO B850M-VC WIFI6E AM5 DDR5 Micro ATX + GIGABYTE GeForce RTX 5070 Ti GAMING 16G có tương thích với nhau không?",
+     ["9800x3d", "b850", "rtx 5070 ti", ("tương thích", "phù hợp"), ("cpu", "mainboard"), ("gpu", "pcie")]),
+
     # ─── CPU - GPU: CPU yếu (tier 1, do suffix G giảm tier) + GPU mạnh (tier 3)
     # → cảnh báo CPU là điểm nghẽn. Case này không cần giả định gì — toàn bộ
     # phép tính (line tier, suffix modifier, GPU 2-số-cuối) đều xác định

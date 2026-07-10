@@ -95,6 +95,11 @@ def _load_messages(user_uid: str, session_id: str) -> list[BaseMessage]:
         messages = []
         for row in rows:
             kwargs = row.metadata_json if row.metadata_json else {}
+            # ponytail: filter out noise from LLM context window to save tokens and
+            # prevent hallucination, but keep them in DB for UI continuity.
+            if kwargs.get("intent") == "none":
+                continue
+                
             if row.role == "human":
                 messages.append(HumanMessage(content=row.content, additional_kwargs=kwargs))
             elif row.role == "ai":
@@ -190,6 +195,7 @@ def save_message(user_uid: str, session_id: str, user_msg: str, ai_msg: str, met
             session_id=session_id,
             role="human",
             content=user_msg,
+            metadata_json=metadata,
         ))
         db.add(ChatMessage(
             user_uid=user_uid,
@@ -219,5 +225,33 @@ def clear_session(user_uid: str, session_id: str) -> None:
     except Exception as e:
         db.rollback()
         print(f"❌ [MEMORY ERROR] Lỗi khi xóa session trong Database: {e}")
+    finally:
+        db.close()
+
+def get_full_history_api(user_uid: str, session_id: str, limit: int = 50, offset: int = 0) -> list[dict]:
+    """Trả về toàn bộ lịch sử dạng list dict cho REST API."""
+    db = _get_session()
+    if db is None:
+        return []
+    try:
+        rows = (
+            db.query(ChatMessage)
+            .filter(ChatMessage.user_uid == user_uid, ChatMessage.session_id == session_id)
+            .order_by(ChatMessage.id.asc())
+            .offset(offset)
+            .limit(limit)
+            .all()
+        )
+        history = []
+        for row in rows:
+            history.append({
+                "role": row.role,
+                "content": row.content,
+                "timestamp": row.created_at.isoformat() if row.created_at else None
+            })
+        return history
+    except Exception as e:
+        print(f"❌ [MEMORY ERROR] Lỗi khi lấy API history từ Database: {e}")
+        return [{"role": "system", "content": f"DB Exception: {e}", "timestamp": None}]
     finally:
         db.close()
