@@ -66,7 +66,7 @@ FIREBASE_CREDENTIALS_PATH=firebase-adminsdk.json
 
 ```bash
 # Khởi chạy server FastAPI qua Uvicorn
-python -m uvicorn main:app
+.\start_server.ps1
 ```
 
 API sẽ chạy tại địa chỉ: `http://127.0.0.1:8000`.
