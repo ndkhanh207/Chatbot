@@ -20,7 +20,8 @@ from app.api.auth.firebase_auth import verify_firebase_token
 import os
 from app.guard.security import limiter
 
-from tests.utils import RAG_MAGIC_KEY
+
+RAG_MAGIC_KEY = "ragas_magic_key_2024"
 router = APIRouter()
 
 @router.get('/test-knowledge-base')
@@ -68,7 +69,7 @@ def get_embeddings(request: Request, data: EmbeddingRequest):
         500: {"model": ErrorResponse, "description": "Lỗi hệ thống nội bộ (Internal Server Error)"},
         504: {"model": ErrorResponse, "description": "Hệ thống AI xử lý vượt quá thời gian quy định (Gateway Timeout)"},
     },
-    summary="Gửi tin nhắn tới AI Chatbot (Non-streaming)",
+    summary="Gửi tin nhắn tới AI Chatbot",
     description="Xử lý câu hỏi của người dùng, kiểm tra tương thích linh kiện và trả về câu trả lời trọn vẹn theo chuẩn RESTful."
 )
 @limiter.limit("10/minute")

@@ -7,7 +7,7 @@ import re
 import json
 import traceback
 from app.guard.response_formatter import word_filter, build_range_summary
-from app.guard.clarify import chain_invoke_async, chain_stream, _format_context_directly, _session_context_cache, _is_clarification_rejection
+from app.guard.clarify import chain_invoke_async, _format_context_directly, _session_context_cache, _is_clarification_rejection
 from app.core.intent.master_intent import parse_master_intent
 from app.core.intent.history_context import build_intent_metadata
 from app.core.query_parser import normalize_text, normalize_user_message, get_category, build_recent_user_focus
