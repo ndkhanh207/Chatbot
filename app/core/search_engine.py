@@ -22,8 +22,18 @@ def hybrid_search(q, category, top_k, knowledge_base, vector_store):
        - Sắp xếp giảm dần theo hybrid_score và lấy Top K sản phẩm tốt nhất.
     """
     try:
-        if knowledge_base is None or knowledge_base.empty:
+        if knowledge_base is None or knowledge_base.empty or not q:
             return []
+
+        from app.core.query_parser import clean_search_query
+        q_clean = clean_search_query(q).lower().strip()
+        
+        # Remove common category prefixes that might be hallucinated/included by LLM
+        for term in ['mainboard', 'bo mạch chủ', 'main', 'card đồ họa', 'card màn hình', 'card', 'vga', 'gpu', 'cpu', 'chip', 'vi xử lý']:
+            if q_clean.startswith(term + ' '):
+                q_clean = q_clean[len(term)+1:].strip()
+            # Also replace in the middle if it's there
+            q_clean = q_clean.replace(f" {term} ", " ")
 
         results = knowledge_base.copy()
         if category:

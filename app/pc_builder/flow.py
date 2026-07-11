@@ -48,6 +48,9 @@ class PcBuildEngine:
         self.skip_presets = False
 
     def execute(self) -> dict | None:
+        if self.recognized_intent == "combo_review":
+            return None
+
         # 1. Explicit Build ID
         explicit_build_id = extract_explicit_build_id(self.user_message)
         if explicit_build_id:
@@ -259,6 +262,18 @@ class PcBuildEngine:
                 self.component_filter['gpu_model'] = self.ctx.user_gpu
             if not self.component_filter.get('mainboard') and self.ctx.user_mainboard:
                 self.component_filter['mainboard'] = self.ctx.user_mainboard
+                
+            # Fallback to history intent state
+            from app.core.intent.history_context import extract_structured_state
+            state = extract_structured_state(self.chat_history)
+            if state:
+                if not self.component_filter.get('cpu_model') and state.get('cpu'):
+                    self.component_filter['cpu_model'] = state.get('cpu')
+                if not self.component_filter.get('gpu_model') and state.get('gpu'):
+                    self.component_filter['gpu_model'] = state.get('gpu')
+                if not self.component_filter.get('mainboard') and state.get('mainboard'):
+                    self.component_filter['mainboard'] = state.get('mainboard')
+                    
         print(f"DEBUG 3 component_filter: {self.component_filter}")
 
         self.has_specific_component = bool(self.component_filter.get('cpu_model') or self.component_filter.get('gpu_model') or self.component_filter.get('mainboard'))
@@ -392,18 +407,22 @@ class PcBuildEngine:
         gpu_req = comp.get('gpu_model')
         cpu_req = comp.get('cpu_model')
         brand   = self.brand_filter or {}
+        pending_question = None
 
         if gpu_req:
+            pending_question = "drop_filter"
             reply = (
                 f"Dạ, hiện bên em chưa có bộ PC nào sử dụng GPU **{gpu_req.upper()}** trong kho ạ. "
                 "Bạn có muốn em gợi ý bộ PC dùng GPU gần nhất không?"
             )
         elif cpu_req:
+            pending_question = "budget"
             reply = (
                 f"Dạ, hiện bên em chưa có bộ PC nào sử dụng CPU **{cpu_req.upper()}** phù hợp với ngân sách này ạ. "
                 "Bạn có muốn thử ngân sách cao hơn không?"
             )
         elif brand.get('cpu_brand') or brand.get('gpu_brand'):
+            pending_question = "drop_filter"
             brand_name = brand.get('cpu_brand') or brand.get('gpu_brand')
             reply = (
                 f"Dạ, em không tìm được bộ PC {brand_name} nào phù hợp với ngân sách của bạn ạ. "
@@ -416,7 +435,7 @@ class PcBuildEngine:
                 "Bạn có thể điều chỉnh ngân sách hoặc cho em biết thêm nhu cầu cụ thể nhé!"
             )
             
-        return self._commit_early_reply(reply)
+        return self._commit_early_reply(reply, pending_question=pending_question)
 
     def _invoke_llm_for_build(self, system_prompt: str, fallback_reply: str) -> str:
         from app.core.llm_chains import get_pc_build_qa_chain
@@ -442,7 +461,9 @@ class PcBuildEngine:
             final_reply = f"Em ghi nhận bạn đã có sẵn {comp_name.upper()}. Bộ PC gợi ý dưới đây sẽ tận dụng linh kiện này để build phần còn lại cho bạn:\n\n{final_reply}"
             
         self.ctx.build_id = build_id
+        self.ctx.preset_id = None
         self.ctx.budget = self.budget
+        self.ctx.pending_question = None
         
         if best_build.get('CPU_Model'): self.ctx.last_suggested_cpu = best_build.get('CPU_Model')
         if best_build.get('GPU_Model'): self.ctx.last_suggested_gpu = best_build.get('GPU_Model')
@@ -535,9 +556,10 @@ def handle_pc_build_flow(
     chat_history: list,
     build_df,
     is_build_pc: bool,
+    recognized_intent: str = "none",
 ) -> dict | None:
     engine = PcBuildEngine(
         user_uid, session_id, user_message, user_message_fixed, msg_lower,
-        search_query, chat_history, build_df, is_build_pc
+        search_query, chat_history, build_df, is_build_pc, recognized_intent
     )
     return engine.execute()

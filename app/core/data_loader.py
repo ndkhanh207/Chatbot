@@ -19,7 +19,7 @@ warnings.filterwarnings('ignore')
 
 
 # Đã đổi sang tiếng Việt theo đúng Header trong file CSV của bạn
-DEFAULT_INT_COLS = ['số lõi', 'khe RAM', 'khe M.2', 'bộ nhớ', 'RAM tối đa', 'tdp']
+DEFAULT_INT_COLS = ['số lõi', 'khe RAM', 'bộ nhớ', 'RAM tối đa', 'tdp']
 DEFAULT_FLOAT_COLS = ['giá', 'xung cơ bản', 'xung boost', 'chiều dài']
 
 # Bảng giá trị mặc định để chống lỗi Null
@@ -160,7 +160,7 @@ def initialize_vector_db():
         # Prepare embedding function using the same model/device as the rest of the app
         embeddings = HuggingFaceEmbeddings(
             model_name=Config.EMBEDDING_MODEL,
-            model_kwargs={"device": Config.EMBEDDING_DEVICE}
+            model_kwargs={"device": Config.EMBEDDING_DEVICE, "local_files_only": Config.EMBEDDING_LOCAL_FILES_ONLY}
         )
 
         # Ensure the persistence directory exists

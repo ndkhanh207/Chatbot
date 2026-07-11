@@ -43,10 +43,19 @@ def format_compatibility_reply(context: str) -> str:
     gpu_main = _find_context_line(lines, "CHI TIẾT GPU + Mainboard") or _find_context_line(lines, "CẢNH BÁO BĂNG THÔNG")
     cpu_gpu = _find_context_line(lines, "CHI TIẾT CPU + GPU") or _find_context_line(lines, "CẢNH BÁO QUAN TRỌNG CPU + GPU")
 
+    cpu_line = _find_context_line(lines, "- CPU:")
+    gpu_line = _find_context_line(lines, "- GPU:")
+    main_line = _find_context_line(lines, "- Mainboard:")
+
     if not any((cpu_main, gpu_main, cpu_gpu)):
         return "Dạ, đây là kết quả kiểm tra tương thích:\n\n" + "\n".join(lines)
 
-    reply = ["Dạ, combo này không tương thích." if incompatible else "Dạ, combo này tương thích."]
+    reply = ["Dạ, combo này không tương thích." if incompatible else "Dạ, combo này tương thích.", ""]
+    if cpu_line: reply.append(cpu_line)
+    if main_line: reply.append(main_line)
+    if gpu_line: reply.append(gpu_line)
+    reply.append("")
+
     if cpu_main:
         label = "Lý do chính" if incompatible else "Lý do"
         reply.append(f"{label}: {_plain_compat_reason(cpu_main)}")

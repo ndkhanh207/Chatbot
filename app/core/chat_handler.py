@@ -106,7 +106,7 @@ async def handle_chat(user_message: str, knowledge_base,
                 })
                 reply = response.content
                 clean_reply = word_filter(reply)
-                save_message(user_uid, session_id, user_message_fixed, clean_reply)
+                save_message(user_uid, session_id, user_message_fixed, clean_reply, metadata=build_intent_metadata(parsed_intent))
                 return {"chatbot_reply": clean_reply}
 
         if parsed_intent.category != "none":
@@ -143,9 +143,20 @@ async def handle_chat(user_message: str, knowledge_base,
             chat_history=chat_history,
             build_df=build_df,
             is_build_pc=is_build_pc,
+            recognized_intent=parsed_intent.intent,
         )
         if pc_build_result is not None:
             return pc_build_result
+        # check co combo de review khong, neu khong thi hoi lai
+        if parsed_intent.intent in ["specification", "price_check"]:
+            has_product = any(
+                value and value.lower() != "none"
+                for value in [parsed_intent.target_product, parsed_intent.cpu, parsed_intent.gpu, parsed_intent.mainboard]
+            )
+            if not has_product:
+                reply = "Dạ bạn cho em xin đúng model CPU/GPU/mainboard cần hỏi nhé."
+                save_message(user_uid, session_id, user_message_fixed, reply, metadata=build_intent_metadata(parsed_intent))
+                return {"chatbot_reply": reply}
 
         # 6. One-shot combo review
         if parsed_intent.intent == "combo_review":

@@ -7,6 +7,7 @@ from app.compatibility.compat_logic import (
     check_cpu_main_compat,
     check_gpu_main_compat,
 )
+from app.core.intent.history_context import build_intent_metadata
 from app.memory.memory_store import save_message
 from app.pc_builder.formatter import format_approx_million
 
@@ -119,5 +120,5 @@ def handle_combo_review(
     print("[DEBUG COMBO REVIEW FINAL RESPONSE]")
     print(reply)
     print("=" * 60 + "\n")
-    save_message(user_uid, session_id, user_message, reply)
+    save_message(user_uid, session_id, user_message, reply, metadata=build_intent_metadata(parsed_intent))
     return {'chatbot_reply': reply}

@@ -11,6 +11,8 @@ def _is_valid_val(val: any) -> bool:
     """Kiểm tra xem giá trị DB có hợp lệ không."""
     if val is None: 
         return False
+    if isinstance(val, (int, float)) and val == 0:
+        return False
     if isinstance(val, float) and pd.isna(val): 
         return False
     if isinstance(val, str) and val.strip() == "": 
@@ -20,13 +22,16 @@ def _is_valid_val(val: any) -> bool:
 def _find_spec_field(query_lower: str, spec_detail_llm: str, item: dict) -> tuple[str | None, any, str]:
     """Tìm field_key, value, và alias khớp nhất từ câu hỏi người dùng (early return pattern)."""
     best_empty_match = None
+    print(f"DEBUG: query_lower='{query_lower}', spec_detail_llm='{spec_detail_llm}'", flush=True)
 
     # Bước 1: Quét câu hỏi gốc
     for field_key, aliases in FIELD_KEYWORD_ALIASES.items():
         for alias in aliases:
             if alias in query_lower:
                 val = item.get(field_key)
-                if _is_valid_val(val):
+                valid = _is_valid_val(val)
+                print(f"DEBUG Step 1: matched alias='{alias}' for field='{field_key}', val='{val}', valid={valid}", flush=True)
+                if valid:
                     return field_key, val, alias
                 if not best_empty_match:
                     best_empty_match = (field_key, val, alias)
@@ -34,10 +39,13 @@ def _find_spec_field(query_lower: str, spec_detail_llm: str, item: dict) -> tupl
     # Bước 2: Fallback dùng LLM spec_detail
     if spec_detail_llm and spec_detail_llm.strip().lower() != "none":
         asked_lower = spec_detail_llm.lower()
+        print(f"DEBUG Step 2: checking spec_detail_llm='{asked_lower}'", flush=True)
         for field_key, aliases in FIELD_KEYWORD_ALIASES.items():
             if asked_lower in aliases or asked_lower == field_key.lower():
                 val = item.get(field_key)
-                if _is_valid_val(val):
+                valid = _is_valid_val(val)
+                print(f"DEBUG Step 2: matched field='{field_key}', val='{val}', valid={valid}", flush=True)
+                if valid:
                     return field_key, val, asked_lower
                 if not best_empty_match:
                     best_empty_match = (field_key, val, asked_lower)
@@ -128,9 +136,9 @@ def build_specification_context(parsed_intent, category, knowledge_base, vector_
             if not _is_valid_val(detected_field_val):
                 format_hint += f"\nLƯU Ý: Thông số '{spec_detail}' của sản phẩm này hiện chưa có trong cơ sở dữ liệu. Hãy trả lời lịch sự rằng bạn chưa có thông tin này."
             else:
-                format_hint += f"\nDỮ LIỆU THỰC TẾ: Thông số '{spec_detail}' = '{detected_field_val}'. Hãy trả lời DỰA TRÊN GIÁ TRỊ NÀY, giữ nguyên số và đơn vị."
+                format_hint += f"\nDỮ LIỆU THỰC TẾ: Thông số '{spec_detail}' = '{detected_field_val}'.\n[BẮT BUỘC]: Bê nguyên si giá trị '{detected_field_val}' vào câu trả lời. KHÔNG ngoại suy, KHÔNG thêm đơn vị nếu không có, KHÔNG bịa thêm chữ, KHÔNG giải thích ý nghĩa, KHÔNG dịch sang tiếng Anh hay tiếng Trung."
                     
-            format_hint += "\nQUAN TRỌNG: Chỉ trả lời thẳng vào thông tin số liệu. Giữ nguyên đơn vị. KHÔNG giải thích thêm."
+            format_hint += "\nQUAN TRỌNG: Chỉ trả lời thẳng vào thông tin số liệu. TRẢ LỜI CÀNG NGẮN CÀNG TỐT."
         elif has_open_spec_detail:
             format_hint += "\nQUAN TRỌNG: Đây là câu hỏi tư vấn theo thuộc tính/nhu cầu không có cột dữ liệu trực tiếp trong DB."
             format_hint += "\nHãy dùng dữ liệu sản phẩm trong context và kiến thức chung của bạn để trả lời ngắn, đúng câu hỏi. Nếu thiếu điều kiện phụ (CPU/RAM/độ phân giải...) thì nhắc thật ngắn, không hỏi vặn."

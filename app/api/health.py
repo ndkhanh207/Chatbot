@@ -7,7 +7,10 @@ router = APIRouter()
 class HealthResponse(BaseModel):
     status: str
 
+from app.guard.security import limiter
+
 @router.get("/health", response_model=HealthResponse, tags=["System"])
+@limiter.exempt
 async def health_check(request: Request):
     """Kiểm tra tình trạng của các dịch vụ cốt lõi."""
     ollama_ok = await check_ollama_status()

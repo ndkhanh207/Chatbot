@@ -19,6 +19,7 @@ FIELD_ALIAS_MAP = {
 
 
 FIELD_KEYWORD_ALIASES = {
+    'tên':          ['tên', 'tên đầy đủ', 'mã sản phẩm', 'model', 'tên chính xác', 'tên gọi'],
     'tdp':          ['tdp', 'điện năng', 'điện năng tiêu thụ', 'công suất'],
     'xung cơ bản':  ['xung cơ bản', 'xung nhịp', 'xung', 'base clock'],
     'xung boost':   ['xung boost', 'xung nhịp', 'xung', 'boost clock'],

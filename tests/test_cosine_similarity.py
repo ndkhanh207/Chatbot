@@ -19,7 +19,8 @@ def test_cosine_similarity():
     print("==================================================")
     
     # 1. Lấy cấu hình thiết bị và mô hình từ config
-    device = Config.EMBEDDING_DEVICE or ("cuda" if torch.cuda.is_available() else "cpu")
+    # Bắt buộc dùng CPU để tránh hết VRAM khi Uvicorn đang chạy trên GPU
+    device = "cpu"
     print(f"🚀 Thiết bị đang sử dụng để xử lý Vector: {device.upper()}")
     
     # 2. Khởi tạo mô hình Embedding tiếng Việt

@@ -89,7 +89,7 @@ async def lifespan(app: FastAPI):
 
         embeddings = HuggingFaceEmbeddings(
             model_name=Config.EMBEDDING_MODEL,
-            model_kwargs={"device": Config.EMBEDDING_DEVICE},
+            model_kwargs={"device": Config.EMBEDDING_DEVICE, "local_files_only": Config.EMBEDDING_LOCAL_FILES_ONLY},
             encode_kwargs={"batch_size": 8} # Tránh spike RAM khi search
         )
         # Test thử gọi hàm chạy embedding xem có nổ VRAM không
