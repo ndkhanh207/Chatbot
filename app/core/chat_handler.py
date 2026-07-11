@@ -98,7 +98,7 @@ async def handle_chat(user_message: str, knowledge_base,
             cached = _session_context_cache.get(session_id)
             if cached:
                 print(f"♻️ [REJECTION-FALLBACK] Dùng lại context từ intent: {cached['intent']}")
-                response = cached["chain"].invoke({
+                response = await cached["chain"].ainvoke({
                     "context":      cached["context"],
                     "format_hint":  cached.get("format_hint", ""),
                     "user_message": user_message_fixed,

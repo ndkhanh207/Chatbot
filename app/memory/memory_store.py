@@ -71,6 +71,7 @@ def _get_session():
 
 MAX_CHARS = 2000
 MAX_AI_SAVE_LEN = 200  # Rút gọn AI reply trước khi lưu, chống ngộ độc history
+HISTORY_FETCH_LIMIT = 100
 
 
 # ──────────────────────────────────────────────
@@ -89,15 +90,19 @@ def _load_messages(user_uid: str, session_id: str) -> list[BaseMessage]:
         rows = (
             db.query(ChatMessage)
             .filter(ChatMessage.user_uid == user_uid, ChatMessage.session_id == session_id)
-            .order_by(ChatMessage.id.asc())
+            .order_by(ChatMessage.id.desc())
+            .limit(HISTORY_FETCH_LIMIT)
             .all()
         )
         messages = []
-        for row in rows:
+        for row in reversed(rows):
             kwargs = row.metadata_json if row.metadata_json else {}
             # ponytail: filter out noise from LLM context window to save tokens and
             # prevent hallucination, but keep them in DB for UI continuity.
-            if kwargs.get("intent") == "none":
+            
+            # [FIXED]: intent nằm bên trong intent_state do hàm build_intent_metadata tạo ra!
+            intent_state = kwargs.get("intent_state", {})
+            if intent_state.get("intent") == "none":
                 continue
                 
             if row.role == "human":
@@ -227,7 +232,6 @@ def clear_session(user_uid: str, session_id: str) -> None:
         print(f"❌ [MEMORY ERROR] Lỗi khi xóa session trong Database: {e}")
     finally:
         db.close()
-
 def get_full_history_api(user_uid: str, session_id: str, limit: int = 50, offset: int = 0) -> list[dict]:
     """Trả về toàn bộ lịch sử dạng list dict cho REST API."""
     db = _get_session()

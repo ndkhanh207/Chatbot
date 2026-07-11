@@ -5,6 +5,7 @@ from fastapi import Request, status
 from fastapi.responses import JSONResponse
 from app.core.search_engine import hybrid_search
 from app.core.chat_handler import handle_chat
+from app.core.health import reset_ollama_model
 from app.api.model.chat_models import ChatRequest, ErrorResponse
 
 # Bộ nhớ lưu các Session đang xử lý (Khóa Session chống Spam)
@@ -123,6 +124,7 @@ async def process_chat_message(request: Request, data: ChatRequest, user_uid: st
 
         return result
     except asyncio.TimeoutError:
+        await reset_ollama_model()
         return JSONResponse(
             status_code=status.HTTP_504_GATEWAY_TIMEOUT,
             content=ErrorResponse(

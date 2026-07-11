@@ -12,14 +12,13 @@ from app.constants import (
 from langchain_chroma import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
 from tqdm import tqdm
-from multiprocessing import Pool
 import warnings
 from pathlib import Path
 warnings.filterwarnings('ignore')
 
 
 # Đã đổi sang tiếng Việt theo đúng Header trong file CSV của bạn
-DEFAULT_INT_COLS = ['số lõi', 'khe RAM', 'bộ nhớ', 'RAM tối đa', 'tdp']
+DEFAULT_INT_COLS = ['số lõi', 'khe RAM', 'khe M.2', 'bộ nhớ', 'RAM tối đa', 'tdp']
 DEFAULT_FLOAT_COLS = ['giá', 'xung cơ bản', 'xung boost', 'chiều dài']
 
 # Bảng giá trị mặc định để chống lỗi Null
@@ -123,11 +122,10 @@ def _process_row_for_docs(args):
         docs.append(Document(page_content=chunk, metadata={"row": index, "category": category}))
     return docs
 
-def convert_to_documents(df, num_workers=4):
+def convert_to_documents(df):
     """Convert each DataFrame row into one or more LangChain ``Document`` objects.
 
-    Uses parallel processing for faster document generation. Documents are split
-    into chunks for better embedding performance.
+    Documents are split into chunks for better embedding performance.
     """
     # Skip search_text column during document conversion
     cols_to_use = [col for col in df.columns if col != 'search_text']
@@ -136,33 +134,39 @@ def convert_to_documents(df, num_workers=4):
     rows_data = [(idx, row.to_dict(), cols_to_use) for idx, row in df.iterrows()]
     
     docs = []
-    with Pool(num_workers) as pool:
-        for doc_batch in tqdm(
-            pool.imap_unordered(_process_row_for_docs, rows_data, chunksize=32),
-            total=len(rows_data),
-            desc="📄 Converting documents",
-            unit="row"
-        ):
-            docs.extend(doc_batch)
+    for row_data in tqdm(rows_data, desc="📄 Converting documents", unit="row"):
+        docs.extend(_process_row_for_docs(row_data))
     
     return docs
 
 # ------------------------------------------------------------
 # Vector DB (Chroma) initialization helper
 # ------------------------------------------------------------
-def initialize_vector_db():
+def create_embeddings():
+    """Load one CUDA embedding model using half precision when supported."""
+    import torch
+
+    model_kwargs = {
+        "device": Config.EMBEDDING_DEVICE,
+        "local_files_only": Config.EMBEDDING_LOCAL_FILES_ONLY,
+    }
+    if Config.EMBEDDING_DEVICE == "cuda" and torch.cuda.is_available():
+        model_kwargs["model_kwargs"] = {"torch_dtype": torch.float16}
+
+    return HuggingFaceEmbeddings(
+        model_name=Config.EMBEDDING_MODEL,
+        model_kwargs=model_kwargs,
+        encode_kwargs={"batch_size": 8},
+    )
+
+
+def initialize_vector_db(embeddings=None):
     """Create the Chroma vector store if it does not exist, otherwise load it.
 
     This function is used by ``main.py`` during startup and can also be called
     directly from scripts (e.g., ``test_cosine.py``) to ensure the DB is ready.
     """
     try:
-        # Prepare embedding function using the same model/device as the rest of the app
-        embeddings = HuggingFaceEmbeddings(
-            model_name=Config.EMBEDDING_MODEL,
-            model_kwargs={"device": Config.EMBEDDING_DEVICE, "local_files_only": Config.EMBEDDING_LOCAL_FILES_ONLY}
-        )
-
         # Ensure the persistence directory exists
         if not os.path.exists(Config.VECTOR_DB_DIR):
             os.makedirs(Config.VECTOR_DB_DIR, exist_ok=True)
@@ -171,9 +175,11 @@ def initialize_vector_db():
         if not os.listdir(Config.VECTOR_DB_DIR):
             try:
                 print("=== [HỆ THỐNG] Vector DB chưa tồn tại, đang tạo mới... ===\n")
+
+                embeddings = embeddings or create_embeddings()
                 kb = load_knowledge_base()
-                docs = convert_to_documents(kb, num_workers=4)
-                
+                docs = convert_to_documents(kb)
+
                 print(f"\n🔄 Adding {len(docs)} documents to vector store...")
                 vector_store = Chroma(persist_directory=Config.VECTOR_DB_DIR, embedding_function=embeddings)
                 

@@ -50,23 +50,26 @@ def format_compatibility_reply(context: str) -> str:
     if not any((cpu_main, gpu_main, cpu_gpu)):
         return "Dạ, đây là kết quả kiểm tra tương thích:\n\n" + "\n".join(lines)
 
-    reply = ["Dạ, combo này không tương thích." if incompatible else "Dạ, combo này tương thích.", ""]
+    reply = ["Dạ, combo này không tương thích." if incompatible else "Dạ, combo này tương thích."]
     if cpu_line: reply.append(cpu_line)
     if main_line: reply.append(main_line)
     if gpu_line: reply.append(gpu_line)
+    
     reply.append("")
+    reply.append("Lý do chính:" if incompatible else "Lý do:")
 
     if cpu_main:
-        label = "Lý do chính" if incompatible else "Lý do"
-        reply.append(f"{label}: {_plain_compat_reason(cpu_main)}")
+        reply.append(f"- CPU + Mainboard: {_plain_compat_reason(cpu_main)}")
     if gpu_main:
         reply.append(f"- GPU + Mainboard: {_plain_compat_reason(gpu_main)}")
     if cpu_gpu:
         reply.append(f"- CPU + GPU: {_plain_compat_reason(cpu_gpu)}")
 
     if incompatible:
+        reply.append("")
         reply.append("Nói ngắn gọn: chỉ cần CPU không lắp được mainboard thì cả combo này không dùng được.")
 
+    # Ponytail: Tách câu mở đầu và danh sách bằng đúng 1 dòng trống (tức là dùng \n\n)
     return "\n\n".join([reply[0], "\n".join(reply[1:])])
 
 

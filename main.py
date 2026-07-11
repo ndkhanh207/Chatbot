@@ -1,18 +1,14 @@
 """FastAPI application entry point."""
 
-import asyncio
 from pathlib import Path
 import pandas as pd
-import anyio
-import ollama  # Import để check status
 from fastapi import FastAPI, HTTPException, status, Request
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from config.config import EMBEDDING_MODEL as EMBEDDING_MODEL_NAME, EMBEDDING_DEVICE, Config
 from langchain_chroma import Chroma
-from langchain_huggingface import HuggingFaceEmbeddings
 
-from app.core.data_loader import load_knowledge_base, initialize_vector_db
+from app.core.data_loader import create_embeddings, load_knowledge_base, initialize_vector_db
 from app.api.chat import router as chat_router
 from app.api.health import router as health_router
 from app.guard.security import limiter
@@ -38,7 +34,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         )
         return response
 
-from app.core.health import check_ollama_status, check_mysql_status
+from app.core.health import check_ollama_status, check_mysql_status, reset_ollama_model
 
 # ──────────────────────────────────────────────
 # Lifespan
@@ -74,24 +70,18 @@ async def lifespan(app: FastAPI):
         print(f"=== [HỆ THỐNG] Gộp thành công! Tổng số linh kiện: {len(app.state.knowledge_base)} dòng. ===")
         print(f"=== [SYSTEM] EMBEDDING MODEL: {EMBEDDING_MODEL_NAME} | DEVICE: {EMBEDDING_DEVICE} ===")
 
+        # Load once: same CUDA model builds and serves the vector DB.
+        print(f"=== [SYSTEM] Loading Embedding Model '{Config.EMBEDDING_MODEL}' to {Config.EMBEDDING_DEVICE}... ===")
+        embeddings = create_embeddings()
+
         # Khởi tạo Vector DB nếu chưa có
         print("=== [SYSTEM] Checking Vector DB... ===")
         try:
-            initialize_vector_db()
+            initialize_vector_db(embeddings)
         except Exception as db_err:
             print(f"❌ LỖI TẠO VECTOR DB: {db_err}")
 
         # Nạp Chroma DB vào RAM
-        print(f"=== [SYSTEM] Loading Embedding Model '{Config.EMBEDDING_MODEL}' to {Config.EMBEDDING_DEVICE}... ===")
-        import torch
-        if Config.EMBEDDING_DEVICE == 'cuda' and torch.cuda.is_available():
-            torch.cuda.empty_cache()
-
-        embeddings = HuggingFaceEmbeddings(
-            model_name=Config.EMBEDDING_MODEL,
-            model_kwargs={"device": Config.EMBEDDING_DEVICE, "local_files_only": Config.EMBEDDING_LOCAL_FILES_ONLY},
-            encode_kwargs={"batch_size": 8} # Tránh spike RAM khi search
-        )
         # Test thử gọi hàm chạy embedding xem có nổ VRAM không
         embeddings.embed_query("test")
         print("=== [SYSTEM] Embedding Model ready. Loading Chroma DB... ===")
@@ -128,15 +118,8 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             print(f"⚠️ [SYSTEM] Lỗi khi dọn dẹp bộ nhớ: {e}")
             
-        print("=== [SYSTEM] Tắt Ollama Server để gỡ kẹt các request đang chạy và giải phóng VRAM... ===")
-        import os
-        import platform
-        if platform.system() == "Windows":
-            os.system("taskkill /F /IM ollama_llama_server.exe /T >nul 2>&1")
-            os.system("taskkill /F /IM llama-server.exe /T >nul 2>&1")
-        else:
-            os.system("pkill -9 ollama_llama_server")
-            os.system("pkill -9 llama-server")
+        print("=== [SYSTEM] Unloading Ollama model... ===")
+        await reset_ollama_model()
 
 app = FastAPI(lifespan=lifespan)
 app.state.limiter = limiter

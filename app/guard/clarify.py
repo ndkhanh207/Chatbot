@@ -1,6 +1,7 @@
 # ── Thêm vào đầu file, sau các import ──────────────────────
 import threading
 from app.core.llm_chains import get_emergency_chain
+from app.core.health import reset_ollama_model
 from app.memory.memory_store import get_trimmed_history
 from langchain_core.runnables import RunnableSequence
 from collections import OrderedDict
@@ -213,11 +214,9 @@ async def chain_invoke_async(chain, context, format_hint, user_message_fixed, ch
                 )
             except asyncio.TimeoutError:
                 print(f"🚨 [OUTPUT-GUARD] Ollama server bị treo (Timeout) ở lần thử {attempt+1}!")
-                if attempt >= MAX_RETRY:
-                    print("🚨 [OUTPUT-GUARD] Hết lượt retry → bypass LLM, format trực tiếp")
-                    reply = _format_context_directly(context, parsed_intent.intent)
-                    break
-                continue
+                await reset_ollama_model()
+                reply = _format_context_directly(context, parsed_intent.intent)
+                break
             except Exception as e:
                 print(f"🚨 [OUTPUT-GUARD] Lỗi gọi LLM: {e}")
                 reply = _format_context_directly(context, parsed_intent.intent)
@@ -252,6 +251,4 @@ async def chain_invoke_async(chain, context, format_hint, user_message_fixed, ch
                 print("🚨 [OUTPUT-GUARD] Retry thất bại → format trực tiếp")
                 reply = _format_context_directly(context, parsed_intent.intent)
     return reply
-
-
 

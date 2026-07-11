@@ -3,6 +3,7 @@ import re
 from pydantic import BaseModel, Field, model_validator
 from typing import Literal
 
+from config.config import Config
 from app.utils.model_utils import get_ollama_model
 from app.core.intent.prompts import (
     _SYSTEM_CLASSIFY,
@@ -23,7 +24,7 @@ from app.core.intent.history_context import build_history_context, extract_struc
 MAX_TOKENS_CLASSIFY = 100
 MAX_TOKENS_EXTRACT = 250
 
-_async_client = ollama.AsyncClient()
+_async_client = ollama.AsyncClient(timeout=Config.OLLAMA_REQUEST_TIMEOUT)
 
 COMPAT_TRIGGERS = [
     'lắp với', 'đi với', 'tương thích', 'lắp được', 'chạy được', 'hợp không',
@@ -351,12 +352,34 @@ async def parse_master_intent(user_msg: str, chat_history: list = None) -> Maste
     structured_state = extract_structured_state(chat_history)
 
     try:
-        # 1. PASS 1
-        intent_pass1 = await _run_classification_pass(user_msg, history_context)
-        
-        # 2. Pre-extraction Guards
+        # Pre-extraction Guards
         msg_l = user_msg.lower()
         comp_count, cpu_match, gpu_match, main_match = _count_components(msg_l)
+
+        # 0. FAST-PATH: Nếu có trigger rõ ràng + đủ số lượng linh kiện, bỏ qua luôn Pass 1 (tiết kiệm 1 lần gọi LLM)
+        has_compat_trigger = any(t in msg_l for t in COMPAT_TRIGGERS)
+        has_review_trigger = any(t in msg_l for t in REVIEW_TRIGGERS)
+        has_budget_trigger = any(t in msg_l for t in BUDGET_TRIGGERS)
+        is_explicit_build = any(w in msg_l for w in BUILD_TRIGGERS)
+        has_price_trigger = any(t in msg_l for t in PRICE_TRIGGERS)
+        has_full_combo = structured_state.get("cpu", "none") != "none" and structured_state.get("gpu", "none") != "none" and structured_state.get("mainboard", "none") != "none"
+
+        intent_pass1 = "none"
+        if has_compat_trigger and comp_count >= 2:
+            intent_pass1 = "compatibility"
+        elif has_review_trigger and (comp_count >= 3 or has_full_combo):
+            intent_pass1 = "combo_review"
+        elif is_explicit_build:
+            intent_pass1 = "build_pc"
+        elif has_price_trigger and comp_count >= 1:
+            intent_pass1 = "price_check"
+
+        if intent_pass1 != "none":
+            print(f"⚡ [FAST-PATH] Bỏ qua Pass 1 LLM, heuristic bắt được intent: {intent_pass1}")
+        else:
+            intent_pass1 = await _run_classification_pass(user_msg, history_context)
+
+        # 2. Pre-extraction Guards (Vẫn chạy để vớt các trường hợp LLM Pass 1 phân loại sai)
         intent_pass1 = _apply_pre_extraction_guards(msg_l, comp_count, intent_pass1, history_context, structured_state)
             
         # 3. PASS 2
