@@ -47,6 +47,10 @@ class PcBuildEngine:
         self.has_final_purpose = False
         self.skip_presets = False
 
+    @staticmethod
+    def _result(reply: str, contexts: list[str] | None = None) -> dict:
+        return {'chatbot_reply': reply, 'contexts': contexts or []}
+
     def execute(self) -> dict | None:
         # 1. Explicit Build ID
         explicit_build_id = extract_explicit_build_id(self.user_message)
@@ -101,7 +105,7 @@ class PcBuildEngine:
                 self.ctx.last_suggested_mainboard = preset.get("mainboard")
                 self.ctx.pending_question = None
                 self.memory.commit_turn(self.user_message, preset["reply"], self.ctx)
-                return {'chatbot_reply': preset["reply"]}
+                return self._result(preset["reply"], [preset["reply"]])
 
         # 9. Find best build
         return self._find_and_reply_best_build()
@@ -270,7 +274,7 @@ class PcBuildEngine:
         if self.component_filter.get('gpu_model'): self.ctx.user_gpu = self.component_filter.get('gpu_model')
         if self.component_filter.get('mainboard'): self.ctx.user_mainboard = self.component_filter.get('mainboard')
         self.memory.commit_turn(self.user_message, reply, self.ctx)
-        return {'chatbot_reply': reply}
+        return self._result(reply, [reply])
 
     def _handle_multi_turn_adjustment(self):
         last_build = None
@@ -357,7 +361,7 @@ class PcBuildEngine:
         if best_build is None:
             reply = "Dạ, em không tìm được bộ PC nào phù hợp trong kho ạ!"
             self.memory.commit_turn(self.user_message, reply, self.ctx)
-            return {'chatbot_reply': reply}
+            return self._result(reply, [reply])
         self.budget = best_build.get('Total_Price')
         label = 'rẻ nhất' if wants_cheapest else 'mắc nhất'
         return self._build_reply(best_build, label)
@@ -459,13 +463,13 @@ class PcBuildEngine:
             self.ctx.exclude_builds.append(build_id)
             
         self.memory.commit_turn(self.user_message, final_reply, self.ctx)
-        return {'chatbot_reply': final_reply}
+        return self._result(final_reply, [final_reply])
 
     def _answer_about_current_build(self) -> dict:
         if not self.ctx.build_id or self.ctx.build_id == 'BUILD-PENDING':
             reply = "Dạ, em không tìm thấy thông tin bộ PC nào gần đây cả. Bạn có thể nhắc lại yêu cầu hoặc cung cấp mã bộ PC giúp em được không ạ?"
             self.memory.commit_turn(self.user_message, reply, self.ctx)
-            return {'chatbot_reply': reply}
+            return self._result(reply, [reply])
 
         build_context = ""
         preset = get_preset_by_id(self.ctx.build_id)
@@ -480,7 +484,7 @@ class PcBuildEngine:
         if not build_context:
             reply = "Dạ, em không tìm thấy thông tin chi tiết về bộ PC gần nhất. Bạn có thể nhắc lại yêu cầu được không ạ?"
             self.memory.commit_turn(self.user_message, reply, self.ctx)
-            return {'chatbot_reply': reply}
+            return self._result(reply, [reply])
 
         system_prompt = (
             "Bạn là chuyên gia tư vấn linh kiện máy tính tại cửa hàng. Dưới đây là thông số bộ PC mà bạn vừa gợi ý cho khách:\n\n"
@@ -495,7 +499,7 @@ class PcBuildEngine:
         
         reply = self._invoke_llm_for_build(system_prompt, fallback)
         self.memory.commit_turn(self.user_message, reply, self.ctx)
-        return {'chatbot_reply': reply}
+        return self._result(reply, [build_context])
 
     def _handle_explicit_build(self, explicit_build_id: str) -> dict:
         if self.build_df is not None and not self.build_df.empty:
@@ -512,7 +516,7 @@ class PcBuildEngine:
             "trong hệ thống ạ. Bạn kiểm tra lại mã giúp em nhé!"
         )
         self.memory.commit_turn(self.user_message, reply, self.ctx)
-        return {'chatbot_reply': reply}
+        return self._result(reply, [reply])
 
     def _answer_about_specific_build(self, build: dict) -> dict:
         build_context = format_build_context(build)
@@ -529,7 +533,7 @@ class PcBuildEngine:
 
         reply = self._invoke_llm_for_build(system_prompt, fallback)
         self.memory.commit_turn(self.user_message, reply, self.ctx)
-        return {'chatbot_reply': reply}
+        return self._result(reply, [build_context])
 
 
 def handle_pc_build_flow(
