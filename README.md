@@ -10,7 +10,7 @@
 
 - **Tích hợp Local LLM:** Sử dụng mô hình Vi-Qwen2-1.5B qua Ollama giúp trò chuyện và phản hồi tự nhiên bằng tiếng Việt.
 - **RAG & Hybrid Search:** Sử dụng ChromaDB và mô hình nhúng tiếng Việt (HuggingFace) để trích xuất linh kiện cực chuẩn dựa trên ngữ cảnh người dùng.
-- **Kiến trúc Service Layer:** Mã nguồn được phân tách chặt chẽ giữa logic điều hướng (routing), xác thực và nghiệp vụ cốt lõi.
+- **Kiến trúc phân lớp:** Tách API, điều phối hội thoại, nghiệp vụ, bộ nhớ và lớp bảo vệ thành các module riêng.
 - **Bảo mật Firebase Auth:** Xác thực các endpoint REST API qua token của Firebase.
 - **Hệ thống Kiểm thử (Testing) toàn diện:** Bộ test Pytest tự động kiểm tra RESTful API, Knowledge Base, độ tương đồng Vector và kỹ năng phân loại ý định (intent classification).
 - **Giới hạn tốc độ (Rate Limiting):** Tích hợp SlowAPI giúp ngăn chặn spam và lạm dụng API.
@@ -29,7 +29,7 @@
 ```bash
 # Tạo và kích hoạt môi trường ảo (trên Windows PowerShell)
 python -m venv .venv
-& .\venv\Scripts\Activate.ps1
+& .\.venv\Scripts\Activate.ps1
 
 # Cài đặt các thư viện cần thiết
 pip install -r requirements.txt
@@ -81,7 +81,9 @@ ngrok http 8000
 | Endpoint | Method | Mô tả |
 | :--- | :---: | :--- |
 | `/chat` | `POST` | Gửi câu hỏi tới AI Chatbot, phân tích ý định và tra cứu RAG. Yêu cầu token Firebase. |
+| `/chat/eval` | `POST` | Endpoint cô lập phục vụ đánh giá Ragas. Yêu cầu magic key. |
 | `/sessions/{id}` | `DELETE` | Xóa sạch bộ nhớ đệm và lịch sử phiên hội thoại. |
+| `/health` | `GET` | Kiểm tra trạng thái dịch vụ. |
 | `/test-knowledge-base` | `GET` | Tra cứu trực tiếp kho tri thức linh kiện bằng Hybrid Search. |
 | `/v1/embeddings` | `POST` | API tạo text embeddings dùng mô hình ngôn ngữ nội bộ. |
 
@@ -102,12 +104,13 @@ ngrok http 8000
 
 ## Kiến trúc Phân Tầng (Architecture)
 
-Dự án tuân thủ nghiêm ngặt mô hình Service Layer Pattern:
+Dự án được chia thành các lớp trách nhiệm chính:
 
 - **`app/api/`**: Controllers (`chat.py`) và các trình xử lý logic nghiệp vụ (`chat_services.py`).
 - **`app/core/`**: Xử lý orchestration với LLM (`chat_handler.py`), kịch bản Prompt và Trình tìm kiếm lai (`search_engine.py`).
 - **`app/memory/`**: Quản lý trạng thái và lịch sử hội thoại trong MySQL.
-- **`app/guard/`**: Phụ trách bảo mật (`firebase_auth.py`) và Rate Limiting (`security.py`).
+- **`app/api/auth/`**: Xác thực Firebase cho các API yêu cầu đăng nhập.
+- **`app/guard/`**: Kiểm tra đầu vào, định dạng đầu ra và giới hạn tần suất gọi API.
 - **`data/` & `chroma_db/`**: Chứa dữ liệu file CSV linh kiện và Vector database.
 
 ## Hệ thống Kiểm thử (Testing Ecosystem)

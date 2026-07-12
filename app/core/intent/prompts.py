@@ -12,7 +12,7 @@ _SYSTEM_CLASSIFY = (
     "Nếu khách CHỈ hỏi các linh kiện có lắp/chạy chung được không, dù có đủ 3 món, vẫn là 'compatibility'.\n"
     "- 'suggestion': Khách CHỈ CÓ SẴN 1 LINH KIỆN và nhờ tìm 1 linh kiện MỚI (chưa biết tên) để ghép cùng. CHỈ CÓ 1 linh kiện cụ thể xuất hiện.\n"
     "- 'price_calculation': Khách liệt kê nhiều linh kiện và muốn tính TỔNG GIÁ tiền.\n"
-    "- 'specification': Khách hỏi về THÔNG SỐ (số nhân, VRAM, điện năng, xung, socket, chuẩn...) của 1 linh kiện "
+    "- 'specification': Khách hỏi về THÔNG SỐ hoặc HIỆU NĂNG (số nhân, VRAM, điện năng, xung, socket, chuẩn, mạnh, mượt...) của 1 linh kiện "
     "(linh kiện này có thể nằm trong Lịch sử hội thoại).\n"
     "- 'price_check': Khách hỏi GIÁ BÁN của 1 linh kiện cụ thể.\n"
     "- 'budget_search': Khách tìm MỘT LINH KIỆN ĐƠN LẺ (chỉ 1 món CPU, GPU, mainboard...) dựa trên NGÂN SÁCH/TẦM GIÁ. "
@@ -128,7 +128,11 @@ _SYSTEM_EXTRACT = (
     "- Điền 'none' hoặc 0 nếu không có thông tin.\n"
     "CẢNH BÁO TỐI QUAN TRỌNG: \n"
     "1. TRÍCH XUẤT CHÍNH XÁC TỪ KHÓA CỦA KHÁCH. Không tự ý ghép thêm hãng nếu khách không viết.\n"
-    "2. CHỈ TRÍCH XUẤT những gì XUẤT HIỆN NGUYÊN VĂN trong câu hỏi của khách. Không thêm thắt, không suy diễn tên sản phẩm."
+    "2. CHỈ TRÍCH XUẤT những gì XUẤT HIỆN NGUYÊN VĂN trong câu hỏi của khách. Không thêm thắt, không suy diễn tên sản phẩm.\n"
+    "3. Phân loại linh kiện theo từ trong CÂU HIỆN TẠI: main/mainboard/bo mạch chủ -> mainboard; "
+    "card/GPU/VGA/RTX/RX -> gpu; CPU/chip/Ryzen/Core i -> cpu. category và trường linh kiện phải khớp nhau.\n"
+    "4. Ở câu nối tiếp, linh kiện hoặc thông số mới ghi trong CÂU HIỆN TẠI phải thay đúng giá trị cũ cùng loại; "
+    "chỉ kế thừa các giá trị còn thiếu từ TRẠNG THÁI ĐÃ XÁC NHẬN."
 )
 
 _FEWSHOT_BY_INTENT = {
@@ -255,4 +259,35 @@ _FEWSHOT_BY_INTENT = {
         {"role": "user", "content": "bạn là ai, bot à"},
         {"role": "assistant", "content": '{"reasoning": "Giao tiếp ngoài lề.", "intent": "none", "target_product": "none", "spec_detail": "none", "cpu": "none", "mainboard": "none", "gpu": "none", "budget_amount": 0, "category": "none"}'},
     ]
+}
+
+
+def _pick_examples(examples, indices):
+    return [message for index in indices for message in examples[index * 2:index * 2 + 2]]
+
+
+# Keep one canonical example per intent and follow-ups only where conversation
+# state changes routing. Full examples above remain as regression documentation.
+_FEWSHOT_CLASSIFY = _pick_examples(
+    _FEWSHOT_CLASSIFY,
+    (0, 1, 2, 4, 6, 8, 10, 13, 15, 18, 23, 27, 34, 35, 36),
+)
+
+_COMPACT_EXTRACT_EXAMPLES = {
+    "compatibility": (0, 5),
+    "suggestion": (0,),
+    "price_calculation": (0,),
+    # Use different product families for direct vs follow-up examples so the
+    # small model learns field mapping instead of copying one tested product.
+    "specification": (0, 4),
+    "price_check": (0, 2),
+    "budget_search": (0,),
+    "combo_review": (1,),
+    "build_pc": (0, 6),
+    "general_search": (1, 3),
+    "none": (0,),
+}
+_FEWSHOT_BY_INTENT = {
+    intent: _pick_examples(examples, _COMPACT_EXTRACT_EXAMPLES[intent])
+    for intent, examples in _FEWSHOT_BY_INTENT.items()
 }

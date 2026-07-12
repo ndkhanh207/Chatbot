@@ -1,10 +1,11 @@
 import ollama
 import re
+from time import perf_counter
 from pydantic import BaseModel, Field, model_validator
 from typing import Literal
 
 from config.config import Config
-from app.utils.model_utils import get_ollama_model
+from app.utils.model_utils import get_ollama_model, log_ollama_metrics
 from app.core.intent.prompts import (
     _SYSTEM_CLASSIFY,
     _FEWSHOT_CLASSIFY,
@@ -48,11 +49,11 @@ SPEC_TRIGGERS = [
 FOLLOW_UP_MARKERS = ['vậy', 'thì sao', 'thế còn', 'còn', 'nó', 'của']
 PRICE_TRIGGERS = ['giá', 'bao nhiêu tiền', 'nhiêu tiền']
 BUDGET_TRIGGERS = ['triệu', 'tr', 'tầm', 'khoảng', 'dưới', 'trên']
-BUILD_TRIGGERS = ['build', 'bộ', 'dàn', 'máy', 'pc']
+BUILD_TRIGGERS = ['build', 'bộ pc', 'bộ máy', 'dàn', 'máy', 'pc']
 
 CPU_PATTERN = re.compile(r'(amd ryzen\s*[3579]\s+\d{4,5}[a-z0-9]*|intel core i[3579][-\s]?\d{4,5}[a-z0-9]*|ryzen\s*[3579]\s+\d{4,5}[a-z0-9]*|i[3579][-\s]?\d{4,5}[a-z0-9]*|ryzen\s+[3579])', re.IGNORECASE)
 GPU_PATTERN = re.compile(r'((?:(?:asus|msi|gigabyte|galax|sapphire|powercolor|asrock|zotac|evga|palit|inno3d)\s+(?:\w+\s+){0,4})?(?:geforce\s+)?(?:rtx|gtx)\s*\d{3,4}(?:\s*ti|\s*super)?(?:\s*(?:\d{1,2}gb?|\d{1,2}g|gddr\d+x?|black|white|oc|gaming|trio))*|radeon\s+rx\s*\d{3,4}(?:\s*xt)?|rx\s*\d{3,4}(?:\s*xt)?)', re.IGNORECASE)
-MAIN_PATTERN = re.compile(r'(asus\s+[bzhx]\d{2,3}m?(?:-[a-z0-9]+)?|gigabyte\s+[bzhx]\d{2,3}m?(?:-[a-z0-9]+)?|msi\s+[bzhx]\d{2,3}m?(?:-[a-z0-9]+)?|asrock\s+[bzhx]\d{2,3}m?(?:-[a-z0-9]+)?|[bzhx]\d{2,3}m?(?:-[a-z0-9]+)?|mainboard\s+[a-z0-9-]+|main\s+[a-z0-9-]+)', re.IGNORECASE)
+MAIN_PATTERN = re.compile(r'(asus\s+[bzhx]\d{2,3}m?(?:-[a-z0-9]+)?|gigabyte\s+[bzhx]\d{2,3}m?(?:-[a-z0-9]+)?|msi\s+[bzhx]\d{2,3}m?(?:-[a-z0-9]+)?|asrock\s+[bzhx]\d{2,3}m?(?:-[a-z0-9]+)?|[bzhx]\d{2,3}m?(?:-[a-z0-9]+)?|mainboard\s+(?!(?:asus|msi|gigabyte|asrock)\b)[a-z0-9-]+|main\s+(?!(?:asus|msi|gigabyte|asrock)\b)[a-z0-9-]+)', re.IGNORECASE)
 
 # ==============================================================================
 # SCHEMAS
@@ -142,7 +143,9 @@ def _apply_pre_extraction_guards(msg_l: str, comp_count: int, intent_pass1: str,
         return "combo_review"
 
     has_spec_trigger = any(t in msg_l for t in SPEC_TRIGGERS)
-    if has_spec_trigger and intent_pass1 not in ["specification", "compatibility", "combo_review"]:
+    if has_spec_trigger and intent_pass1 not in ["specification", "combo_review"] and not (
+        intent_pass1 == "compatibility" and comp_count >= 2
+    ):
         is_follow_up = any(t in msg_l for t in FOLLOW_UP_MARKERS)
         has_state_component = any(
             structured_state.get(k, "none") != "none"
@@ -204,10 +207,25 @@ def _apply_post_extraction_guards(parsed: MasterIntentSchema, cpu_match, gpu_mat
                 parsed.mainboard = main_match.group(1)
             parsed.target_product = "none"
 
-    # Regex Rescue (Áp dụng cho mọi ý định nếu LLM bỏ sót)
-    if parsed.cpu == "none" and cpu_match: parsed.cpu = cpu_match.group(1)
-    if parsed.gpu == "none" and gpu_match: parsed.gpu = gpu_match.group(1)
-    if parsed.mainboard == "none" and main_match: parsed.mainboard = main_match.group(1)
+    # Explicit entities in current message always replace copied/history values.
+    if cpu_match:
+        parsed.cpu = cpu_match.group(1)
+    if gpu_match:
+        parsed.gpu = gpu_match.group(1)
+    if main_match:
+        parsed.mainboard = main_match.group(1)
+
+    if parsed.intent in ["specification", "price_check"]:
+        explicit_components = [
+            (cpu_match, "cpu"),
+            (gpu_match, "gpu"),
+            (main_match, "mainboard"),
+        ]
+        for match, category in explicit_components:
+            if match:
+                parsed.target_product = match.group(1)
+                parsed.category = category
+                break
 
     # Sửa lỗi LLM điền sai slot (vd: rx 7600 bị nhét vào slot CPU)
     if parsed.cpu != "none" and GPU_PATTERN.search(parsed.cpu):
@@ -306,12 +324,14 @@ async def _run_classification_pass(user_msg: str, history_context: str) -> str:
         + _FEWSHOT_CLASSIFY
         + [{"role": "user", "content": f"{history_context}<user_input>{user_msg}</user_input>"}]
     )
+    started = perf_counter()
     response = await _async_client.chat(
         model=get_ollama_model(),
         messages=messages,
         options={"temperature": 0.0, "num_predict": MAX_TOKENS_CLASSIFY},
         format=IntentOnlySchema.model_json_schema(),
     )
+    log_ollama_metrics("intent_classify", response, perf_counter() - started)
     raw = response["message"]["content"].strip()
     if not raw.endswith('}'): raw += '}'
     print(f"\n\U0001f50d [PASS-1] Raw: {raw}")
@@ -332,12 +352,14 @@ async def _run_extraction_pass(user_msg: str, intent: str, history_context: str)
         + fewshots
         + [{"role": "user", "content": prompt_msg}]
     )
+    started = perf_counter()
     response = await _async_client.chat(
         model=get_ollama_model(),
         messages=messages,
         options={"temperature": 0.0, "num_predict": MAX_TOKENS_EXTRACT},
         format=MasterIntentSchema.model_json_schema(),
     )
+    log_ollama_metrics("intent_extract", response, perf_counter() - started)
     raw = response["message"]["content"].strip()
     if not raw.endswith('}'): raw += '}'
     print(f"\U0001f50d [PASS-2] Raw ({intent}): {raw}")
@@ -372,6 +394,8 @@ async def parse_master_intent(user_msg: str, chat_history: list = None) -> Maste
             intent_pass1 = "combo_review"
         elif is_explicit_build:
             intent_pass1 = "build_pc"
+        elif ('tổng' in msg_l or 'cộng' in msg_l) and has_price_trigger and comp_count >= 2:
+            intent_pass1 = "price_calculation"
         elif has_price_trigger and comp_count >= 1:
             intent_pass1 = "price_check"
 

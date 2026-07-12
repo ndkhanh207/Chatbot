@@ -22,7 +22,7 @@ def _get_strict_llm() -> ChatOllama:
         temperature=0,        # ← không sáng tạo, chỉ làm theo lệnh
         client_kwargs={"timeout": Config.OLLAMA_REQUEST_TIMEOUT},
         top_p=0.05,           # ← càng hẹp càng ít "phiêu"
-        num_predict=512,
+        num_predict=256,
         repeat_penalty=1.3,   # ← tránh lặp câu hỏi vặn
     )
 
@@ -32,14 +32,21 @@ def get_llm() -> ChatOllama:
         temperature=0,
         client_kwargs={"timeout": Config.OLLAMA_REQUEST_TIMEOUT},
         top_p=0.05,
-        num_predict=512,
+        num_predict=256,
         repeat_penalty=1.2,
     )
 
 def get_basic_search_chain() -> RunnableSequence:
     global _basic_search_chain
     if _basic_search_chain is None:
-        _basic_search_chain = BASIC_SEARCH_TEMPLATE | get_llm()
+        _basic_search_chain = BASIC_SEARCH_TEMPLATE | ChatOllama(
+            model=get_ollama_model(),
+            temperature=0,
+            client_kwargs={"timeout": Config.OLLAMA_REQUEST_TIMEOUT},
+            top_p=0.05,
+            num_predict=384,
+            repeat_penalty=1.2,
+        )
     return _basic_search_chain
 
 def _get_compat_llm() -> ChatOllama:
@@ -49,7 +56,7 @@ def _get_compat_llm() -> ChatOllama:
         temperature=0,
         client_kwargs={"timeout": Config.OLLAMA_REQUEST_TIMEOUT},
         top_p=0.05,
-        num_predict=512,
+        num_predict=256,
         repeat_penalty=1.05,  # ← Hạ repeat_penalty để LLM có thể lặp lại đúng nguyên văn cảnh báo
     )
 
@@ -87,6 +94,6 @@ def get_pc_build_qa_chain() -> RunnableSequence:
         ])
         _pc_build_qa_chain = prompt | ChatOllama(
             model=get_ollama_model(), temperature=0.1,
-            client_kwargs={"timeout": Config.OLLAMA_REQUEST_TIMEOUT}, num_predict=512
+            client_kwargs={"timeout": Config.OLLAMA_REQUEST_TIMEOUT}, num_predict=256
         )
     return _pc_build_qa_chain

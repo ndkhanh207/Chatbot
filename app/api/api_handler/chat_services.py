@@ -1,6 +1,7 @@
 import asyncio
 import re
 import threading
+from time import perf_counter
 from fastapi import Request, status
 from fastapi.responses import JSONResponse
 from app.core.search_engine import hybrid_search
@@ -104,6 +105,7 @@ async def process_chat_message(request: Request, data: ChatRequest, user_uid: st
 
     vector_store = getattr(request.app.state, "vector_store", None)
     build_df = getattr(request.app.state, "build_data", None)
+    started = perf_counter()
 
     try:
         # Chạy handle_chat (hàm async) trực tiếp với timeout 60 giây
@@ -148,4 +150,5 @@ async def process_chat_message(request: Request, data: ChatRequest, user_uid: st
             ).model_dump()
         )
     finally:
+        print(f"[PERF] stage=request_total wall_ms={(perf_counter() - started) * 1000:.1f}")
         _release_processing_slot(session_key)

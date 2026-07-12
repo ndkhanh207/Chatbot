@@ -10,6 +10,21 @@ import ollama
 from config.config import CHAT_MODEL
 
 
+def log_ollama_metrics(stage, response, elapsed_seconds):
+    """Log comparable wall time and Ollama token timing without changing API output."""
+    metadata = getattr(response, "response_metadata", None)
+    if metadata is None:
+        metadata = response.model_dump() if hasattr(response, "model_dump") else response
+    metadata = metadata if isinstance(metadata, dict) else {}
+    print(
+        f"[PERF] stage={stage} wall_ms={elapsed_seconds * 1000:.1f} "
+        f"prompt_tokens={metadata.get('prompt_eval_count', 0)} "
+        f"prompt_ms={metadata.get('prompt_eval_duration', 0) / 1_000_000:.1f} "
+        f"output_tokens={metadata.get('eval_count', 0)} "
+        f"output_ms={metadata.get('eval_duration', 0) / 1_000_000:.1f}"
+    )
+
+
 def _extract_model_name(model_entry):
     """Return a readable model name from a string or dict.
 

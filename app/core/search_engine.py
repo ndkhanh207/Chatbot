@@ -1,4 +1,5 @@
 import numpy as np
+from time import perf_counter
 
 from app.core.query_parser import normalize_text
 from app.price.pricing_util import format_currency_vietnam
@@ -21,6 +22,7 @@ def hybrid_search(q, category, top_k, knowledge_base, vector_store):
        - `hybrid_score = 0.4 * keyword_scores + 0.6 * semantic_scores`.
        - Sắp xếp giảm dần theo hybrid_score và lấy Top K sản phẩm tốt nhất.
     """
+    started = perf_counter()
     try:
         if knowledge_base is None or knowledge_base.empty or not q:
             return []
@@ -132,3 +134,5 @@ def hybrid_search(q, category, top_k, knowledge_base, vector_store):
         traceback.print_exc()
         print(f"❌ [SEARCH ERROR] Lỗi hệ thống khi tìm kiếm Hybrid Search: {e}")
         return []
+    finally:
+        print(f"[PERF] stage=hybrid_search wall_ms={(perf_counter() - started) * 1000:.1f}")

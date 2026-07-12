@@ -7,6 +7,8 @@ from langchain_core.runnables import RunnableSequence
 from collections import OrderedDict
 import asyncio
 import re
+from time import perf_counter
+from app.utils.model_utils import log_ollama_metrics
 
 class LRUCache(OrderedDict):
     """
@@ -202,6 +204,7 @@ async def chain_invoke_async(chain, context, format_hint, user_message_fixed, ch
         # Context hợp lệ → mới áp dụng output guard
         MAX_RETRY = 1
         for attempt in range(MAX_RETRY + 1):
+            started = perf_counter()
             try:
                 response = await asyncio.wait_for(
                     chain.ainvoke({
@@ -222,6 +225,7 @@ async def chain_invoke_async(chain, context, format_hint, user_message_fixed, ch
                 reply = _format_context_directly(context, parsed_intent.intent)
                 break
 
+            log_ollama_metrics("final_generate", response, perf_counter() - started)
             raw = response.content
             raw = _remove_repetitive_paragraphs(raw)
             print(f"[RAW LLM OUTPUT - attempt {attempt}]: {raw}")
@@ -251,4 +255,3 @@ async def chain_invoke_async(chain, context, format_hint, user_message_fixed, ch
                 print("🚨 [OUTPUT-GUARD] Retry thất bại → format trực tiếp")
                 reply = _format_context_directly(context, parsed_intent.intent)
     return reply
-

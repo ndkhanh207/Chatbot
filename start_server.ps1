@@ -13,6 +13,29 @@ if (-not (Test-Path $Python)) {
     $Python = "python"
 }
 
+# --- Auto-Configure Ollama Environment Variables ---
+$flashAttn = [Environment]::GetEnvironmentVariable("OLLAMA_FLASH_ATTENTION", "User")
+$kvCache = [Environment]::GetEnvironmentVariable("OLLAMA_KV_CACHE_TYPE", "User")
+
+if ($flashAttn -ne "1" -or $kvCache -ne "q8_0") {
+    Write-Host "Configuring Ollama environment variables (OLLAMA_FLASH_ATTENTION=1, OLLAMA_KV_CACHE_TYPE=q8_0)..." -ForegroundColor Yellow
+    [Environment]::SetEnvironmentVariable("OLLAMA_FLASH_ATTENTION", "1", "User")
+    [Environment]::SetEnvironmentVariable("OLLAMA_KV_CACHE_TYPE", "q8_0", "User")
+    
+    Write-Host "Restarting Ollama background service to apply changes..." -ForegroundColor Yellow
+    Stop-Process -Name "ollama app", "ollama" -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 2
+    
+    $ollamaPath = "$env:LOCALAPPDATA\Programs\Ollama\ollama app.exe"
+    if (Test-Path $ollamaPath) {
+        Start-Process $ollamaPath
+        Write-Host "Ollama restarted successfully." -ForegroundColor Green
+    } else {
+        Write-Warning "Could not find Ollama at default path. Please restart Ollama manually."
+    }
+}
+# ---------------------------------------------------
+
 $ownPid = $PID
 
 try {
