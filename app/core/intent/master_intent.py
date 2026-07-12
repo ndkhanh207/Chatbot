@@ -41,7 +41,8 @@ SPEC_TRIGGERS = [
     'vram', 'xung', 'socket', 'lõi', 'nhân', 'tdp', 'bộ nhớ', 'thông số',
     'mượt', 'khỏe', 'băng thông', 'tốc độ', 'chuẩn', 'giao tiếp', 'kích cỡ',
     'kích thước', 'chiều dài', 'dài bao nhiêu', 'màu', 'watt', 'điện năng',
-    'công suất', 'chạy ở', 'gb ram', 'khe cắm'
+    'công suất', 'chạy ở', 'gb ram', 'khe cắm', 'ram', 'ddr4', 'ddr5',
+    'hỗ trợ', 'loại'
 ]
 
 FOLLOW_UP_MARKERS = ['vậy', 'thì sao', 'thế còn', 'còn', 'nó', 'của']

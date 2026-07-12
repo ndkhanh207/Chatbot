@@ -30,7 +30,9 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             "default-src 'self'; "
             "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
             "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
-            "img-src 'self' data: https://fastapi.tiangolo.com;"
+            "img-src 'self' data: https://fastapi.tiangolo.com; "
+            "font-src 'self' data: https://cdn.jsdelivr.net; "
+            "connect-src 'self';"
         )
         return response
 
@@ -121,7 +123,32 @@ async def lifespan(app: FastAPI):
         print("=== [SYSTEM] Unloading Ollama model... ===")
         await reset_ollama_model()
 
-app = FastAPI(lifespan=lifespan)
+app = FastAPI(
+    title="AI PC Builder Chatbot API",
+    summary="Vietnamese RAG chatbot API for PC building, compatibility checks, pricing, and specs.",
+    description=(
+        "REST API for the AI PC Builder Chatbot. Use `/chat` for authenticated "
+        "chat requests, `/chat/eval` for Ragas evaluation, and utility endpoints "
+        "for health checks, embeddings, unit conversion, and knowledge-base search."
+    ),
+    version="1.0.0",
+    lifespan=lifespan,
+    contact={"name": "AI PC Builder Chatbot"},
+    openapi_tags=[
+        {"name": "Chat", "description": "Authenticated chatbot conversation endpoints."},
+        {"name": "Evaluation", "description": "Ragas and internal evaluation endpoints."},
+        {"name": "Knowledge Base", "description": "Direct search and embedding utilities."},
+        {"name": "Tools", "description": "Small helper APIs used by the chatbot."},
+        {"name": "Sessions", "description": "Chat history and session management."},
+        {"name": "System", "description": "Health and operational status endpoints."},
+    ],
+    swagger_ui_parameters={
+        "displayRequestDuration": True,
+        "docExpansion": "none",
+        "persistAuthorization": True,
+        "tryItOutEnabled": True,
+    },
+)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 

@@ -109,13 +109,14 @@ def _score_purpose(build_notes: str, user_msg_lower: str) -> float:
 # Hàm tìm bộ PC tốt nhất
 # ──────────────────────────────────────────────
 def find_best_build(
-    budget: int,
+    budget: int | None,
     user_message: str,
     build_df: pd.DataFrame,
     exclude_builds: list = None,
     brand_filter: dict = None,
     component_filter: dict = None,
     priority_bias: dict = None,
+    price_order: str | None = None,
 ) -> dict | None:
     """
     Tìm bộ PC phù hợp nhất dựa trên các tiêu chí lọc:
@@ -164,6 +165,9 @@ def find_best_build(
         df = df[~df['BuildID'].isin(exclude_builds)]
         if df.empty: 
             return None
+
+    if price_order in {"asc", "desc"}:
+        return df.sort_values('Total_Price', ascending=price_order == "asc").iloc[0].to_dict()
 
     # 4. Kiểm tra khoảng ngân sách an toàn (75% - 115%)
     budget_min = budget * 0.75

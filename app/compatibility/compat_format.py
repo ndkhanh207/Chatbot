@@ -131,7 +131,7 @@ def _fmt_cpu_main(cpu: dict, main: dict, check: dict) -> str:
     if total_str:
         lines.append(total_str)
     lines.append(f"- KẾT LUẬN TƯƠNG THÍCH: {verdict}")
-    return "\n".join(lines + [f"- CHI TIẾT: {r}" for r in check["reasons"]]) + "\n"
+    return "\n".join(lines + [f"- CHI TIẾT CPU + Mainboard: {r}" for r in check["reasons"]]) + "\n"
 
 
 def _fmt_gpu_main(gpu: dict, main: dict, check: dict) -> str:
@@ -150,7 +150,9 @@ def _fmt_gpu_main(gpu: dict, main: dict, check: dict) -> str:
         lines.append(total_str)
     lines.append("- KẾT LUẬN TƯƠNG THÍCH: TƯƠNG THÍCH (PHÙ HỢP)")
     if check.get("warning"):
-        lines.append(f"- CẢNH BÁO BĂNG THÔNG: {check['warning']}")
+        lines.append(f"- CẢNH BÁO BĂNG THÔNG GPU + Mainboard: {check['warning']}")
+    else:
+        lines.append("- CHI TIẾT GPU + Mainboard: GPU và mainboard dùng chuẩn PCIe tương thích.")
     return "\n".join(lines) + "\n"
 
 
@@ -170,8 +172,10 @@ def _fmt_cpu_gpu(cpu: dict, gpu: dict, check: dict) -> str:
         lines.append(total_str)
         
     if check.get("warning"):
-        lines.append(f"- CẢNH BÁO QUAN TRỌNG: Cấu hình này CÓ ĐIỂM NGHẼN (BOTTLENECK). {check['warning']}")
+        lines.append(f"- KẾT LUẬN TƯƠNG THÍCH: TƯƠNG THÍCH (CÓ NGHẼN CỔ CHAI)")
+        lines.append(f"- CẢNH BÁO QUAN TRỌNG CPU + GPU: Cấu hình này CÓ ĐIỂM NGHẼN (BOTTLENECK). {check['warning']}")
     else:
         lines.append("- KẾT LUẬN TƯƠNG THÍCH: TƯƠNG THÍCH (PHÙ HỢP)")
+        lines.append("- CHI TIẾT CPU + GPU: CPU và GPU cân bằng theo tier, không thấy cảnh báo nghẽn rõ rệt.")
         
     return "\n".join(lines) + "\n"

@@ -48,9 +48,6 @@ class PcBuildEngine:
         self.skip_presets = False
 
     def execute(self) -> dict | None:
-        if self.recognized_intent == "combo_review":
-            return None
-
         # 1. Explicit Build ID
         explicit_build_id = extract_explicit_build_id(self.user_message)
         if explicit_build_id:
@@ -262,18 +259,6 @@ class PcBuildEngine:
                 self.component_filter['gpu_model'] = self.ctx.user_gpu
             if not self.component_filter.get('mainboard') and self.ctx.user_mainboard:
                 self.component_filter['mainboard'] = self.ctx.user_mainboard
-                
-            # Fallback to history intent state
-            from app.core.intent.history_context import extract_structured_state
-            state = extract_structured_state(self.chat_history)
-            if state:
-                if not self.component_filter.get('cpu_model') and state.get('cpu'):
-                    self.component_filter['cpu_model'] = state.get('cpu')
-                if not self.component_filter.get('gpu_model') and state.get('gpu'):
-                    self.component_filter['gpu_model'] = state.get('gpu')
-                if not self.component_filter.get('mainboard') and state.get('mainboard'):
-                    self.component_filter['mainboard'] = state.get('mainboard')
-                    
         print(f"DEBUG 3 component_filter: {self.component_filter}")
 
         self.has_specific_component = bool(self.component_filter.get('cpu_model') or self.component_filter.get('gpu_model') or self.component_filter.get('mainboard'))
@@ -364,15 +349,16 @@ class PcBuildEngine:
     def _handle_extreme_price_build(self, wants_cheapest: bool) -> dict:
         self._resolve_filters()
         best_build = find_best_build(
-            budget=0, user_message=self.user_message, build_df=self.build_df,
+            budget=None, user_message=self.user_message, build_df=self.build_df,
             exclude_builds=self.ctx.exclude_builds, brand_filter=self.brand_filter,
-            component_filter=self.component_filter, priority_bias=None
+            component_filter=self.component_filter, priority_bias=None,
+            price_order="asc" if wants_cheapest else "desc",
         )
         if best_build is None:
             reply = "Dạ, em không tìm được bộ PC nào phù hợp trong kho ạ!"
             self.memory.commit_turn(self.user_message, reply, self.ctx)
             return {'chatbot_reply': reply}
-            
+        self.budget = best_build.get('Total_Price')
         label = 'rẻ nhất' if wants_cheapest else 'mắc nhất'
         return self._build_reply(best_build, label)
 

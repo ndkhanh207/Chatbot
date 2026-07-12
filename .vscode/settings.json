@@ -1,0 +1,26 @@
+{
+    "files.watcherExclude": {
+        "**/.venv/**": true,
+        "**/__pycache__/**": true,
+        "**/.pytest_cache/**": true,
+        "**/.git/**": true,
+        "**/chroma_db/**": true
+    },
+    "search.exclude": {
+        "**/.venv": true,
+        "**/__pycache__": true,
+        "**/.pytest_cache": true,
+        "**/.git": true,
+        "**/chroma_db": true
+    },
+    "python.analysis.exclude": [
+        "**/.venv/**",
+        "**/__pycache__/**",
+        "**/chroma_db/**"
+    ],
+    "python.testing.pytestArgs": [
+        "."
+    ],
+    "python.testing.unittestEnabled": false,
+    "python.testing.pytestEnabled": true
+}
