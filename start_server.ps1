@@ -18,7 +18,7 @@ $flashAttn = [Environment]::GetEnvironmentVariable("OLLAMA_FLASH_ATTENTION", "Us
 $kvCache = [Environment]::GetEnvironmentVariable("OLLAMA_KV_CACHE_TYPE", "User")
 
 if ($flashAttn -ne "1" -or $kvCache -ne "q8_0") {
-    Write-Host "Configuring Ollama environment variables (OLLAMA_FLASH_ATTENTION=1, OLLAMA_KV_CACHE_TYPE=q8_0)..." -ForegroundColor Yellow
+    Write-Host "Configuring Ollama environment variables (OLLAMA_FLASH_ATTENTION=1, OLLAMA_KV_CACHE_TYPE=f16)..." -ForegroundColor Yellow
     [Environment]::SetEnvironmentVariable("OLLAMA_FLASH_ATTENTION", "1", "User")
     [Environment]::SetEnvironmentVariable("OLLAMA_KV_CACHE_TYPE", "q8_0", "User")
     
