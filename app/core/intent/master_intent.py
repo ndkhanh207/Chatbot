@@ -13,6 +13,7 @@ from app.core.intent.prompts import (
     _FEWSHOT_BY_INTENT,
 )
 from app.core.intent.history_context import build_history_context, extract_structured_state
+from app.specification.field_resolver import resolve_explicit_spec_detail
 
 # ==============================================================================
 # CONSTANTS & CONFIG
@@ -225,6 +226,12 @@ def _apply_post_extraction_guards(parsed: MasterIntentSchema, cpu_match, gpu_mat
             if match:
                 parsed.target_product = match.group(1)
                 parsed.category = category
+                if category != "cpu":
+                    parsed.cpu = "none"
+                if category != "gpu":
+                    parsed.gpu = "none"
+                if category != "mainboard":
+                    parsed.mainboard = "none"
                 break
 
     # Sửa lỗi LLM điền sai slot (vd: rx 7600 bị nhét vào slot CPU)
@@ -259,23 +266,53 @@ def _pick_state_component(parsed: MasterIntentSchema, state: dict) -> str | None
     return state.get("target_product") or state.get("cpu") or state.get("gpu") or state.get("mainboard")
 
 
-def _inherit_structured_followup_state(parsed: MasterIntentSchema, state: dict, cpu_match, gpu_match, main_match):
+def _normalize_single_product_category(parsed: MasterIntentSchema) -> None:
+    if parsed.intent not in ["specification", "price_check"]:
+        return
+
+    target = (parsed.target_product or "").lower()
+    if GPU_PATTERN.search(target):
+        parsed.category = "gpu"
+        parsed.gpu = parsed.target_product
+        parsed.cpu = parsed.mainboard = "none"
+    elif CPU_PATTERN.search(target):
+        parsed.category = "cpu"
+        parsed.cpu = parsed.target_product
+        parsed.gpu = parsed.mainboard = "none"
+    elif MAIN_PATTERN.search(target):
+        parsed.category = "mainboard"
+        parsed.mainboard = parsed.target_product
+        parsed.cpu = parsed.gpu = "none"
+
+
+def _inherit_structured_followup_state(parsed: MasterIntentSchema, state: dict, cpu_match, gpu_match, main_match, msg_l: str):
     if parsed.intent not in ["specification", "price_check", "compatibility", "suggestion"]:
         return
 
-    if parsed.cpu == "none" and not cpu_match and state.get("cpu"):
+    force_verified_state = parsed.intent in ["compatibility", "suggestion"]
+
+    if not cpu_match and state.get("cpu") and (parsed.cpu == "none" or force_verified_state):
         parsed.cpu = state["cpu"]
-    if parsed.gpu == "none" and not gpu_match and state.get("gpu"):
+    if not gpu_match and state.get("gpu") and (parsed.gpu == "none" or force_verified_state):
         parsed.gpu = state["gpu"]
-    if parsed.mainboard == "none" and not main_match and state.get("mainboard"):
+    if not main_match and state.get("mainboard") and (parsed.mainboard == "none" or force_verified_state):
         parsed.mainboard = state["mainboard"]
     if parsed.category == "none" and state.get("category"):
         parsed.category = state["category"]
 
-    if parsed.intent in ["specification", "price_check"] and parsed.target_product == "none":
-        inherited = _pick_state_component(parsed, state)
+    if parsed.intent in ["specification", "price_check"] and not any([cpu_match, gpu_match, main_match]):
+        inherited = state.get("target_product") or _pick_state_component(parsed, state)
         if inherited:
             parsed.target_product = inherited
+
+    if parsed.intent == "specification":
+        explicit_spec_detail = resolve_explicit_spec_detail(msg_l)
+        if explicit_spec_detail:
+            parsed.spec_detail = explicit_spec_detail
+        elif state.get("spec_detail"):
+            parsed.spec_detail = state["spec_detail"]
+
+    _normalize_single_product_category(parsed)
 
 def _check_retry_condition(parsed: MasterIntentSchema) -> str | None:
     named_items = [parsed.cpu, parsed.mainboard, parsed.gpu]
@@ -413,14 +450,14 @@ async def parse_master_intent(user_msg: str, chat_history: list = None) -> Maste
         
         # 4. Post-extraction Guards
         _apply_post_extraction_guards(parsed, cpu_match, gpu_match, main_match, comp_count)
-        _inherit_structured_followup_state(parsed, structured_state, cpu_match, gpu_match, main_match)
+        _inherit_structured_followup_state(parsed, structured_state, cpu_match, gpu_match, main_match, msg_l)
 
         # 5. Retry Logic
         fallback_intent = _check_retry_condition(parsed)
         if fallback_intent:
             parsed = await _handle_retry(user_msg, history_context, parsed, fallback_intent)
             _apply_post_extraction_guards(parsed, cpu_match, gpu_match, main_match, comp_count)
-            _inherit_structured_followup_state(parsed, structured_state, cpu_match, gpu_match, main_match)
+            _inherit_structured_followup_state(parsed, structured_state, cpu_match, gpu_match, main_match, msg_l)
 
         return parsed
         

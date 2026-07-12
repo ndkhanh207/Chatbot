@@ -2,6 +2,7 @@
 from fastapi import APIRouter, Request, status, Depends, HTTPException
 from app.utils.unit_converter import convert_unit
 from app.memory.memory_store import clear_session, get_full_history_api
+from app.guard.clarify import clear_session_context
 
 # Import từ các module đã tách bạch
 from app.api.model.chat_models import ChatRequest, EvalChatRequest, ChatResponse, ErrorResponse
@@ -141,6 +142,7 @@ def delete_history(session_id: str, current_user: dict = Depends(verify_firebase
     """Xóa lịch sử hội thoại của một user."""
     user_uid = current_user["uid"]
     clear_session(user_uid, session_id)
+    clear_session_context(session_id)
     return {"status": "ok", "message": f"Đã xóa lịch sử session '{session_id}'"}
 
 

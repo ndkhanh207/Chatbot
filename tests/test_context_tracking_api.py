@@ -32,7 +32,7 @@ MULTI_TURN_CASES = [
         [
             ("ryzen 5 7600x có lắp được với main MSI PRO B650M-P không?", [("tương thích", "lắp được", "phù hợp")]),
             ("thế còn main ASUS B760M-AYW thì sao?", ["b760m-ayw", ("không", "không tương thích")]),
-            ("vậy đi với i7 14700k?", ["14700k", ("không", "không thể", "lỗi")]),
+            ("vậy đi với i7 14700k?", ["14700k", ("tương thích", "lắp được", "phù hợp")]),
         ]
     ),
     (

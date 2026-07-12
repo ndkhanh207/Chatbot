@@ -32,6 +32,10 @@ class LRUCache(OrderedDict):
 
 _session_context_cache = LRUCache(100)
 
+
+def clear_session_context(session_id: str) -> None:
+    _session_context_cache.pop(session_id, None)
+
 _REJECTION_PATTERNS = [
     "không cần", "cứ tìm", "cứ đưa", "thôi được",
     "đưa ra đi", "tìm luôn", "kệ đi", "cứ gợi ý",
