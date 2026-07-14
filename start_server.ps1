@@ -6,6 +6,20 @@ param(
 $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Python = Join-Path $Root ".venv\Scripts\python.exe"
+$ollamaParallel = $env:OLLAMA_NUM_PARALLEL
+$envFile = Join-Path $Root ".env"
+if (Test-Path $envFile) {
+    $parallelSetting = Get-Content $envFile |
+        Where-Object { $_ -match '^\s*OLLAMA_NUM_PARALLEL\s*=' } |
+        Select-Object -Last 1
+    if ($parallelSetting) {
+        $ollamaParallel = ($parallelSetting -replace '^\s*OLLAMA_NUM_PARALLEL\s*=\s*', '').Trim().Trim('"').Trim("'")
+    }
+}
+if (-not $ollamaParallel) {
+    $ollamaParallel = [Environment]::GetEnvironmentVariable("OLLAMA_NUM_PARALLEL", "User")
+}
+if (-not $ollamaParallel) { $ollamaParallel = "2" }
 
 Set-Location $Root
 
@@ -16,11 +30,13 @@ if (-not (Test-Path $Python)) {
 # --- Auto-Configure Ollama Environment Variables ---
 $flashAttn = [Environment]::GetEnvironmentVariable("OLLAMA_FLASH_ATTENTION", "User")
 $kvCache = [Environment]::GetEnvironmentVariable("OLLAMA_KV_CACHE_TYPE", "User")
+$currentParallel = [Environment]::GetEnvironmentVariable("OLLAMA_NUM_PARALLEL", "User")
 
-if ($flashAttn -ne "1" -or $kvCache -ne "q8_0") {
-    Write-Host "Configuring Ollama environment variables (OLLAMA_FLASH_ATTENTION=1, OLLAMA_KV_CACHE_TYPE=f16)..." -ForegroundColor Yellow
+if ($flashAttn -ne "1" -or $kvCache -ne "q8_0" -or $currentParallel -ne $ollamaParallel) {
+    Write-Host "Configuring Ollama environment variables (parallel=$ollamaParallel, flash attention, q8 KV cache)..." -ForegroundColor Yellow
     [Environment]::SetEnvironmentVariable("OLLAMA_FLASH_ATTENTION", "1", "User")
     [Environment]::SetEnvironmentVariable("OLLAMA_KV_CACHE_TYPE", "q8_0", "User")
+    [Environment]::SetEnvironmentVariable("OLLAMA_NUM_PARALLEL", $ollamaParallel, "User")
     
     Write-Host "Restarting Ollama background service to apply changes..." -ForegroundColor Yellow
     Stop-Process -Name "ollama app", "ollama" -Force -ErrorAction SilentlyContinue

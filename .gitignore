@@ -229,6 +229,7 @@ open-db/
 
 # test
 tests/reports/*.md
+!tests/reports/report_restful_chat_api.md
 
 
 # local planing with ai
@@ -240,3 +241,6 @@ firebase-adminsdk.json
 # get token
 .postman_token.txt
 get_token.py
+
+# ragas
+ragas_runs

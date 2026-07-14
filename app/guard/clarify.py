@@ -1,7 +1,7 @@
 # ── Thêm vào đầu file, sau các import ──────────────────────
 import threading
 from app.core.llm_chains import get_emergency_chain
-from app.core.health import reset_ollama_model
+from config.config import Config
 from app.memory.memory_store import get_trimmed_history
 from langchain_core.runnables import RunnableSequence
 from collections import OrderedDict
@@ -33,8 +33,8 @@ class LRUCache(OrderedDict):
 _session_context_cache = LRUCache(100)
 
 
-def clear_session_context(session_id: str) -> None:
-    _session_context_cache.pop(session_id, None)
+def clear_session_context(user_uid: str, session_id: str) -> None:
+    _session_context_cache.pop((user_uid, session_id), None)
 
 _REJECTION_PATTERNS = [
     "không cần", "cứ tìm", "cứ đưa", "thôi được",
@@ -217,11 +217,10 @@ async def chain_invoke_async(chain, context, format_hint, user_message_fixed, ch
                         "user_message": user_message_fixed,
                         "chat_history": chat_history,
                     }),
-                    timeout=45.0
+                    timeout=Config.OLLAMA_REQUEST_TIMEOUT
                 )
             except asyncio.TimeoutError:
                 print(f"🚨 [OUTPUT-GUARD] Ollama server bị treo (Timeout) ở lần thử {attempt+1}!")
-                await reset_ollama_model()
                 reply = _format_context_directly(context, parsed_intent.intent)
                 break
             except Exception as e:

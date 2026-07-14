@@ -95,7 +95,7 @@ async def handle_chat(user_message: str, knowledge_base,
 
         # 4. Khôi phục context khi user từ chối làm rõ và chuẩn hóa category
         if _is_clarification_rejection(user_message_fixed):
-            cached = _session_context_cache.get(session_id)
+            cached = _session_context_cache.get((user_uid, session_id))
             if cached:
                 print(f"♻️ [REJECTION-FALLBACK] Dùng lại context từ intent: {cached['intent']}")
                 response = await cached["chain"].ainvoke({
@@ -256,7 +256,7 @@ async def handle_chat(user_message: str, knowledge_base,
             format_hint = f"Câu hỏi gốc: '{user_message}'"
 
         if context and len(context) > 50 and chain is not None:
-            _session_context_cache[session_id] = {
+            _session_context_cache[(user_uid, session_id)] = {
                 "context":     context,
                 "format_hint": format_hint,
                 "chain":       chain,

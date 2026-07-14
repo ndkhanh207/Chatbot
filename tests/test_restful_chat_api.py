@@ -42,7 +42,7 @@ def _update_md_report():
 
     md_content = f"""# 🚀 Báo Cáo Kiểm Thử Tích Hợp RESTful Chat API (Có bảo mật Firebase Auth)
 
-Kiểm thử toàn diện các tình huống thực tế (Thành công 201, Lỗi 400 Validation, Lỗi 500 System, Lỗi 504 Timeout, Delete Session) cho hệ thống AI Chatbot, có áp dụng Mock Firebase JWT.
+Kiểm thử REST API, Firebase Auth, validation, timeout, session lock, hàng đợi và giới hạn hai model request chạy song song.
 
 ## 📊 Thống kê chung
 - **Tổng số Test Cases:** {total}
@@ -66,6 +66,15 @@ Kiểm thử toàn diện các tình huống thực tế (Thành công 201, Lỗ
 def setup_module(module):
     _test_results.clear()
     _update_md_report()
+
+
+@pytest.fixture(autouse=True)
+def restore_chat_concurrency_state():
+    original_slots = chat_services._MODEL_REQUEST_SLOTS
+    yield
+    chat_services._MODEL_REQUEST_SLOTS = original_slots
+    chat_services.PROCESSING_SESSIONS.clear()
+
 
 def test_empty_message_validation():
     """Tình huống 1: Người dùng gửi tin nhắn rỗng -> Kỳ vọng lỗi 400 EMPTY_MESSAGE."""
@@ -216,11 +225,11 @@ def test_internal_server_error_500():
     _update_md_report()
     assert passed, f"Lỗi test_internal_server_error_500: {err}"
 
-def test_busy_session_returns_429():
-    """Second request while the first one is still running should fail fast."""
+def test_busy_sessions_queue_without_model_overlap():
+    """Different sessions wait; duplicate requests for one session still fail fast."""
     async def run_case():
         chat_services.PROCESSING_SESSIONS.clear()
-        chat_services._ACTIVE_MODEL_REQUEST = None
+        chat_services._MODEL_REQUEST_SLOTS = asyncio.Semaphore(1)
 
         fake_request = SimpleNamespace(
             app=SimpleNamespace(
@@ -234,31 +243,50 @@ def test_busy_session_returns_429():
         payload = ChatRequest(user_message="build pc 30 triệu chơi game", session_id="busy_session")
         other_payload = ChatRequest(user_message="rtx 4080 giá bao nhiêu", session_id="other_busy_session")
 
+        first_started = asyncio.Event()
+        release_first = asyncio.Event()
+        active_calls = 0
+        max_active_calls = 0
+        call_order = []
+
         async def slow_handle_chat(*args, **kwargs):
-            await asyncio.sleep(0.05)
-            return {"chatbot_reply": "ok"}
+            nonlocal active_calls, max_active_calls
+            session_id = kwargs["session_id"]
+            active_calls += 1
+            max_active_calls = max(max_active_calls, active_calls)
+            call_order.append(session_id)
+            try:
+                if session_id == "busy_session":
+                    first_started.set()
+                    await release_first.wait()
+                return {"chatbot_reply": session_id}
+            finally:
+                active_calls -= 1
 
         with patch("app.api.api_handler.chat_services.handle_chat", side_effect=slow_handle_chat):
             first = asyncio.create_task(process_chat_message(fake_request, payload, "test_user"))
-            await asyncio.sleep(0.01)
+            await asyncio.wait_for(first_started.wait(), timeout=1)
             second = await process_chat_message(fake_request, payload, "test_user")
-            third = await process_chat_message(fake_request, other_payload, "test_user")
-            first_result = await first
+            third = asyncio.create_task(process_chat_message(fake_request, other_payload, "test_user"))
+            await asyncio.sleep(0)
+            queued_while_busy = not third.done()
+            release_first.set()
+            first_result, third_result = await asyncio.gather(first, third)
 
         chat_services.PROCESSING_SESSIONS.clear()
-        chat_services._ACTIVE_MODEL_REQUEST = None
-        return first_result, second, third
+        return first_result, second, third_result, queued_while_busy, max_active_calls, call_order
 
-    first_result, second, third = asyncio.run(run_case())
+    first_result, second, third, queued_while_busy, max_active_calls, call_order = asyncio.run(run_case())
     second_body = json.loads(second.body.decode("utf-8"))
-    third_body = json.loads(third.body.decode("utf-8"))
 
     passed = (
-        first_result == {"chatbot_reply": "ok"}
+        first_result == {"chatbot_reply": "busy_session"}
         and second.status_code == 429
         and second_body.get("code") == "SESSION_LOCKED"
-        and third.status_code == 429
-        and third_body.get("code") == "MODEL_BUSY"
+        and third == {"chatbot_reply": "other_busy_session"}
+        and queued_while_busy
+        and max_active_calls == 1
+        and call_order == ["busy_session", "other_busy_session"]
     )
     _test_results.append({
         "name": "test_busy_session_returns_429",
@@ -266,12 +294,248 @@ def test_busy_session_returns_429():
         "input": "2 x POST /chat same session",
         "expected_status": 429,
         "actual_status": second.status_code,
-        "response_body": json.dumps({"same_session": second_body, "other_session": third_body}, ensure_ascii=False),
+        "response_body": json.dumps({"same_session": second_body, "other_session": third}, ensure_ascii=False),
         "passed": passed,
-        "error": "None" if passed else f"Unexpected response: {second_body} / {third_body}",
+        "error": "None" if passed else f"Unexpected response: {second_body} / {third}",
     })
     _update_md_report()
-    assert passed, f"Lỗi test_busy_session_returns_429: {second_body} / {third_body}"
+    assert passed, f"Queue failed: {second_body} / {third} / {call_order}"
+
+
+def test_model_allows_two_parallel_requests_and_queues_third():
+    async def run_case():
+        chat_services.PROCESSING_SESSIONS.clear()
+        chat_services._MODEL_REQUEST_SLOTS = asyncio.Semaphore(chat_services.Config.MAX_PARALLEL_REQUESTS)
+        fake_request = SimpleNamespace(
+            app=SimpleNamespace(
+                state=SimpleNamespace(knowledge_base=pd.DataFrame({"name": ["mock"]}), vector_store=None, build_data=None)
+            )
+        )
+        two_started = asyncio.Event()
+        release_requests = asyncio.Event()
+        active_calls = 0
+        max_active_calls = 0
+
+        async def blocking_handle_chat(*args, **kwargs):
+            nonlocal active_calls, max_active_calls
+            active_calls += 1
+            max_active_calls = max(max_active_calls, active_calls)
+            if active_calls == 2:
+                two_started.set()
+            try:
+                await release_requests.wait()
+                return {"chatbot_reply": kwargs["session_id"]}
+            finally:
+                active_calls -= 1
+
+        payloads = [
+            ChatRequest(user_message=f"request {index}", session_id=f"parallel_{index}")
+            for index in range(3)
+        ]
+        with patch("app.api.api_handler.chat_services.handle_chat", side_effect=blocking_handle_chat):
+            first = asyncio.create_task(process_chat_message(fake_request, payloads[0], "test_user"))
+            second = asyncio.create_task(process_chat_message(fake_request, payloads[1], "test_user"))
+            await asyncio.wait_for(two_started.wait(), timeout=1)
+            third = asyncio.create_task(process_chat_message(fake_request, payloads[2], "test_user"))
+            await asyncio.sleep(0)
+            third_queued = not third.done()
+            release_requests.set()
+            results = await asyncio.gather(first, second, third)
+
+        chat_services.PROCESSING_SESSIONS.clear()
+        return results, third_queued, max_active_calls
+
+    results, third_queued, max_active_calls = asyncio.run(run_case())
+    replies = [result["chatbot_reply"] for result in results]
+    passed = (
+        chat_services.Config.MAX_PARALLEL_REQUESTS == 2
+        and replies == ["parallel_0", "parallel_1", "parallel_2"]
+        and third_queued
+        and max_active_calls == 2
+    )
+    _test_results.append({
+        "name": "test_model_allows_two_parallel_requests_and_queues_third",
+        "description": "Hai request chạy song song, request thứ ba chờ slot",
+        "input": "3 sessions / 2 model slots",
+        "expected_status": "max_active=2",
+        "actual_status": f"max_active={max_active_calls}",
+        "response_body": json.dumps({"replies": replies, "third_queued": third_queued}),
+        "passed": passed,
+        "error": "None" if passed else f"replies={replies}, queued={third_queued}",
+    })
+    _update_md_report()
+    assert passed
+
+
+@pytest.mark.parametrize(
+    ("failure", "expected_status"),
+    [(asyncio.TimeoutError(), 504), (RuntimeError("boom"), 500)],
+)
+def test_model_queue_releases_after_failure(failure, expected_status):
+    async def run_case():
+        chat_services.PROCESSING_SESSIONS.clear()
+        chat_services._MODEL_REQUEST_SLOTS = asyncio.Semaphore(1)
+        fake_request = SimpleNamespace(
+            app=SimpleNamespace(
+                state=SimpleNamespace(knowledge_base=pd.DataFrame({"name": ["mock"]}), vector_store=None, build_data=None)
+            )
+        )
+        first_started = asyncio.Event()
+        release_first = asyncio.Event()
+        call_count = 0
+
+        async def failing_then_succeeding_handle_chat(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                first_started.set()
+                await release_first.wait()
+                raise failure
+            return {"chatbot_reply": "recovered"}
+
+        first_payload = ChatRequest(user_message="first", session_id="failure_session")
+        next_payload = ChatRequest(user_message="next", session_id="next_session")
+        with patch(
+            "app.api.api_handler.chat_services.handle_chat",
+            side_effect=failing_then_succeeding_handle_chat,
+        ):
+            first = asyncio.create_task(process_chat_message(fake_request, first_payload, "test_user"))
+            await asyncio.wait_for(first_started.wait(), timeout=1)
+            next_request = asyncio.create_task(process_chat_message(fake_request, next_payload, "test_user"))
+            await asyncio.sleep(0)
+            queued_while_busy = not next_request.done()
+            release_first.set()
+            first_result, next_result = await asyncio.gather(first, next_request)
+
+        chat_services.PROCESSING_SESSIONS.clear()
+        return first_result, next_result, queued_while_busy
+
+    first_result, next_result, queued_while_busy = asyncio.run(run_case())
+    passed = (
+        first_result.status_code == expected_status
+        and next_result == {"chatbot_reply": "recovered"}
+        and queued_while_busy
+    )
+    failure_name = type(failure).__name__
+    _test_results.append({
+        "name": f"test_model_queue_releases_after_{failure_name}",
+        "description": "Slot được nhả sau timeout/lỗi để request tiếp theo chạy",
+        "input": failure_name,
+        "expected_status": f"{expected_status}, then success",
+        "actual_status": f"{first_result.status_code}, then success",
+        "response_body": json.dumps(next_result),
+        "passed": passed,
+        "error": "None" if passed else f"next={next_result}, queued={queued_while_busy}",
+    })
+    _update_md_report()
+    assert passed
+
+
+def test_processing_timeout_cancels_only_stuck_request():
+    async def run_case():
+        chat_services._MODEL_REQUEST_SLOTS = asyncio.Semaphore(2)
+        fake_request = SimpleNamespace(
+            app=SimpleNamespace(
+                state=SimpleNamespace(knowledge_base=pd.DataFrame({"name": ["mock"]}), vector_store=None, build_data=None)
+            )
+        )
+        stuck_cancelled = asyncio.Event()
+
+        async def one_stuck_one_normal(*args, **kwargs):
+            if kwargs["session_id"] == "stuck_session":
+                try:
+                    await asyncio.Event().wait()
+                except asyncio.CancelledError:
+                    stuck_cancelled.set()
+                    raise
+            await asyncio.sleep(0.001)
+            return {"chatbot_reply": "normal completed"}
+
+        stuck_payload = ChatRequest(user_message="stuck", session_id="stuck_session")
+        normal_payload = ChatRequest(user_message="normal", session_id="normal_session")
+        with (
+            patch("app.api.api_handler.chat_services.handle_chat", side_effect=one_stuck_one_normal),
+            patch("app.api.api_handler.chat_services.Config.MODEL_PROCESSING_TIMEOUT_SECONDS", 0.02),
+        ):
+            stuck, normal = await asyncio.gather(
+                process_chat_message(fake_request, stuck_payload, "test_user"),
+                process_chat_message(fake_request, normal_payload, "test_user"),
+            )
+
+        return stuck, normal, stuck_cancelled.is_set()
+
+    stuck, normal, stuck_cancelled = asyncio.run(run_case())
+    passed = (
+        stuck.status_code == 504
+        and normal == {"chatbot_reply": "normal completed"}
+        and stuck_cancelled
+    )
+    _test_results.append({
+        "name": "test_processing_timeout_cancels_only_stuck_request",
+        "description": "Timeout chỉ hủy request treo, request song song vẫn hoàn tất",
+        "input": "1 stuck + 1 normal request",
+        "expected_status": "504 + success",
+        "actual_status": f"{stuck.status_code} + success",
+        "response_body": json.dumps(normal),
+        "passed": passed,
+        "error": "None" if passed else f"normal={normal}, cancelled={stuck_cancelled}",
+    })
+    _update_md_report()
+    assert passed
+
+
+def test_model_queue_returns_429_after_5_seconds():
+    async def run_case():
+        chat_services.PROCESSING_SESSIONS.clear()
+        chat_services._MODEL_REQUEST_SLOTS = asyncio.Semaphore(1)
+        fake_request = SimpleNamespace(
+            app=SimpleNamespace(
+                state=SimpleNamespace(knowledge_base=pd.DataFrame({"name": ["mock"]}), vector_store=None, build_data=None)
+            )
+        )
+        first_started = asyncio.Event()
+        release_first = asyncio.Event()
+
+        async def slow_handle_chat(*args, **kwargs):
+            first_started.set()
+            await release_first.wait()
+            return {"chatbot_reply": "ok"}
+
+        first_payload = ChatRequest(user_message="first", session_id="active_session")
+        waiting_payload = ChatRequest(user_message="waiting", session_id="waiting_session")
+        with (
+            patch("app.api.api_handler.chat_services.handle_chat", side_effect=slow_handle_chat),
+            patch("app.api.api_handler.chat_services.Config.MODEL_QUEUE_TIMEOUT_SECONDS", 0.01),
+        ):
+            first = asyncio.create_task(process_chat_message(fake_request, first_payload, "test_user"))
+            await asyncio.wait_for(first_started.wait(), timeout=1)
+            timed_out = await process_chat_message(fake_request, waiting_payload, "test_user")
+            waiting_session_released = "test_user:waiting_session" not in chat_services.PROCESSING_SESSIONS
+            release_first.set()
+            await first
+
+        chat_services.PROCESSING_SESSIONS.clear()
+        return timed_out, waiting_session_released
+
+    response, waiting_session_released = asyncio.run(run_case())
+    body = json.loads(response.body.decode("utf-8"))
+    passed = (
+        response.status_code == 429
+        and body["code"] == "MODEL_QUEUE_TIMEOUT"
+        and waiting_session_released
+    )
+    _test_results.append({
+        "name": "test_model_queue_returns_429_after_5_seconds",
+        "description": "Queue quá 5 giây trả 429 và nhả session slot",
+        "input": "model busy beyond queue timeout",
+        "expected_status": 429,
+        "actual_status": response.status_code,
+        "response_body": json.dumps(body, ensure_ascii=False),
+        "passed": passed,
+        "error": "None" if passed else f"body={body}, released={waiting_session_released}",
+    })
+    _update_md_report()
+    assert passed
 
 def test_delete_session_history():
     """Tình huống 6: Xóa lịch sử phiên hội thoại -> Kỳ vọng mã 200 OK."""

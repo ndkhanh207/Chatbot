@@ -142,7 +142,7 @@ def delete_history(session_id: str, current_user: dict = Depends(verify_firebase
     """Xóa lịch sử hội thoại của một user."""
     user_uid = current_user["uid"]
     clear_session(user_uid, session_id)
-    clear_session_context(session_id)
+    clear_session_context(user_uid, session_id)
     return {"status": "ok", "message": f"Đã xóa lịch sử session '{session_id}'"}
 
 
