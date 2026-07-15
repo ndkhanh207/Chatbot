@@ -1,7 +1,6 @@
 from typing import Optional, List
 from pydantic import BaseModel, Field
-from langchain_core.messages import BaseMessage
-from app.memory.memory_store import save_message, get_latest_metadata, get_trimmed_history
+from app.memory.context_manager import ConversationContext
 
 class PcBuildContext(BaseModel):
     """Deep module state for PC Builder multi-turn context."""
@@ -25,27 +24,14 @@ class PcBuildContext(BaseModel):
 class ConversationMemory:
     """Deep Module adapter managing session state over the database."""
     def __init__(self, user_uid: str, session_id: str):
-        self.user_uid = user_uid
-        self.session_id = session_id
+        self.context = ConversationContext(user_uid, session_id)
 
     def load_context(self) -> PcBuildContext:
-        metadata = get_latest_metadata(self.user_uid, self.session_id)
-        if metadata:
-            # Chỉ nạp những trường hợp lệ
-            try:
-                return PcBuildContext.model_validate(metadata)
-            except Exception as e:
-                print(f"⚠️ [CONTEXT ERROR] Metadata không hợp lệ: {e}. Tạo context trống.")
-        return PcBuildContext()
+        return self.context.load_snapshot(PcBuildContext)
 
     def commit_turn(self, user_msg: str, ai_msg: str, ctx: PcBuildContext) -> None:
-        save_message(
-            self.user_uid, 
-            self.session_id, 
+        self.context.commit(
             user_msg, 
             ai_msg, 
-            metadata=ctx.model_dump(exclude_none=True)
+            ctx.model_dump(exclude_none=True),
         )
-
-    def get_trimmed_history(self) -> List[BaseMessage]:
-        return get_trimmed_history(self.user_uid, self.session_id)

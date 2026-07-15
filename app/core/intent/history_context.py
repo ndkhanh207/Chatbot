@@ -1,5 +1,7 @@
 import re
 
+from app.memory.memory_store import normalize_context_metadata
+
 MAX_HISTORY_MSGS = 4
 MAX_HISTORY_CHAR_LIMIT = 200
 
@@ -28,7 +30,7 @@ def _clean(value):
 
 
 def _intent_state_from_meta(meta: dict) -> dict:
-    nested = meta.get("intent_state") or {}
+    metadata = normalize_context_metadata(meta)
     state = {}
     mapping = {
         "cpu": ["cpu", "last_suggested_cpu", "user_cpu"],
@@ -45,12 +47,12 @@ def _intent_state_from_meta(meta: dict) -> dict:
 
     for out_key, keys in mapping.items():
         for key in keys:
-            value = _clean(nested.get(key)) or _clean(meta.get(key))
+            value = _clean(metadata.get(key))
             if value:
                 state[out_key] = value
                 break
-    if meta.get("budget"):
-        state["budget"] = meta["budget"]
+    if metadata.get("budget"):
+        state["budget"] = metadata["budget"]
     return state
 
 
@@ -59,37 +61,38 @@ def extract_structured_state(chat_history: list | None) -> dict:
     if not chat_history:
         return {}
 
-    state = {}
-
-    # 1. Newest user entities win.
-    for msg in reversed(chat_history[-6:]):
-        if getattr(msg, "type", "") != "human":
-            continue
-        content = msg.content
-        cpu_m = CPU_RE.search(content)
-        gpu_m = GPU_RE.search(content)
-        main_m = MAIN_RE.search(content)
-        cat_m = CAT_RE.search(content)
-        if cpu_m:
-            state.setdefault("cpu", cpu_m.group(0).strip())
-        if gpu_m:
-            state.setdefault("gpu", gpu_m.group(0).strip())
-        if main_m:
-            state.setdefault("mainboard", main_m.group(1).strip())
-        if cat_m:
-            state.setdefault("category", cat_m.group(1).lower().strip())
-        if "last_intent" not in state:
-            for pattern, intent_name in INTENT_PATTERNS:
-                if pattern.search(content):
-                    state["last_intent"] = intent_name
-                    break
-
-    # 2. Saved machine state fills gaps.
+    # The newest machine snapshot is canonical. Do not merge independent
+    # entities from unrelated older turns into a synthetic combo.
     for msg in reversed(chat_history[-6:]):
         if getattr(msg, "type", "") != "ai":
             continue
-        for key, value in _intent_state_from_meta(getattr(msg, "additional_kwargs", {}) or {}).items():
-            state.setdefault(key, value)
+        state = _intent_state_from_meta(getattr(msg, "additional_kwargs", {}) or {})
+        if state:
+            return state
+
+    # Legacy fallback for rows without metadata: inspect only the newest user turn.
+    latest_user = next(
+        (msg for msg in reversed(chat_history) if getattr(msg, "type", "") == "human"),
+        None,
+    )
+    if latest_user is None:
+        return {}
+
+    content = latest_user.content
+    state = {}
+    for key, match in (
+        ("cpu", CPU_RE.search(content)),
+        ("gpu", GPU_RE.search(content)),
+        ("mainboard", MAIN_RE.search(content)),
+        ("category", CAT_RE.search(content)),
+    ):
+        if match:
+            value = match.group(1 if key in {"mainboard", "category"} else 0).strip()
+            state[key] = value.lower() if key == "category" else value
+    for pattern, intent_name in INTENT_PATTERNS:
+        if pattern.search(content):
+            state["last_intent"] = intent_name
+            break
 
     return state
 

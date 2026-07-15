@@ -1,11 +1,12 @@
 from fastapi import APIRouter, Request
 from pydantic import BaseModel
+from typing import Literal
 from app.core.health import check_ollama_status, check_mysql_status
 
 router = APIRouter()
 
 class HealthResponse(BaseModel):
-    status: str
+    status: Literal["ok", "degraded"]
 
 from app.guard.security import limiter
 

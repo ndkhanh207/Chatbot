@@ -72,6 +72,7 @@ def _get_session():
 MAX_CHARS = 2000
 MAX_AI_SAVE_LEN = 200  # Rút gọn AI reply trước khi lưu, chống ngộ độc history
 HISTORY_FETCH_LIMIT = 100
+METADATA_FETCH_LIMIT = 20
 
 
 # ──────────────────────────────────────────────
@@ -79,6 +80,21 @@ HISTORY_FETCH_LIMIT = 100
 # ──────────────────────────────────────────────
 def _count_chars(messages: list[BaseMessage]) -> int:
     return sum(len(str(m.content)) for m in messages)
+
+
+def normalize_context_metadata(metadata: dict | None) -> dict:
+    """Return one state shape for legacy, intent, and versioned metadata."""
+    if not isinstance(metadata, dict):
+        return {}
+
+    state = metadata.get("state", metadata)
+    if not isinstance(state, dict):
+        return {}
+
+    nested = state.get("intent_state")
+    if isinstance(nested, dict):
+        return {**{k: v for k, v in state.items() if k != "intent_state"}, **nested}
+    return state
 
 
 def _load_messages(user_uid: str, session_id: str) -> list[BaseMessage]:
@@ -96,13 +112,12 @@ def _load_messages(user_uid: str, session_id: str) -> list[BaseMessage]:
         )
         messages = []
         for row in reversed(rows):
-            kwargs = row.metadata_json if row.metadata_json else {}
+            kwargs = normalize_context_metadata(row.metadata_json)
             # ponytail: filter out noise from LLM context window to save tokens and
             # prevent hallucination, but keep them in DB for UI continuity.
             
             # [FIXED]: intent nằm bên trong intent_state do hàm build_intent_metadata tạo ra!
-            intent_state = kwargs.get("intent_state", {})
-            if intent_state.get("intent") == "none":
+            if kwargs.get("intent") == "none":
                 continue
                 
             if row.role == "human":
@@ -118,7 +133,7 @@ def _load_messages(user_uid: str, session_id: str) -> list[BaseMessage]:
 
 
 # ──────────────────────────────────────────────
-# Public API — giữ nguyên interface cũ
+# Storage adapter used by ConversationContext
 # ──────────────────────────────────────────────
 def get_trimmed_history(user_uid: str, session_id: str) -> list[BaseMessage]:
     """Trả về lịch sử đã trim theo MAX_CHARS."""
@@ -137,29 +152,28 @@ def get_trimmed_history(user_uid: str, session_id: str) -> list[BaseMessage]:
     )
 
 
-def get_latest_metadata(user_uid: str, session_id: str) -> dict | None:
-    """Trả về metadata_json của tin nhắn AI gần nhất trong session."""
+def get_recent_metadata(user_uid: str, session_id: str) -> list[dict]:
+    """Return newest AI context states for snapshot recovery."""
     db = _get_session()
     if db is None:
-        return None
+        return []
     try:
-        row = (
-            db.query(ChatMessage)
+        rows = (
+            db.query(ChatMessage.metadata_json)
             .filter(
-                ChatMessage.user_uid == user_uid, 
+                ChatMessage.user_uid == user_uid,
                 ChatMessage.session_id == session_id,
                 ChatMessage.role == "ai",
-                ChatMessage.metadata_json != None
+                ChatMessage.metadata_json != None,
             )
             .order_by(ChatMessage.id.desc())
-            .first()
+            .limit(METADATA_FETCH_LIMIT)
+            .all()
         )
-        if row and row.metadata_json:
-            return row.metadata_json
-        return None
+        return [normalize_context_metadata(row[0]) for row in rows if row[0]]
     except Exception as e:
-        print(f"❌ [MEMORY ERROR] Lỗi khi lấy metadata: {e}")
-        return None
+        print(f"❌ [MEMORY ERROR] Lỗi khi lấy context metadata: {e}")
+        return []
     finally:
         db.close()
 
@@ -200,7 +214,7 @@ def save_message(user_uid: str, session_id: str, user_msg: str, ai_msg: str, met
             session_id=session_id,
             role="human",
             content=user_msg,
-            metadata_json=metadata,
+            metadata_json=None,
         ))
         db.add(ChatMessage(
             user_uid=user_uid,

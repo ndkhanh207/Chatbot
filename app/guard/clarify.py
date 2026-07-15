@@ -1,46 +1,9 @@
-# ── Thêm vào đầu file, sau các import ──────────────────────
-import threading
 from app.core.llm_chains import get_emergency_chain
 from config.config import Config
-from app.memory.memory_store import get_trimmed_history
-from langchain_core.runnables import RunnableSequence
-from collections import OrderedDict
 import asyncio
 import re
 from time import perf_counter
 from app.utils.model_utils import log_ollama_metrics
-
-class LRUCache(OrderedDict):
-    """
-    LRUCache caps memory limit. Keeps 100 newest items. Drops oldest item when full.
-     Stops memory leak from infinite _session_context_cache growth.
-    """
-    def __init__(self, capacity=100):
-        super().__init__()
-        self.capacity = capacity
-
-    def __setitem__(self, key, value):
-        super().__setitem__(key, value)
-        self.move_to_end(key)
-        if len(self) > self.capacity:
-            self.popitem(last=False)
-
-    def __getitem__(self, key):
-        value = super().__getitem__(key)
-        self.move_to_end(key)
-        return value
-
-_session_context_cache = LRUCache(100)
-
-
-def clear_session_context(user_uid: str, session_id: str) -> None:
-    _session_context_cache.pop((user_uid, session_id), None)
-
-_REJECTION_PATTERNS = [
-    "không cần", "cứ tìm", "cứ đưa", "thôi được",
-    "đưa ra đi", "tìm luôn", "kệ đi", "cứ gợi ý",
-    "không có gì thêm", "cứ liệt kê", "đưa luôn"
-]
 
 _ASKING_PATTERNS = [
     "bạn có thể cung cấp",
@@ -103,12 +66,6 @@ def _is_context_valid(context: str) -> bool:
     if "Giá: None" in context or "Giá: 0" in context:
         return False
     return True
-
-def _is_clarification_rejection(text: str) -> bool:
-    """Kiểm tra user có đang từ chối việc đưa thêm thông tin khi bot hỏi lại ."""
-    t = text.lower().strip()
-    return any(p in t for p in _REJECTION_PATTERNS)
-
 
 def _is_asking_clarification(reply: str) -> bool:
     r = reply.lower().strip()

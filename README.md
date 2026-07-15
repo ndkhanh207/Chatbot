@@ -48,6 +48,15 @@ CHAT_MODEL=Vi-Qwen2-1.5B-RAG.Q3_K_L
 VECTOR_DB_DIR=./chroma_db
 PC_STORE_DATA=data/dataset
 
+# Chat concurrency (keep Ollama and API capacity equal)
+MAX_PARALLEL_REQUESTS=2
+OLLAMA_NUM_PARALLEL=2
+MODEL_QUEUE_TIMEOUT_SECONDS=5
+MODEL_PROCESSING_TIMEOUT_SECONDS=90
+
+# Internal evaluation endpoint
+RAGAS_MAGIC_KEY=replace_with_a_long_random_secret
+
 # MySQL Database
 MYSQL_USER=root
 MYSQL_PASSWORD=mat_khau_cua_ban
@@ -81,7 +90,7 @@ ngrok http 8000
 | Endpoint | Method | Mô tả |
 | :--- | :---: | :--- |
 | `/chat` | `POST` | Gửi câu hỏi tới AI Chatbot, phân tích ý định và tra cứu RAG. Yêu cầu token Firebase. |
-| `/chat/eval` | `POST` | Endpoint cô lập phục vụ đánh giá Ragas. Yêu cầu magic key. |
+| `/chat/eval` | `POST` | Endpoint cô lập phục vụ đánh giá Ragas. Yêu cầu header `X-Eval-Key`. |
 | `/sessions/{id}` | `DELETE` | Xóa sạch bộ nhớ đệm và lịch sử phiên hội thoại. |
 | `/health` | `GET` | Kiểm tra trạng thái dịch vụ. |
 | `/test-knowledge-base` | `GET` | Tra cứu trực tiếp kho tri thức linh kiện bằng Hybrid Search. |
@@ -113,9 +122,20 @@ Dự án được chia thành các lớp trách nhiệm chính:
 - **`app/guard/`**: Kiểm tra đầu vào, định dạng đầu ra và giới hạn tần suất gọi API.
 - **`data/` & `chroma_db/`**: Chứa dữ liệu file CSV linh kiện và Vector database.
 
+### Context management
+
+Mọi luồng chat dùng `ConversationContext` tại `app/memory/context_manager.py` làm interface duy nhất:
+
+- `history()`: lấy cửa sổ hội thoại đã giới hạn kích thước.
+- `load_snapshot(Model)`: lấy structured state đúng loại, bỏ qua metadata của luồng khác.
+- `commit(...)`: lưu turn với metadata versioned theo một schema thống nhất.
+- `clear()`: xóa toàn bộ context của đúng `user_uid + session_id`.
+
+Full transcript chỉ phục vụ lưu trữ/UI. Prompt intent chỉ nhận structured snapshot và tối đa bốn user message gần nhất; RAG context chỉ tồn tại trong request hiện tại.
+
 ## Hệ thống Kiểm thử (Testing Ecosystem)
 
-Hệ thống được trang bị bộ kiểm thử tích hợp chuyên sâu, giả lập các tình huống thực tế và các lỗi dị thường (như Timeout 504, Lỗi 500, lỗi Validation 400).
+Hệ thống được trang bị bộ kiểm thử tích hợp chuyên sâu, giả lập các tình huống thực tế và các lỗi dị thường (như Timeout 504, Lỗi 500, lỗi Validation 422).
 
 ```bash
 # Chạy toàn bộ Master Test Suite

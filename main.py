@@ -2,7 +2,7 @@
 
 from pathlib import Path
 import pandas as pd
-from fastapi import FastAPI, HTTPException, status, Request
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from config.config import EMBEDDING_MODEL as EMBEDDING_MODEL_NAME, EMBEDDING_DEVICE, Config
@@ -13,12 +13,13 @@ from app.api.chat import router as chat_router
 from app.api.health import router as health_router
 from app.guard.security import limiter
 
-from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from app.api.model.chat_models import ErrorResponse
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
@@ -150,27 +151,71 @@ app = FastAPI(
     },
 )
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+
+@app.exception_handler(RateLimitExceeded)
+async def rate_limit_exception_handler(request: Request, exc: RateLimitExceeded):
+    return JSONResponse(
+        status_code=429,
+        content=ErrorResponse(
+            error="Too Many Requests",
+            message="Rate limit exceeded. Please retry later.",
+            code="RATE_LIMIT_EXCEEDED",
+        ).model_dump(),
+    )
+
+
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+    if isinstance(exc.detail, dict) and {"error", "message", "code"} <= exc.detail.keys():
+        content = ErrorResponse.model_validate(exc.detail).model_dump()
+    else:
+        defaults = {
+            401: ("Authentication Error", "Authentication is required.", "AUTH_REQUIRED"),
+            403: ("Forbidden", "Access is forbidden.", "FORBIDDEN"),
+            404: ("Not Found", "Resource not found.", "NOT_FOUND"),
+            405: ("Method Not Allowed", "HTTP method is not allowed.", "METHOD_NOT_ALLOWED"),
+        }
+        error, message, code = defaults.get(
+            exc.status_code,
+            ("HTTP Error", str(exc.detail), f"HTTP_{exc.status_code}"),
+        )
+        content = ErrorResponse(error=error, message=message, code=code).model_dump()
+    return JSONResponse(status_code=exc.status_code, content=content, headers=exc.headers)
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     errors = exc.errors()
-    for error in errors:
-        loc = error.get("loc", [])
-        if "session_id" in loc:
-            return JSONResponse(
-                status_code=400,
-                content={
-                    "error": "Validation Error",
-                    "message": "Lỗi hệ thống. Vui lòng xóa phiên chat và thử lại!",
-                    "code": "INVALID_SESSION_ID"
-                }
-            )
-    
-    # Nếu không phải lỗi session_id, trả về 422 mặc định của FastAPI
+    locations = {part for error in errors for part in error.get("loc", [])}
+    if "session_id" in locations:
+        message = "Session ID must use 1-64 letters, numbers, underscores, or hyphens."
+        code = "INVALID_SESSION_ID"
+    elif "user_message" in locations:
+        message = "Message must contain 1-500 characters."
+        code = "INVALID_MESSAGE"
+    else:
+        message = "Request data is invalid."
+        code = "VALIDATION_ERROR"
     return JSONResponse(
         status_code=422,
-        content={"detail": errors}
+        content=ErrorResponse(
+            error="Validation Error",
+            message=message,
+            code=code,
+        ).model_dump(),
+    )
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    print(f"❌ [UNHANDLED API ERROR] {exc}")
+    return JSONResponse(
+        status_code=500,
+        content=ErrorResponse(
+            error="Internal Server Error",
+            message="An unexpected server error occurred.",
+            code="INTERNAL_SERVER_ERROR",
+        ).model_dump(),
     )
 
 app.add_middleware(SecurityHeadersMiddleware)

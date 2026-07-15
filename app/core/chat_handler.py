@@ -7,11 +7,11 @@ import re
 import json
 import traceback
 from app.guard.response_formatter import word_filter, build_range_summary
-from app.guard.clarify import chain_invoke_async, _format_context_directly, _session_context_cache, _is_clarification_rejection
+from app.guard.clarify import chain_invoke_async, _format_context_directly
 from app.core.intent.master_intent import parse_master_intent
 from app.core.intent.history_context import build_intent_metadata
 from app.core.query_parser import normalize_text, normalize_user_message, get_category, build_recent_user_focus
-from app.memory.memory_store import get_trimmed_history, save_message
+from app.memory.context_manager import ConversationContext
 from app.core.search_engine import hybrid_search
 
 # Import các container xử lý context của từng line ý định
@@ -43,6 +43,8 @@ async def handle_chat(user_message: str, knowledge_base,
                 session_id: str = "default",
                 build_df=None) -> dict:
 
+    memory = ConversationContext(user_uid, session_id)
+
     if knowledge_base is None:
         return {"chatbot_reply": "HỆ THỐNG CHƯA SẴN SÀNG!"}
 
@@ -50,19 +52,19 @@ async def handle_chat(user_message: str, knowledge_base,
     from app.guard.input_guard import run_input_guards
     error_reply, user_message = run_input_guards(user_message, session_id)
     if error_reply:
-        save_message(user_uid, session_id, user_message, error_reply["chatbot_reply"], metadata={"intent": "none"})
+        memory.commit(user_message, error_reply["chatbot_reply"], {"intent": "none"})
         return error_reply
 
     msg_clean = user_message.strip().lower()
 
     # Lấy lịch sử chat sớm để dùng cho các logic kiểm tra ngữ cảnh
-    chat_history = get_trimmed_history(user_uid, session_id)
+    chat_history = memory.history()
 
     # ── FEATURE: Semantic Guards (Giao tiếp cơ bản & Off-topic) ──
     from app.guard.input_guard import check_semantic_guards
     semantic_reply = check_semantic_guards(user_message, chat_history)
     if semantic_reply:
-        save_message(user_uid, session_id, user_message, semantic_reply["chatbot_reply"], metadata={"intent": "none"})
+        memory.commit(user_message, semantic_reply["chatbot_reply"], {"intent": "none"})
         return semantic_reply
 
     try:
@@ -81,7 +83,7 @@ async def handle_chat(user_message: str, knowledge_base,
         q_parts = []
         msg_l_fixed = user_message_fixed.lower()
         for field in [parsed_intent.cpu, parsed_intent.gpu, parsed_intent.mainboard, parsed_intent.target_product]:
-            if field and field.lower() != "none":
+            if field:
                 # Chỉ nối thêm nếu từ khoá này chưa tồn tại trong câu gốc (chống duplicate ngớ ngẩn)
                 if field.lower() not in msg_l_fixed:
                     q_parts.append(field)
@@ -93,27 +95,11 @@ async def handle_chat(user_message: str, knowledge_base,
             
         q_clean = search_query.replace("\n", " ").strip()
 
-        # 4. Khôi phục context khi user từ chối làm rõ và chuẩn hóa category
-        if _is_clarification_rejection(user_message_fixed):
-            cached = _session_context_cache.get((user_uid, session_id))
-            if cached:
-                print(f"♻️ [REJECTION-FALLBACK] Dùng lại context từ intent: {cached['intent']}")
-                response = await cached["chain"].ainvoke({
-                    "context":      cached["context"],
-                    "format_hint":  cached.get("format_hint", ""),
-                    "user_message": user_message_fixed,
-                    "chat_history": chat_history,
-                })
-                reply = response.content
-                clean_reply = word_filter(reply)
-                save_message(user_uid, session_id, user_message_fixed, clean_reply, metadata=build_intent_metadata(parsed_intent))
-                return {"chatbot_reply": clean_reply}
-
-        if parsed_intent.category != "none":
+        if parsed_intent.category:
             category = parsed_intent.category.upper()
 
-        # Fallback: detect category từ target_product khi LLM trả "none"
-        if (not category or category == "NONE") and parsed_intent.target_product != "none":
+        # Fallback: detect category từ target_product khi LLM bỏ trống.
+        if not category and parsed_intent.target_product:
             tp = parsed_intent.target_product.lower()
             if any(k in tp for k in ['i3', 'i5', 'i7', 'i9', 'ryzen', 'core']):
                 category = 'CPU'
@@ -150,12 +136,12 @@ async def handle_chat(user_message: str, knowledge_base,
         # check co combo de review khong, neu khong thi hoi lai
         if parsed_intent.intent in ["specification", "price_check"]:
             has_product = any(
-                value and value.lower() != "none"
+                value
                 for value in [parsed_intent.target_product, parsed_intent.cpu, parsed_intent.gpu, parsed_intent.mainboard]
             )
             if not has_product:
                 reply = "Dạ bạn cho em xin đúng model CPU/GPU/mainboard cần hỏi nhé."
-                save_message(user_uid, session_id, user_message_fixed, reply, metadata=build_intent_metadata(parsed_intent))
+                memory.commit(user_message_fixed, reply, build_intent_metadata(parsed_intent))
                 return {"chatbot_reply": reply}
 
         # 6. One-shot combo review
@@ -255,13 +241,6 @@ async def handle_chat(user_message: str, knowledge_base,
         else:
             format_hint = f"Câu hỏi gốc: '{user_message}'"
 
-        if context and len(context) > 50 and chain is not None:
-            _session_context_cache[(user_uid, session_id)] = {
-                "context":     context,
-                "format_hint": format_hint,
-                "chain":       chain,
-                "intent":      parsed_intent.intent,
-            }
         # 9. Debug Log ra màn hình console để theo dõi luồng đi
         print(f"🔹 2. Từ khóa dùng để Search (q_clean): '{q_clean}'")
         print(f"🔍 [HỆ THỐNG DEBUG MASTER ROUTER] - Session: {session_id}")
@@ -295,7 +274,7 @@ async def handle_chat(user_message: str, knowledge_base,
         else:
             clean_reply = word_filter(response)
         meta = build_intent_metadata(parsed_intent)
-        save_message(user_uid, session_id, user_message_fixed, clean_reply, metadata=meta)
+        memory.commit(user_message_fixed, clean_reply, meta)
         print(f"[HISTORY SAVED] AI reply lưu vào DB ({len(clean_reply)} ký tự gốc)")
             
         return {
@@ -306,8 +285,5 @@ async def handle_chat(user_message: str, knowledge_base,
     except Exception as e:
         traceback.print_exc()
         print(f"❌ [INTERNAL ERROR - chat_handler] Lỗi xử lý LLM (Non-Stream): {str(e)}")
-        return {
-            "chatbot_reply": "Dạ hiện tại hệ thống AI của em đang gặp chút trục trặc hoặc quá tải nên em chưa thể trả lời ngay được. Bạn thông cảm đợi một chút rồi hỏi lại em nhé! 😊",
-            "contexts": []
-        }
+        raise
 

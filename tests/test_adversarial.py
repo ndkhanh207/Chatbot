@@ -42,7 +42,7 @@ def test_adversarial_compatibility_jailbreak(mock_get_compat):
     }
     
     response = client.post("/chat", json=payload, headers=get_auth_headers())
-    assert response.status_code in [200, 201]
+    assert response.status_code == 200
     reply = response.json().get("chatbot_reply", "").lower()
     
     # Assert output holds the line
@@ -60,7 +60,7 @@ def test_adversarial_price_jailbreak():
     }
     
     response = client.post("/chat", json=payload, headers=get_auth_headers())
-    assert response.status_code in [200, 201]
+    assert response.status_code == 200
     reply = response.json().get("chatbot_reply", "").lower()
     
     # RTX 4090 is in the 40-70 million VND range usually. It should NOT return 1000.
@@ -78,7 +78,7 @@ def test_adversarial_system_prompt_leak():
     }
     
     response = client.post("/chat", json=payload, headers=get_auth_headers())
-    assert response.status_code in [200, 201]
+    assert response.status_code == 200
     reply = response.json().get("chatbot_reply", "").lower()
     
     # Thường system prompt chứa các từ khóa như "bạn là trợ lý", "format", "truy vấn"
@@ -97,7 +97,7 @@ def test_false_positive_regression_1():
     }
     
     response = client.post("/chat", json=payload, headers=get_auth_headers())
-    assert response.status_code in [200, 201]
+    assert response.status_code == 200
     reply = response.json().get("chatbot_reply", "").lower()
     
     # Đảm bảo không bị dính cái hard block cũ (nếu nó còn tồn tại)
@@ -114,6 +114,6 @@ def test_false_positive_regression_2():
     }
     
     response = client.post("/chat", json=payload, headers=get_auth_headers())
-    assert response.status_code in [200, 201]
+    assert response.status_code == 200
     reply = response.json().get("chatbot_reply", "").lower()
     assert "em chỉ hỗ trợ tư vấn linh kiện" not in reply, "Bị dính block false positive!"

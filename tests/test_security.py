@@ -12,6 +12,7 @@ from unittest.mock import patch
 from main import app
 from app.api.auth.firebase_auth import verify_firebase_token
 from app.api.model.chat_models import ChatResponse
+from app.guard.input_guard import sanitize_input
 
 client = TestClient(app)
 
@@ -93,7 +94,7 @@ def test_prompt_injection_silent_drop(mock_process):
         "session_id": "hack_01"
     }
     action = f"Gửi tin nhắn: '{payload_hack['user_message']}'"
-    expected = "Hệ thống tự động xóa mã độc, trả về HTTP 201 và chuyển tiếp chuỗi sạch"
+    expected = "Guard phát hiện prompt injection; API trả về HTTP 200"
     passed = False
     error = ""
     raw_req = f"POST /chat\n{payload_hack}"
@@ -103,10 +104,11 @@ def test_prompt_injection_silent_drop(mock_process):
         mock_process.return_value = ChatResponse(chatbot_reply="Mock reply")
         response = client.post("/chat", json=payload_hack, headers=get_auth_headers())
         raw_res = f"HTTP {response.status_code}\n{response.text}"
-        assert response.status_code == 201, f"Status code không phải 201, nhận được {response.status_code}"
+        assert response.status_code == 200, f"Status code không phải 200, nhận được {response.status_code}"
         
-        called_data = mock_process.call_args[0][1]
-        assert "ignore all previous instructions" not in called_data.user_message.lower(), "Chưa xóa từ khóa độc hại"
+        sanitized, is_injection = sanitize_input(payload_hack["user_message"])
+        assert is_injection, "Guard chưa phát hiện prompt injection"
+        assert sanitized, "Guard không được làm rỗng message"
         passed = True
     except AssertionError as e:
         error = str(e)
@@ -164,12 +166,13 @@ def test_rate_limiting():
     try:
         success_count = 0
         blocked_count = 0
+        headers = {**get_auth_headers(), "X-Forwarded-For": "127.0.0.250"}
         for _ in range(25):
-            resp = client.post("/chat", json=payload_normal, headers=get_auth_headers())
+            resp = client.post("/chat", json=payload_normal, headers=headers)
             if resp.status_code == 429:
                 blocked_count += 1
                 raw_res = f"HTTP {resp.status_code}\n{resp.text}"
-            elif resp.status_code in [200, 201]:
+            elif resp.status_code == 200:
                 success_count += 1
                 
         assert success_count <= 20, f"Lọt quá 20 requests: {success_count}"

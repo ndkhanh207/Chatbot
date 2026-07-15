@@ -1,3 +1,7 @@
+import json
+import re
+
+
 _SYSTEM_CLASSIFY = (
     "Bạn là MÁY PHÂN LOẠI Ý ĐỊNH (Intent Classifier) nội bộ, KHÔNG PHẢI CHATBOT GIAO TIẾP VỚI KHÁCH.\n"
     "Nhiệm vụ của bạn là đọc câu hỏi và trả về đúng 1 ý định (intent) duy nhất dựa vào các luật sau.\n"
@@ -125,14 +129,13 @@ _SYSTEM_EXTRACT = (
     "Nhiệm vụ của bạn là trích xuất CÁC THỰC THỂ từ câu hỏi của khách.\n\n"
     "QUY TẮC TRÍCH XUẤT:\n"
     "- Hãy đọc kỹ định nghĩa và mô tả (description) của từng trường dữ liệu được yêu cầu.\n"
-    "- Điền 'none' hoặc 0 nếu không có thông tin.\n"
+    "- Điền null hoặc 0 nếu không có thông tin.\n"
     "CẢNH BÁO TỐI QUAN TRỌNG: \n"
     "1. TRÍCH XUẤT CHÍNH XÁC TỪ KHÓA CỦA KHÁCH. Không tự ý ghép thêm hãng nếu khách không viết.\n"
     "2. CHỈ TRÍCH XUẤT những gì XUẤT HIỆN NGUYÊN VĂN trong câu hỏi của khách. Không thêm thắt, không suy diễn tên sản phẩm.\n"
     "3. Phân loại linh kiện theo từ trong CÂU HIỆN TẠI: main/mainboard/bo mạch chủ -> mainboard; "
     "card/GPU/VGA/RTX/RX -> gpu; CPU/chip/Ryzen/Core i -> cpu. category và trường linh kiện phải khớp nhau.\n"
-    "4. Ở câu nối tiếp, linh kiện hoặc thông số mới ghi trong CÂU HIỆN TẠI phải thay đúng giá trị cũ cùng loại; "
-    "chỉ kế thừa các giá trị còn thiếu từ TRẠNG THÁI ĐÃ XÁC NHẬN."
+    "4. Chỉ đọc CÂU HIỆN TẠI. Không kế thừa hoặc suy đoán dữ liệu từ lịch sử; hệ thống sẽ ghép trạng thái sau."
 )
 
 _FEWSHOT_BY_INTENT = {
@@ -274,20 +277,38 @@ _FEWSHOT_CLASSIFY = _pick_examples(
 )
 
 _COMPACT_EXTRACT_EXAMPLES = {
-    "compatibility": (0, 5),
+    "compatibility": (0,),
     "suggestion": (0,),
     "price_calculation": (0,),
-    # Use different product families for direct vs follow-up examples so the
-    # small model learns field mapping instead of copying one tested product.
-    "specification": (0, 4),
-    "price_check": (0, 2),
+    # Pass 2 examples contain only current-turn extraction.
+    "specification": (0,),
+    "price_check": (0,),
     "budget_search": (0,),
     "combo_review": (1,),
-    "build_pc": (0, 6),
-    "general_search": (1, 3),
+    "build_pc": (0, 2),
+    "general_search": (1,),
     "none": (0,),
 }
+
+
+def _prepare_extract_examples(examples, indices):
+    prepared = []
+    for message in _pick_examples(examples, indices):
+        message = dict(message)
+        if message["role"] == "user":
+            current_input = re.search(r"<user_input>(.*?)</user_input>", message["content"], re.S)
+            if current_input:
+                message["content"] = current_input.group(1)
+        else:
+            content = json.loads(message["content"])
+            content.pop("reasoning", None)
+            content = {key: None if value == "none" else value for key, value in content.items()}
+            message["content"] = json.dumps(content, ensure_ascii=False)
+        prepared.append(message)
+    return prepared
+
+
 _FEWSHOT_BY_INTENT = {
-    intent: _pick_examples(examples, _COMPACT_EXTRACT_EXAMPLES[intent])
+    intent: _prepare_extract_examples(examples, _COMPACT_EXTRACT_EXAMPLES[intent])
     for intent, examples in _FEWSHOT_BY_INTENT.items()
 }

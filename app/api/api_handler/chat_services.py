@@ -1,12 +1,11 @@
 import asyncio
-import re
 import threading
 from time import perf_counter
 from fastapi import Request, status
 from fastapi.responses import JSONResponse
 from app.core.search_engine import hybrid_search
 from app.core.chat_handler import handle_chat
-from app.api.model.chat_models import ChatRequest, ErrorResponse
+from app.api.model.chat_models import ChatRequest, ChatResponse, ErrorResponse, EvalChatResponse
 from config.config import Config
 
 # Bộ nhớ lưu các Session đang xử lý (Khóa Session chống Spam)
@@ -48,11 +47,12 @@ def _release_processing_slot(session_key: str | None) -> None:
     with _PROCESSING_LOCK:
         PROCESSING_SESSIONS.discard(session_key)
 
-def validate_session_id(session_id: str) -> bool:
-    """Chỉ cho phép chữ, số, gạch ngang/dưới, tối đa 64 ký tự."""
-    return bool(re.match(r'^[a-zA-Z0-9_\-]{1,64}$', session_id))
-
-def search_knowledge_base(request: Request, q: str = None, category: str = None, top_k: int = 5):
+def search_knowledge_base(
+    request: Request,
+    q: str | None = None,
+    category: str | None = None,
+    top_k: int = 5,
+):
     """Thin wrapper around ``hybrid_search`` that injects the global state."""
     kb = getattr(request.app.state, "knowledge_base", None)
     vector_store = getattr(request.app.state, "vector_store", None)
@@ -62,33 +62,27 @@ def search_knowledge_base(request: Request, q: str = None, category: str = None,
 
     return hybrid_search(q, category, top_k, kb, vector_store)
 
-async def process_chat_message(request: Request, data: ChatRequest, user_uid: str, include_contexts: bool = False):
-    """Xử lý toàn bộ logic nghiệp vụ cho Chat API (Validate, chạy LLM, xử lý Timeout 90s)."""
-    if not data.user_message.strip():
+async def process_chat_message(
+    request: Request,
+    data: ChatRequest,
+    user_uid: str,
+    include_contexts: bool = False,
+) -> ChatResponse | EvalChatResponse | JSONResponse:
+    """Run one chat request with per-session admission and bounded model execution."""
+    kb = getattr(request.app.state, "knowledge_base", None)
+    if kb is None:
         return JSONResponse(
-            status_code=status.HTTP_400_BAD_REQUEST,
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             content=ErrorResponse(
-                error="Validation Error",
-                message="Nội dung tin nhắn không được để trống.",
-                code="EMPTY_MESSAGE"
-            ).model_dump()
-        )
-
-    if not validate_session_id(data.session_id):
-        return JSONResponse(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            content=ErrorResponse(
-                error="Validation Error",
-                message="Session không hợp lệ. Vui lòng thử lại ở phiên chat mới.",
-                code="INVALID_SESSION_ID"
+                error="Service Unavailable",
+                message="Chat knowledge base is not ready.",
+                code="CHAT_SERVICE_UNAVAILABLE",
             ).model_dump()
         )
 
     session_key, lock_response = _acquire_processing_slot(user_uid, data.session_id)
     if lock_response is not None:
         return lock_response
-
-    kb = getattr(request.app.state, "knowledge_base", None)
 
     vector_store = getattr(request.app.state, "vector_store", None)
     build_df = getattr(request.app.state, "build_data", None)
@@ -122,10 +116,12 @@ async def process_chat_message(request: Request, data: ChatRequest, user_uid: st
                     timeout=Config.MODEL_PROCESSING_TIMEOUT_SECONDS
                 )
 
-                if not include_contexts and "contexts" in result:
-                    del result["contexts"]
-
-                return result
+                if include_contexts:
+                    return EvalChatResponse(
+                        chatbot_reply=result["chatbot_reply"],
+                        contexts=result.get("contexts", []),
+                    )
+                return ChatResponse(chatbot_reply=result["chatbot_reply"])
             except asyncio.TimeoutError:
                 return JSONResponse(
                     status_code=status.HTTP_504_GATEWAY_TIMEOUT,

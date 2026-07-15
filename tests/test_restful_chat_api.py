@@ -10,7 +10,9 @@ import pytest
 from types import SimpleNamespace
 from unittest.mock import patch
 from fastapi import FastAPI
+from fastapi.exceptions import RequestValidationError
 from fastapi.testclient import TestClient
+from starlette.exceptions import HTTPException as StarletteHTTPException
 import pandas as pd
 
 # Thêm đường dẫn gốc của project vào sys.path
@@ -18,13 +20,18 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 from app.api.chat import router as chat_router
 from app.api.api_handler import chat_services
 from app.api.api_handler.chat_services import process_chat_message
-from app.api.model.chat_models import ChatRequest
+from app.api.model.chat_models import ChatRequest, EvalChatResponse
+from config.config import Config
+from main import http_exception_handler, unhandled_exception_handler, validation_exception_handler
 
 REPORT_FILE = "tests/reports/report_restful_chat_api.md"
 
 # Khởi tạo TestClient nội bộ để kiểm thử API độc lập không cần chạy Uvicorn
 mock_app = FastAPI()
 mock_app.include_router(chat_router)
+mock_app.add_exception_handler(RequestValidationError, validation_exception_handler)
+mock_app.add_exception_handler(StarletteHTTPException, http_exception_handler)
+mock_app.add_exception_handler(Exception, unhandled_exception_handler)
 mock_app.state.knowledge_base = pd.DataFrame()
 mock_app.state.vector_store = None
 mock_app.state.build_data = None
@@ -77,14 +84,14 @@ def restore_chat_concurrency_state():
 
 
 def test_empty_message_validation():
-    """Tình huống 1: Người dùng gửi tin nhắn rỗng -> Kỳ vọng lỗi 400 EMPTY_MESSAGE."""
+    """Whitespace-only messages fail at the request schema."""
     payload = {"user_message": "   ", "session_id": "test_session_1"}
     resp_body = ""
     try:
         response = client.post("/chat", json=payload, headers=get_auth_headers())
         data = response.json()
         resp_body = json.dumps(data, ensure_ascii=False)
-        passed = (response.status_code == 400 and data.get("code") == "EMPTY_MESSAGE")
+        passed = (response.status_code == 422 and data.get("code") == "INVALID_MESSAGE")
         err = "None" if passed else f"Unexpected response: {data}"
         status_code = response.status_code
     except Exception as e:
@@ -94,7 +101,7 @@ def test_empty_message_validation():
         "name": "test_empty_message_validation",
         "description": "Gửi tin nhắn rỗng (bị bỏ trống)",
         "input": str(payload),
-        "expected_status": 400,
+        "expected_status": 422,
         "actual_status": status_code,
         "response_body": resp_body,
         "passed": passed,
@@ -111,7 +118,7 @@ def test_invalid_session_id_validation():
         response = client.post("/chat", json=payload, headers=get_auth_headers())
         data = response.json()
         resp_body = json.dumps(data, ensure_ascii=False)
-        passed = (response.status_code == 400 and data.get("code") == "INVALID_SESSION_ID")
+        passed = (response.status_code == 422 and data.get("code") == "INVALID_SESSION_ID")
         err = "None" if passed else f"Unexpected response: {data}"
         status_code = response.status_code
     except Exception as e:
@@ -121,7 +128,7 @@ def test_invalid_session_id_validation():
         "name": "test_invalid_session_id_validation",
         "description": "Session ID chứa ký tự cấm (@, #, !!!)",
         "input": str(payload),
-        "expected_status": 400,
+        "expected_status": 422,
         "actual_status": status_code,
         "response_body": resp_body,
         "passed": passed,
@@ -130,8 +137,27 @@ def test_invalid_session_id_validation():
     _update_md_report()
     assert passed, f"Lỗi test_invalid_session_id_validation: {err}"
 
+def test_request_length_contract():
+    payload = {"user_message": "A" * 501, "session_id": "length_test"}
+    response = client.post("/chat", json=payload, headers=get_auth_headers())
+    body = response.json()
+    passed = response.status_code == 422 and body.get("code") == "INVALID_MESSAGE"
+    _test_results.append({
+        "name": "test_request_length_contract",
+        "description": "Tin nhắn vượt giới hạn public contract 500 ký tự",
+        "input": "501 characters",
+        "expected_status": 422,
+        "actual_status": response.status_code,
+        "response_body": json.dumps(body, ensure_ascii=False),
+        "passed": passed,
+        "error": "None" if passed else str(body),
+    })
+    _update_md_report()
+    assert passed
+
+
 def test_valid_chat_request():
-    """Tình huống 3: Gửi tin nhắn hợp lệ -> Kỳ vọng mã 201 Created (hoặc 200) kèm chatbot_reply."""
+    """Valid chat returns the exact public response contract."""
     payload = {"user_message": "Xin chào, bạn có thể giúp gì cho tôi?", "session_id": "test_valid_session"}
     resp_body = ""
     try:
@@ -144,7 +170,7 @@ def test_valid_chat_request():
             response = client.post("/chat", json=payload, headers=get_auth_headers())
             data = response.json()
             resp_body = json.dumps(data, ensure_ascii=False)
-            passed = (response.status_code in [200, 201] and "chatbot_reply" in data)
+            passed = (response.status_code == 200 and data == {"chatbot_reply": "Dạ em chào bạn!"})
             err = "None" if passed else f"Unexpected response: {data}"
             status_code = response.status_code
     except Exception as e:
@@ -154,7 +180,7 @@ def test_valid_chat_request():
         "name": "test_valid_chat_request",
         "description": "Gửi tin nhắn hợp lệ tới AI Bot (Bypass DB)",
         "input": str(payload),
-        "expected_status": "201/200",
+        "expected_status": 200,
         "actual_status": status_code,
         "response_body": resp_body,
         "passed": passed,
@@ -163,29 +189,109 @@ def test_valid_chat_request():
     _update_md_report()
     assert passed, f"Lỗi test_valid_chat_request: {err}"
 
+def test_eval_contract_uses_header_and_returns_contexts():
+    payload = {"user_message": "Đánh giá RAG", "session_id": "eval_session"}
+
+    async def mock_eval(*args, **kwargs):
+        return EvalChatResponse(chatbot_reply="answer", contexts=["context-1"])
+
+    with patch("app.api.chat.process_chat_message", side_effect=mock_eval):
+        response = client.post(
+            "/chat/eval",
+            json=payload,
+            headers={**get_auth_headers(), "X-Eval-Key": Config.RAGAS_MAGIC_KEY},
+        )
+
+    body = response.json()
+    passed = response.status_code == 200 and body == {
+        "chatbot_reply": "answer",
+        "contexts": ["context-1"],
+    }
+    _test_results.append({
+        "name": "test_eval_contract_uses_header_and_returns_contexts",
+        "description": "Eval key nằm trong header và response có contexts",
+        "input": "POST /chat/eval + X-Eval-Key",
+        "expected_status": 200,
+        "actual_status": response.status_code,
+        "response_body": json.dumps(body, ensure_ascii=False),
+        "passed": passed,
+        "error": "None" if passed else str(body),
+    })
+    _update_md_report()
+    assert passed
+
+
+def test_eval_rejects_missing_key_with_structured_error():
+    response = client.post(
+        "/chat/eval",
+        json={"user_message": "Đánh giá RAG", "session_id": "eval_forbidden"},
+        headers=get_auth_headers(),
+    )
+    body = response.json()
+    passed = response.status_code == 403 and body.get("code") == "INVALID_EVAL_KEY"
+    _test_results.append({
+        "name": "test_eval_rejects_missing_key_with_structured_error",
+        "description": "Eval endpoint từ chối request thiếu X-Eval-Key",
+        "input": "POST /chat/eval without X-Eval-Key",
+        "expected_status": 403,
+        "actual_status": response.status_code,
+        "response_body": json.dumps(body, ensure_ascii=False),
+        "passed": passed,
+        "error": "None" if passed else str(body),
+    })
+    _update_md_report()
+    assert passed
+
+
+def test_missing_auth_uses_public_error_contract():
+    response = client.post(
+        "/chat",
+        json={"user_message": "hello", "session_id": "auth_test"},
+    )
+    body = response.json()
+    passed = response.status_code == 401 and body == {
+        "error": "Authentication Error",
+        "message": "Bearer token is required.",
+        "code": "AUTH_REQUIRED",
+    }
+    _test_results.append({
+        "name": "test_missing_auth_uses_public_error_contract",
+        "description": "Lỗi authentication dùng cùng ErrorResponse schema",
+        "input": "POST /chat without Authorization",
+        "expected_status": 401,
+        "actual_status": response.status_code,
+        "response_body": json.dumps(body, ensure_ascii=False),
+        "passed": passed,
+        "error": "None" if passed else str(body),
+    })
+    _update_md_report()
+    assert passed
+
+
 def test_llm_generation_timeout_504():
     """Tình huống 4: Mô phỏng AI xử lý quá lâu (Timeout) -> Kỳ vọng mã 504 LLM_GENERATION_TIMEOUT."""
     payload = {"user_message": "Tư vấn cấu hình PC chi tiết", "session_id": "test_timeout_session"}
     resp_body = ""
     
-    def mock_process_chat_message_timeout(*args, **kwargs):
+    async def mock_process_chat_message_timeout(*args, **kwargs):
         raise asyncio.TimeoutError("Simulated LLM Timeout")
 
     try:
-        with patch("app.api.chat.process_chat_message", side_effect=mock_process_chat_message_timeout):
+        with patch("app.api.api_handler.chat_services.handle_chat", side_effect=mock_process_chat_message_timeout):
             response = client.post("/chat", json=payload, headers=get_auth_headers())
-            resp_body = response.text
-            passed = (response.status_code == 500)
-            err = "None" if passed else f"Unexpected response: {resp_body}"
+            data = response.json()
+            resp_body = json.dumps(data, ensure_ascii=False)
+            passed = (response.status_code == 504 and data.get("code") == "LLM_GENERATION_TIMEOUT")
+            err = "None" if passed else f"Unexpected response: {data}"
             status_code = response.status_code
     except Exception as e:
         passed, err, status_code = False, str(e), 0
 
     _test_results.append({
         "name": "test_llm_generation_timeout_504",
-        "description": "Mô phỏng AI xử lý quá lâu (Timeout - nay trả về 500)",
+        "description": "Mô phỏng AI xử lý quá lâu",
         "input": str(payload),
-        "expected_status": 500,
+        "expected_status": 504,
         "actual_status": status_code,
         "response_body": resp_body,
         "passed": passed,
@@ -199,15 +305,16 @@ def test_internal_server_error_500():
     payload = {"user_message": "Tư vấn cấu hình PC chi tiết", "session_id": "test_500_session"}
     resp_body = ""
     
-    def mock_process_chat_message_500(*args, **kwargs):
+    async def mock_process_chat_message_500(*args, **kwargs):
         raise Exception("Simulated Database / LLM Exception")
 
     try:
-        with patch("app.api.chat.process_chat_message", side_effect=mock_process_chat_message_500):
+        with patch("app.api.api_handler.chat_services.handle_chat", side_effect=mock_process_chat_message_500):
             response = client.post("/chat", json=payload, headers=get_auth_headers())
-            resp_body = response.text
-            passed = (response.status_code == 500)
-            err = "None" if passed else f"Unexpected response: {resp_body}"
+            data = response.json()
+            resp_body = json.dumps(data, ensure_ascii=False)
+            passed = (response.status_code == 500 and data.get("code") == "INTERNAL_SERVER_ERROR")
+            err = "None" if passed else f"Unexpected response: {data}"
             status_code = response.status_code
     except Exception as e:
         passed, err, status_code = False, str(e), 0
@@ -224,6 +331,62 @@ def test_internal_server_error_500():
     })
     _update_md_report()
     assert passed, f"Lỗi test_internal_server_error_500: {err}"
+
+def test_different_users_may_share_session_id():
+    async def run_case():
+        chat_services.PROCESSING_SESSIONS.clear()
+        chat_services._MODEL_REQUEST_SLOTS = asyncio.Semaphore(2)
+        fake_request = SimpleNamespace(
+            app=SimpleNamespace(
+                state=SimpleNamespace(
+                    knowledge_base=pd.DataFrame({"name": ["mock"]}),
+                    vector_store=None,
+                    build_data=None,
+                )
+            )
+        )
+        both_started = asyncio.Event()
+        release = asyncio.Event()
+        active = 0
+
+        async def blocking_handle_chat(*args, **kwargs):
+            nonlocal active
+            active += 1
+            if active == 2:
+                both_started.set()
+            await release.wait()
+            return {"chatbot_reply": kwargs["user_uid"]}
+
+        payload = ChatRequest(user_message="hello", session_id="shared_session")
+        with patch("app.api.api_handler.chat_services.handle_chat", side_effect=blocking_handle_chat):
+            user_a = asyncio.create_task(process_chat_message(fake_request, payload, "user_a"))
+            user_b = asyncio.create_task(process_chat_message(fake_request, payload, "user_b"))
+            await asyncio.wait_for(both_started.wait(), timeout=1)
+            keys_while_active = set(chat_services.PROCESSING_SESSIONS)
+            release.set()
+            results = await asyncio.gather(user_a, user_b)
+
+        return results, keys_while_active
+
+    results, keys = asyncio.run(run_case())
+    replies = [result.chatbot_reply for result in results]
+    passed = replies == ["user_a", "user_b"] and keys == {
+        "user_a:shared_session",
+        "user_b:shared_session",
+    }
+    _test_results.append({
+        "name": "test_different_users_may_share_session_id",
+        "description": "Session lock được định danh bằng user UID và session ID",
+        "input": "2 users / same session_id",
+        "expected_status": "both accepted",
+        "actual_status": "both accepted" if passed else "collision",
+        "response_body": json.dumps({"replies": replies, "keys": sorted(keys)}),
+        "passed": passed,
+        "error": "None" if passed else f"replies={replies}, keys={keys}",
+    })
+    _update_md_report()
+    assert passed
+
 
 def test_busy_sessions_queue_without_model_overlap():
     """Different sessions wait; duplicate requests for one session still fail fast."""
@@ -280,10 +443,10 @@ def test_busy_sessions_queue_without_model_overlap():
     second_body = json.loads(second.body.decode("utf-8"))
 
     passed = (
-        first_result == {"chatbot_reply": "busy_session"}
+        first_result.chatbot_reply == "busy_session"
         and second.status_code == 429
         and second_body.get("code") == "SESSION_LOCKED"
-        and third == {"chatbot_reply": "other_busy_session"}
+        and third.chatbot_reply == "other_busy_session"
         and queued_while_busy
         and max_active_calls == 1
         and call_order == ["busy_session", "other_busy_session"]
@@ -294,7 +457,10 @@ def test_busy_sessions_queue_without_model_overlap():
         "input": "2 x POST /chat same session",
         "expected_status": 429,
         "actual_status": second.status_code,
-        "response_body": json.dumps({"same_session": second_body, "other_session": third}, ensure_ascii=False),
+        "response_body": json.dumps(
+            {"same_session": second_body, "other_session": third.model_dump()},
+            ensure_ascii=False,
+        ),
         "passed": passed,
         "error": "None" if passed else f"Unexpected response: {second_body} / {third}",
     })
@@ -346,7 +512,7 @@ def test_model_allows_two_parallel_requests_and_queues_third():
         return results, third_queued, max_active_calls
 
     results, third_queued, max_active_calls = asyncio.run(run_case())
-    replies = [result["chatbot_reply"] for result in results]
+    replies = [result.chatbot_reply for result in results]
     passed = (
         chat_services.Config.MAX_PARALLEL_REQUESTS == 2
         and replies == ["parallel_0", "parallel_1", "parallel_2"]
@@ -413,7 +579,7 @@ def test_model_queue_releases_after_failure(failure, expected_status):
     first_result, next_result, queued_while_busy = asyncio.run(run_case())
     passed = (
         first_result.status_code == expected_status
-        and next_result == {"chatbot_reply": "recovered"}
+        and next_result.chatbot_reply == "recovered"
         and queued_while_busy
     )
     failure_name = type(failure).__name__
@@ -423,7 +589,7 @@ def test_model_queue_releases_after_failure(failure, expected_status):
         "input": failure_name,
         "expected_status": f"{expected_status}, then success",
         "actual_status": f"{first_result.status_code}, then success",
-        "response_body": json.dumps(next_result),
+        "response_body": json.dumps(next_result.model_dump()),
         "passed": passed,
         "error": "None" if passed else f"next={next_result}, queued={queued_while_busy}",
     })
@@ -448,14 +614,13 @@ def test_processing_timeout_cancels_only_stuck_request():
                 except asyncio.CancelledError:
                     stuck_cancelled.set()
                     raise
-            await asyncio.sleep(0.001)
             return {"chatbot_reply": "normal completed"}
 
         stuck_payload = ChatRequest(user_message="stuck", session_id="stuck_session")
         normal_payload = ChatRequest(user_message="normal", session_id="normal_session")
         with (
             patch("app.api.api_handler.chat_services.handle_chat", side_effect=one_stuck_one_normal),
-            patch("app.api.api_handler.chat_services.Config.MODEL_PROCESSING_TIMEOUT_SECONDS", 0.02),
+            patch("app.api.api_handler.chat_services.Config.MODEL_PROCESSING_TIMEOUT_SECONDS", 0.05),
         ):
             stuck, normal = await asyncio.gather(
                 process_chat_message(fake_request, stuck_payload, "test_user"),
@@ -467,7 +632,7 @@ def test_processing_timeout_cancels_only_stuck_request():
     stuck, normal, stuck_cancelled = asyncio.run(run_case())
     passed = (
         stuck.status_code == 504
-        and normal == {"chatbot_reply": "normal completed"}
+        and normal.chatbot_reply == "normal completed"
         and stuck_cancelled
     )
     _test_results.append({
@@ -476,7 +641,7 @@ def test_processing_timeout_cancels_only_stuck_request():
         "input": "1 stuck + 1 normal request",
         "expected_status": "504 + success",
         "actual_status": f"{stuck.status_code} + success",
-        "response_body": json.dumps(normal),
+        "response_body": json.dumps(normal.model_dump()),
         "passed": passed,
         "error": "None" if passed else f"normal={normal}, cancelled={stuck_cancelled}",
     })
@@ -537,6 +702,35 @@ def test_model_queue_returns_429_after_5_seconds():
     _update_md_report()
     assert passed
 
+
+def test_openapi_documents_public_response_contracts():
+    schema = mock_app.openapi()
+    chat_responses = schema["paths"]["/chat"]["post"]["responses"]
+    chat_schema = chat_responses["200"]["content"]["application/json"]["schema"]
+    eval_schema = schema["paths"]["/chat/eval"]["post"]["responses"]["200"]["content"]["application/json"]["schema"]
+    embedding_schema = schema["paths"]["/v1/embeddings"]["post"]["responses"]["200"]["content"]["application/json"]["schema"]
+    delete_schema = schema["paths"]["/sessions/{session_id}"]["delete"]["responses"]["200"]["content"]["application/json"]["schema"]
+    passed = (
+        chat_schema.get("$ref", "").endswith("/ChatResponse")
+        and eval_schema.get("$ref", "").endswith("/EvalChatResponse")
+        and embedding_schema.get("$ref", "").endswith("/EmbeddingResponse")
+        and delete_schema.get("$ref", "").endswith("/DeleteSessionResponse")
+        and "201" not in chat_responses
+        and {"401", "403", "422", "429", "500", "503", "504"} <= set(chat_responses)
+    )
+    _test_results.append({
+        "name": "test_openapi_documents_public_response_contracts",
+        "description": "OpenAPI mô tả response models và status codes công khai",
+        "input": "GET /openapi.json (in-process)",
+        "expected_status": "schemas documented",
+        "actual_status": "schemas documented" if passed else "schema mismatch",
+        "response_body": json.dumps({"chat_statuses": sorted(chat_responses)}),
+        "passed": passed,
+        "error": "None" if passed else "OpenAPI response contract mismatch",
+    })
+    _update_md_report()
+    assert passed
+
 def test_delete_session_history():
     """Tình huống 6: Xóa lịch sử phiên hội thoại -> Kỳ vọng mã 200 OK."""
     session_id = "test_valid_session"
@@ -544,7 +738,7 @@ def test_delete_session_history():
     resp_body = ""
     try:
         # Mock clear_session để tránh kết nối MySQL trong TestClient
-        with patch("app.api.chat.clear_session"):
+        with patch("app.api.chat.ConversationContext.clear"):
             response = client.delete(url, headers=get_auth_headers())
             data = response.json()
             resp_body = json.dumps(data, ensure_ascii=False)

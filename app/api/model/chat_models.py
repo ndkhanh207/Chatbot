@@ -1,37 +1,83 @@
-import re
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, StringConstraints, field_validator
+
+
+MessageText = Annotated[
+    str,
+    StringConstraints(strip_whitespace=True, min_length=1, max_length=500),
+]
+SessionId = Annotated[
+    str,
+    StringConstraints(
+        strip_whitespace=True,
+        min_length=1,
+        max_length=64,
+        pattern=r"^[A-Za-z0-9_-]+$",
+    ),
+]
 
 
 class ChatRequest(BaseModel):
-    user_message: str = Field(..., max_length=1000, description="User message")
-    session_id: str = Field("default", max_length=100, min_length=1, description="Chat session id")
-
-    @field_validator("user_message")
-    @classmethod
-    def check_prompt_injection(cls, v: str) -> str:
-        forbidden_patterns = [
-            r"ignore\s+all\s+previous",
-            r"system\s+prompt",
-            r"bỏ\s+qua\s+(các\s+)?lệnh",
-            r"quên\s+hết\s+(các\s+)?lệnh",
-        ]
-        for pattern in forbidden_patterns:
-            v = re.sub(pattern, "", v, flags=re.IGNORECASE)
-
-        return v.strip()
+    user_message: MessageText = Field(description="User message")
+    session_id: SessionId = Field("default", description="Chat session id")
 
 
 class EvalChatRequest(ChatRequest):
-    magic_key: str = Field(..., description="RAG evaluation secret key")
+    pass
 
 
 class ChatResponse(BaseModel):
-    chatbot_reply: str = Field(..., description="Final chatbot reply")
-    contexts: list[str] | None = Field(None, description="Raw contexts for evaluation")
+    chatbot_reply: str = Field(description="Final chatbot reply")
+
+
+class EvalChatResponse(ChatResponse):
+    contexts: list[str] = Field(default_factory=list, description="Raw evaluation contexts")
 
 
 class ErrorResponse(BaseModel):
-    error: str = Field(..., description="Error type")
-    message: str = Field(..., description="Human-readable error message")
-    code: str = Field(..., description="Stable application error code")
+    error: str = Field(description="Error type")
+    message: str = Field(description="Human-readable error message")
+    code: str = Field(description="Stable application error code")
+
+
+class EmbeddingRequest(BaseModel):
+    input: str | list[str]
+    model: str = "local"
+
+    @field_validator("input")
+    @classmethod
+    def validate_input(cls, value: str | list[str]) -> str | list[str]:
+        if isinstance(value, str):
+            value = value.strip()
+            if not value:
+                raise ValueError("input must not be empty")
+            return value
+
+        values = [item.strip() for item in value]
+        if not values or any(not item for item in values):
+            raise ValueError("input must contain non-empty strings")
+        return values
+
+
+class EmbeddingData(BaseModel):
+    object: Literal["embedding"] = "embedding"
+    index: int
+    embedding: list[float]
+
+
+class EmbeddingUsage(BaseModel):
+    prompt_tokens: int = 0
+    total_tokens: int = 0
+
+
+class EmbeddingResponse(BaseModel):
+    object: Literal["list"] = "list"
+    data: list[EmbeddingData]
+    model: str
+    usage: EmbeddingUsage = Field(default_factory=EmbeddingUsage)
+
+
+class DeleteSessionResponse(BaseModel):
+    status: Literal["ok"] = "ok"
+    message: str

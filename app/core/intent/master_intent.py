@@ -1,7 +1,7 @@
 import ollama
 import re
 from time import perf_counter
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 from typing import Literal
 
 from config.config import Config
@@ -51,6 +51,10 @@ FOLLOW_UP_MARKERS = ['vậy', 'thì sao', 'thế còn', 'còn', 'nó', 'của']
 PRICE_TRIGGERS = ['giá', 'bao nhiêu tiền', 'nhiêu tiền']
 BUDGET_TRIGGERS = ['triệu', 'tr', 'tầm', 'khoảng', 'dưới', 'trên']
 BUILD_TRIGGERS = ['build', 'bộ pc', 'bộ máy', 'dàn', 'máy', 'pc']
+BUILD_TRIGGER_PATTERN = re.compile(
+    rf"(?<!\w)(?:{'|'.join(map(re.escape, BUILD_TRIGGERS))})(?!\w)",
+    re.IGNORECASE,
+)
 
 CPU_PATTERN = re.compile(r'(amd ryzen\s*[3579]\s+\d{4,5}[a-z0-9]*|intel core i[3579][-\s]?\d{4,5}[a-z0-9]*|ryzen\s*[3579]\s+\d{4,5}[a-z0-9]*|i[3579][-\s]?\d{4,5}[a-z0-9]*|ryzen\s+[3579])', re.IGNORECASE)
 GPU_PATTERN = re.compile(r'((?:(?:asus|msi|gigabyte|galax|sapphire|powercolor|asrock|zotac|evga|palit|inno3d)\s+(?:\w+\s+){0,4})?(?:geforce\s+)?(?:rtx|gtx)\s*\d{3,4}(?:\s*ti|\s*super)?(?:\s*(?:\d{1,2}gb?|\d{1,2}g|gddr\d+x?|black|white|oc|gaming|trio))*|radeon\s+rx\s*\d{3,4}(?:\s*xt)?|rx\s*\d{3,4}(?:\s*xt)?)', re.IGNORECASE)
@@ -75,45 +79,53 @@ class IntentOnlySchema(BaseModel):
     ] = "none"
 
 class MasterIntentSchema(BaseModel):
-    reasoning: str = Field(description="Bước 1: Trích dẫn NGUYÊN VĂN tên linh kiện. Bước 2: Phân tích ý định.")
+    model_config = ConfigDict(extra="forbid")
+
     intent: str = "none" # Gán lại từ Pass 1, LLM Pass 2 cũng output lại
     
-    target_product: str = Field(
-        default="none", 
-        description="Tên linh kiện chính khi ý định là 'specification' hoặc 'price_check' (VD: 'i9 14900k'). Nếu câu hỏi hiện tại thiếu chủ ngữ, HÃY LẤY TỪ MỤC [TRẠNG THÁI ĐÃ XÁC NHẬN] để điền vào. Tuyệt đối không lấy linh kiện cũ đã bị thay thế (trừ khi khách yêu cầu rõ là 'lấy lại cái cũ'). Mặc định 'none'."
+    target_product: str | None = Field(
+        default=None,
+        description="Tên linh kiện chính xuất hiện trong câu hiện tại khi intent là specification hoặc price_check.",
     )
-    spec_detail: str = Field(
-        default="none", 
-        description="Từ khóa thông số khách hỏi (vd: 'lõi', 'vram', 'socket', 'xung tối đa'). Nếu câu hỏi hiện tại đang nói tiếp chủ đề của câu trước nhưng thiếu thông số, HÃY LẤY TỪ MỤC [TRẠNG THÁI ĐÃ XÁC NHẬN] hoặc lịch sử gần nhất. Mặc định 'none'."
+    spec_detail: str | None = Field(
+        default=None,
+        description="Từ khóa thông số xuất hiện trong câu hiện tại (vd: lõi, vram, socket, xung tối đa).",
     )
-    cpu: str = Field(default="none", description="LUÔN trích xuất tên CPU nếu có trong câu (VD: 'i9 14900k', 'ryzen 7 9800x3d'). Nếu đang hỏi tiếp nối mà thiếu CPU, HÃY LẤY TỪ MỤC [TRẠNG THÁI ĐÃ XÁC NHẬN] để giữ lại CPU mới nhất (trừ khi khách yêu cầu lấy lại CPU cũ). Mặc định 'none'.")
-    mainboard: str = Field(default="none", description="LUÔN trích xuất tên Mainboard nếu có trong câu (VD: 'asus b760m', 'msi b850 pro'). Nếu đang hỏi tiếp nối mà thiếu Mainboard, HÃY LẤY TỪ MỤC [TRẠNG THÁI ĐÃ XÁC NHẬN] để giữ lại (trừ khi khách yêu cầu lấy lại Mainboard cũ). Mặc định 'none'.")
-    gpu: str = Field(default="none", description="LUÔN trích xuất tên GPU/VGA nếu có trong câu (VD: 'rtx 5070 ti', 'rx 7900 xt'). Nếu thiếu GPU và đang hỏi tiếp nối, HÃY LẤY TỪ MỤC [TRẠNG THÁI ĐÃ XÁC NHẬN] để giữ lại (trừ khi khách yêu cầu lấy lại GPU cũ). Mặc định 'none'.")
+    cpu: str | None = Field(default=None, description="Tên CPU xuất hiện trong câu hiện tại.")
+    mainboard: str | None = Field(default=None, description="Tên mainboard xuất hiện trong câu hiện tại.")
+    gpu: str | None = Field(default=None, description="Tên GPU/VGA xuất hiện trong câu hiện tại.")
     budget_amount: int = Field(
         default=0,
         description="Ngân sách khách yêu cầu. BẮT BUỘC CHUYỂN ĐỔI thành số nguyên VNĐ. Ví dụ: '20 triệu', '20tr', 'tầm 20' → 20000000. '500k' → 500000. Mặc định 0."
     )
-    category: str = Field(
-        default="none",
+    category: str | None = Field(
+        default=None,
         description="Loại linh kiện khách đang tìm kiếm (vd: 'gpu', 'mainboard', 'cpu'). CẤM TUYỆT ĐỐI điền 'price', 'giá', 'specification'."
     )
+
+    @field_validator("target_product", "spec_detail", "cpu", "mainboard", "gpu", "category", mode="before")
+    @classmethod
+    def normalize_missing_text(cls, value):
+        if value is None or (isinstance(value, str) and value.strip().lower() in {"", "none"}):
+            return None
+        return value
 
     @model_validator(mode='after')
     def auto_fix_target_product(self) -> 'MasterIntentSchema':
         # Nếu là hỏi thông số/giá mà target_product bị trống (bị LLM điền chữ none)
-        if self.intent in ["specification", "price_check"] and self.target_product == "none":
+        if self.intent in ["specification", "price_check"] and not self.target_product:
             for field_value in [self.cpu, self.gpu, self.mainboard]:
-                if field_value != "none":
+                if field_value:
                     self.target_product = field_value
                     break
                     
         # Tự động dọn rác nếu LLM vẫn cố chấp điền "price" vào category
-        invalid_words = ["price", "specification", "info", "none", "giá", "thông số"]
-        if self.category.lower() in invalid_words:
-            if self.cpu != "none": self.category = "cpu"
-            elif self.mainboard != "none": self.category = "mainboard"
-            elif self.gpu != "none": self.category = "gpu"
-            else: self.category = "none"
+        invalid_words = ["price", "specification", "info", "giá", "thông số"]
+        if self.category and self.category.lower() in invalid_words:
+            if self.cpu: self.category = "cpu"
+            elif self.mainboard: self.category = "mainboard"
+            elif self.gpu: self.category = "gpu"
+            else: self.category = None
         return self
 
 
@@ -128,11 +140,21 @@ def _count_components(msg_l: str) -> tuple:
     comp_count = sum(1 for x in [cpu_match, gpu_match, main_match] if x)
     return comp_count, cpu_match, gpu_match, main_match
 
-def _apply_pre_extraction_guards(msg_l: str, comp_count: int, intent_pass1: str, history_context: str, structured_state: dict) -> str:
+def _has_explicit_build(msg: str) -> bool:
+    return BUILD_TRIGGER_PATTERN.search(msg) is not None
+
+def _apply_pre_extraction_guards(
+    msg_l: str,
+    comp_count: int,
+    intent_pass1: str,
+    structured_state: dict,
+) -> str:
     has_compat_trigger = any(t in msg_l for t in COMPAT_TRIGGERS)
     has_review_trigger = any(t in msg_l for t in REVIEW_TRIGGERS)
     has_budget_trigger = any(t in msg_l for t in BUDGET_TRIGGERS)
-    is_explicit_build = any(w in msg_l for w in BUILD_TRIGGERS)
+    is_explicit_build = _has_explicit_build(msg_l)
+    last_intent = str(structured_state.get("last_intent") or "none").lower()
+    category = str(structured_state.get("category") or "none").lower()
 
     if has_compat_trigger and comp_count >= 2 and intent_pass1 != "compatibility":
         print(f"⚠️ [GUARD] Pass 1 phân loại nhầm ({intent_pass1}). Ép thành 'compatibility'.")
@@ -157,9 +179,7 @@ def _apply_pre_extraction_guards(msg_l: str, comp_count: int, intent_pass1: str,
             return "specification"
 
     if intent_pass1 == "build_pc" and has_budget_trigger and not is_explicit_build:
-        match = re.search(r'LAST_INTENT=([a-z_]+)', history_context)
-        last_intent = match.group(1) if match else "none"
-        if "CATEGORY=" in history_context and last_intent != "build_pc":
+        if category != "none" and last_intent != "build_pc":
             print("⚠️ [GUARD] Budget follow-up theo danh mục. Ép thành 'budget_search'.")
             return "budget_search"
 
@@ -172,21 +192,16 @@ def _apply_pre_extraction_guards(msg_l: str, comp_count: int, intent_pass1: str,
         or is_explicit_build
     )
     if is_follow_up and not has_explicit_new_intent:
-        match = re.search(r'LAST_INTENT=([a-z_]+)', history_context)
-        if match and match.group(1) != "none":
-            inherited = match.group(1)
-            print(f"⚠️ [GUARD] Câu hỏi nối tiếp mơ hồ. Ép kế thừa intent: {inherited}")
-            return inherited
+        if last_intent != "none":
+            print(f"⚠️ [GUARD] Câu hỏi nối tiếp mơ hồ. Ép kế thừa intent: {last_intent}")
+            return last_intent
 
     # Nếu nhắc đích danh linh kiện cụ thể (comp_count >= 1) thì không thể là tìm kiếm chung chung.
     # Nếu Pass-1 ra build_pc nhưng không hề có chữ 'build', 'bộ', 'pc', 'dàn', 'máy' -> Ảo giác.
     if comp_count >= 1 and (intent_pass1 in ["general_search", "none"] or (intent_pass1 == "build_pc" and not is_explicit_build)):
-        match = re.search(r'LAST_INTENT=([a-z_]+)', history_context)
-        if match:
-            inherited = match.group(1)
-            if inherited not in ["general_search", "none"]:
-                print(f"\u26a0\ufe0f [GUARD] Nhắc tên linh kiện cụ thể nhưng Pass 1 trả {intent_pass1}. Ép kế thừa: {inherited}")
-                return inherited
+        if last_intent not in ["general_search", "none"]:
+            print(f"\u26a0\ufe0f [GUARD] Nhắc tên linh kiện cụ thể nhưng Pass 1 trả {intent_pass1}. Ép kế thừa: {last_intent}")
+            return last_intent
         print(f"\u26a0\ufe0f [GUARD] Nhắc tên linh kiện cụ thể nhưng Pass 1 trả {intent_pass1}. Mặc định ép về price_check")
         return "price_check"
 
@@ -194,19 +209,19 @@ def _apply_pre_extraction_guards(msg_l: str, comp_count: int, intent_pass1: str,
 
 def _apply_post_extraction_guards(parsed: MasterIntentSchema, cpu_match, gpu_match, main_match, comp_count: int):
     # Tách gộp target_product
-    if parsed.target_product and parsed.target_product.lower() != "none":
+    if parsed.target_product:
         tp_lower = parsed.target_product.lower()
         tp_comp_count = sum(1 for match in [cpu_match, gpu_match, main_match] if match and match.group(1) in tp_lower)
         
         if tp_comp_count >= 2:
             print(f"[INTENT-GUARD] Tách entity từ target_product bị gộp: '{parsed.target_product}'")
-            if cpu_match and cpu_match.group(1) in tp_lower and parsed.cpu == "none":
+            if cpu_match and cpu_match.group(1) in tp_lower and not parsed.cpu:
                 parsed.cpu = cpu_match.group(1)
-            if gpu_match and gpu_match.group(1) in tp_lower and parsed.gpu == "none":
+            if gpu_match and gpu_match.group(1) in tp_lower and not parsed.gpu:
                 parsed.gpu = gpu_match.group(1)
-            if main_match and main_match.group(1) in tp_lower and parsed.mainboard == "none":
+            if main_match and main_match.group(1) in tp_lower and not parsed.mainboard:
                 parsed.mainboard = main_match.group(1)
-            parsed.target_product = "none"
+            parsed.target_product = None
 
     # Explicit entities in current message always replace copied/history values.
     if cpu_match:
@@ -227,26 +242,26 @@ def _apply_post_extraction_guards(parsed: MasterIntentSchema, cpu_match, gpu_mat
                 parsed.target_product = match.group(1)
                 parsed.category = category
                 if category != "cpu":
-                    parsed.cpu = "none"
+                    parsed.cpu = None
                 if category != "gpu":
-                    parsed.gpu = "none"
+                    parsed.gpu = None
                 if category != "mainboard":
-                    parsed.mainboard = "none"
+                    parsed.mainboard = None
                 break
 
     # Sửa lỗi LLM điền sai slot (vd: rx 7600 bị nhét vào slot CPU)
-    if parsed.cpu != "none" and GPU_PATTERN.search(parsed.cpu):
+    if parsed.cpu and GPU_PATTERN.search(parsed.cpu):
         parsed.gpu = parsed.cpu
-        parsed.cpu = "none"
+        parsed.cpu = None
         if parsed.category == "cpu": parsed.category = "gpu"
-    elif parsed.gpu != "none" and CPU_PATTERN.search(parsed.gpu):
+    elif parsed.gpu and CPU_PATTERN.search(parsed.gpu):
         parsed.cpu = parsed.gpu
-        parsed.gpu = "none"
+        parsed.gpu = None
         if parsed.category == "gpu": parsed.category = "cpu"
 
-    if parsed.intent in ["specification", "price_check"] and parsed.target_product == "none":
+    if parsed.intent in ["specification", "price_check"] and not parsed.target_product:
         for field_value in [parsed.cpu, parsed.gpu, parsed.mainboard]:
-            if field_value != "none":
+            if field_value:
                 parsed.target_product = field_value
                 break
 
@@ -274,31 +289,39 @@ def _normalize_single_product_category(parsed: MasterIntentSchema) -> None:
     if GPU_PATTERN.search(target):
         parsed.category = "gpu"
         parsed.gpu = parsed.target_product
-        parsed.cpu = parsed.mainboard = "none"
+        parsed.cpu = parsed.mainboard = None
     elif CPU_PATTERN.search(target):
         parsed.category = "cpu"
         parsed.cpu = parsed.target_product
-        parsed.gpu = parsed.mainboard = "none"
+        parsed.gpu = parsed.mainboard = None
     elif MAIN_PATTERN.search(target):
         parsed.category = "mainboard"
         parsed.mainboard = parsed.target_product
-        parsed.cpu = parsed.gpu = "none"
+        parsed.cpu = parsed.gpu = None
 
 
 def _inherit_structured_followup_state(parsed: MasterIntentSchema, state: dict, cpu_match, gpu_match, main_match, msg_l: str):
-    if parsed.intent not in ["specification", "price_check", "compatibility", "suggestion"]:
+    stateful_intents = {
+        "specification", "price_check", "compatibility", "suggestion",
+        "combo_review", "general_search", "budget_search",
+    }
+    if parsed.intent not in stateful_intents:
         return
 
-    force_verified_state = parsed.intent in ["compatibility", "suggestion"]
-
-    if not cpu_match and state.get("cpu") and (parsed.cpu == "none" or force_verified_state):
-        parsed.cpu = state["cpu"]
-    if not gpu_match and state.get("gpu") and (parsed.gpu == "none" or force_verified_state):
-        parsed.gpu = state["gpu"]
-    if not main_match and state.get("mainboard") and (parsed.mainboard == "none" or force_verified_state):
-        parsed.mainboard = state["mainboard"]
-    if parsed.category == "none" and state.get("category"):
+    if not parsed.category and state.get("category"):
         parsed.category = state["category"]
+
+    if parsed.intent not in ["specification", "price_check", "compatibility", "suggestion", "combo_review"]:
+        return
+
+    force_verified_state = parsed.intent in ["compatibility", "suggestion", "combo_review"]
+
+    if not cpu_match and state.get("cpu") and (not parsed.cpu or force_verified_state):
+        parsed.cpu = state["cpu"]
+    if not gpu_match and state.get("gpu") and (not parsed.gpu or force_verified_state):
+        parsed.gpu = state["gpu"]
+    if not main_match and state.get("mainboard") and (not parsed.mainboard or force_verified_state):
+        parsed.mainboard = state["mainboard"]
 
     if parsed.intent in ["specification", "price_check"] and not any([cpu_match, gpu_match, main_match]):
         inherited = state.get("target_product") or _pick_state_component(parsed, state)
@@ -315,28 +338,28 @@ def _inherit_structured_followup_state(parsed: MasterIntentSchema, state: dict, 
     _normalize_single_product_category(parsed)
 
 def _check_retry_condition(parsed: MasterIntentSchema) -> str | None:
-    named_items = [parsed.cpu, parsed.mainboard, parsed.gpu]
-    valid_named = [i for i in named_items if i and i.strip().lower() != "none"]
-    has_target = parsed.target_product and parsed.target_product.strip().lower() != "none"
+    products = {
+        re.sub(r"[\s-]+", " ", item.strip().lower())
+        for item in [parsed.cpu, parsed.mainboard, parsed.gpu, parsed.target_product]
+        if item
+    }
     
     if parsed.intent == "compatibility":
-        total_items = len(valid_named) + (1 if has_target else 0)
-        if total_items <= 1:
+        if len(products) <= 1:
             return "suggestion"
             
     elif parsed.intent == "price_calculation":
-        total_items = len(valid_named) + (1 if has_target and not valid_named else 0)
-        if total_items <= 1:
+        if len(products) <= 1:
             return "price_check"
             
     return None
 
-async def _handle_retry(user_msg: str, history_context: str, parsed: MasterIntentSchema, fallback_intent: str) -> MasterIntentSchema:
+async def _handle_retry(user_msg: str, parsed: MasterIntentSchema, fallback_intent: str) -> MasterIntentSchema:
     print(f"\u26a0\ufe0f [RETRY] Guard detected mismatch ({parsed.intent} \u2192 {fallback_intent}). Retrying Pass 2...")
-    new_parsed = await _run_extraction_pass(user_msg, fallback_intent, history_context)
+    new_parsed = await _run_extraction_pass(user_msg, fallback_intent)
     new_parsed.intent = fallback_intent
     
-    if fallback_intent == "suggestion" and new_parsed.target_product != "none":
+    if fallback_intent == "suggestion" and new_parsed.target_product:
         tp = new_parsed.target_product.lower()
         if any(k in tp for k in ["ryzen", "i3", "i5", "i7", "i9", "core", "cpu", "chip"]): 
             new_parsed.cpu = new_parsed.target_product
@@ -344,7 +367,7 @@ async def _handle_retry(user_msg: str, history_context: str, parsed: MasterInten
             new_parsed.gpu = new_parsed.target_product
         else: 
             new_parsed.cpu = new_parsed.target_product
-        new_parsed.target_product = "none"
+        new_parsed.target_product = None
         
     return new_parsed
 
@@ -374,15 +397,15 @@ async def _run_classification_pass(user_msg: str, history_context: str) -> str:
     print(f"\n\U0001f50d [PASS-1] Raw: {raw}")
     try:
         return IntentOnlySchema.model_validate_json(raw).intent
-    except Exception as e:
+    except ValidationError as e:
         print(f"\u26a0\ufe0f [PASS-1] Lỗi parse JSON intent ({e}). Fallback 'none'.")
         return "none"
 
 
-async def _run_extraction_pass(user_msg: str, intent: str, history_context: str) -> MasterIntentSchema:
+async def _run_extraction_pass(user_msg: str, intent: str) -> MasterIntentSchema:
     """Pass 2: Trích xuất Entity"""
     fewshots = _FEWSHOT_BY_INTENT.get(intent, _FEWSHOT_BY_INTENT["none"])
-    prompt_msg = f"{history_context}<system_hint>Intent = {intent}</system_hint>\n<user_input>{user_msg}</user_input>"
+    prompt_msg = f"<system_hint>Intent = {intent}</system_hint>\n<user_input>{user_msg}</user_input>"
     
     messages = (
         [{"role": "system", "content": _SYSTEM_EXTRACT}]
@@ -420,7 +443,7 @@ async def parse_master_intent(user_msg: str, chat_history: list = None) -> Maste
         has_compat_trigger = any(t in msg_l for t in COMPAT_TRIGGERS)
         has_review_trigger = any(t in msg_l for t in REVIEW_TRIGGERS)
         has_budget_trigger = any(t in msg_l for t in BUDGET_TRIGGERS)
-        is_explicit_build = any(w in msg_l for w in BUILD_TRIGGERS)
+        is_explicit_build = _has_explicit_build(msg_l)
         has_price_trigger = any(t in msg_l for t in PRICE_TRIGGERS)
         has_full_combo = structured_state.get("cpu", "none") != "none" and structured_state.get("gpu", "none") != "none" and structured_state.get("mainboard", "none") != "none"
 
@@ -442,10 +465,10 @@ async def parse_master_intent(user_msg: str, chat_history: list = None) -> Maste
             intent_pass1 = await _run_classification_pass(user_msg, history_context)
 
         # 2. Pre-extraction Guards (Vẫn chạy để vớt các trường hợp LLM Pass 1 phân loại sai)
-        intent_pass1 = _apply_pre_extraction_guards(msg_l, comp_count, intent_pass1, history_context, structured_state)
+        intent_pass1 = _apply_pre_extraction_guards(msg_l, comp_count, intent_pass1, structured_state)
             
         # 3. PASS 2
-        parsed = await _run_extraction_pass(user_msg, intent_pass1, history_context)
+        parsed = await _run_extraction_pass(user_msg, intent_pass1)
         parsed.intent = intent_pass1 
         
         # 4. Post-extraction Guards
@@ -455,16 +478,12 @@ async def parse_master_intent(user_msg: str, chat_history: list = None) -> Maste
         # 5. Retry Logic
         fallback_intent = _check_retry_condition(parsed)
         if fallback_intent:
-            parsed = await _handle_retry(user_msg, history_context, parsed, fallback_intent)
+            parsed = await _handle_retry(user_msg, parsed, fallback_intent)
             _apply_post_extraction_guards(parsed, cpu_match, gpu_match, main_match, comp_count)
             _inherit_structured_followup_state(parsed, structured_state, cpu_match, gpu_match, main_match, msg_l)
 
         return parsed
         
-    except Exception as e:
+    except (ollama.RequestError, ollama.ResponseError, TimeoutError, ValidationError) as e:
         print(f"\u274c [INTENT-LLM] Lỗi parse intent, fallback 'none': {e}")
-        return MasterIntentSchema(
-            reasoning="Fallback do lỗi kết nối LLM",
-            intent="none", target_product="none", spec_detail="none",
-            cpu="none", mainboard="none", gpu="none", budget_amount=0, category="none"
-        )
+        return MasterIntentSchema(intent="none")
