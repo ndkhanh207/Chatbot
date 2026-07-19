@@ -6,7 +6,7 @@ MAX_HISTORY_MSGS = 4
 MAX_HISTORY_CHAR_LIMIT = 200
 
 # Shared component extraction. Keep this broad: DB lookup decides truth later.
-CPU_RE = re.compile(r'\b(i[3579](?:-?\d{4,5}[a-z0-9]*)?|ryzen\s*[3579](?:\s*\d{3,5}[a-z0-9]*)?|core\s*ultra\s*\d+|x3d)\b', re.I)
+CPU_RE = re.compile(r'\b(i[3579](?:[-\s]?\d{4,5}[a-z0-9]*)?|ryzen\s*[3579](?:\s*\d{3,5}[a-z0-9]*)?|core\s*ultra\s*\d+|x3d)\b', re.I)
 GPU_RE = re.compile(r'\b(?:(?:asus|msi|gigabyte|galax|sapphire|powercolor|asrock|zotac|evga|palit|inno3d)\s+(?:\w+\s+){0,4})?(?:geforce\s+)?(?:rtx|gtx|rx|arc)\s*\d{3,5}(?:\s*ti|\s*xt|\s*xtx|\s*gre|\s*super)?(?:\s*(?:\d{1,2}gb?|\d{1,2}g|gddr\d+x?|black|white|oc|gaming|trio))*\b', re.I)
 MAIN_RE = re.compile(r'\b([bzhx]\d{2,3}m?(?:-[a-z0-9]+)?)\b', re.I)
 CAT_RE = re.compile(r'\b(gpu|cpu|mainboard|main|card|vga)\b', re.I)
@@ -33,15 +33,14 @@ def _intent_state_from_meta(meta: dict) -> dict:
     metadata = normalize_context_metadata(meta)
     state = {}
     mapping = {
-        "cpu": ["cpu", "last_suggested_cpu", "user_cpu"],
-        "gpu": ["gpu", "last_suggested_gpu", "user_gpu"],
-        "mainboard": ["mainboard", "last_suggested_mainboard", "user_mainboard"],
+        "cpu": ["cpu", "last_suggested_cpu"],
+        "gpu": ["gpu", "last_suggested_gpu"],
+        "mainboard": ["mainboard", "last_suggested_mainboard"],
         "target_product": ["target_product"],
         "category": ["category"],
         "spec_detail": ["spec_detail"],
         "last_intent": ["intent", "last_intent"],
         "build_id": ["build_id"],
-        "preset_id": ["preset_id"],
         "pending_question": ["pending_question"],
     }
 
@@ -51,6 +50,11 @@ def _intent_state_from_meta(meta: dict) -> dict:
             if value:
                 state[out_key] = value
                 break
+    required_components = metadata.get("required_components") or {}
+    if isinstance(required_components, dict):
+        for category in ("cpu", "gpu", "mainboard"):
+            if category not in state and _clean(required_components.get(category)):
+                state[category] = _clean(required_components[category])
     if metadata.get("budget"):
         state["budget"] = metadata["budget"]
     return state

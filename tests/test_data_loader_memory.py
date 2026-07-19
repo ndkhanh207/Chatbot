@@ -1,29 +1,40 @@
-import pandas as pd
 import torch
+import langchain_huggingface
 
-from app.core import data_loader
+from app.catalog import ProductRecord
+from app.catalog import semantic
 
 
 def test_cuda_embeddings_use_half_precision(monkeypatch):
     captured = {}
-    monkeypatch.setattr(data_loader.Config, "EMBEDDING_DEVICE", "cuda")
+    from config.config import Config
+
+    monkeypatch.setattr(Config, "EMBEDDING_DEVICE", "cuda")
     monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
     monkeypatch.setattr(
-        data_loader,
+        langchain_huggingface,
         "HuggingFaceEmbeddings",
         lambda **kwargs: captured.update(kwargs) or object(),
     )
 
-    data_loader.create_embeddings()
+    semantic.create_embeddings()
 
     assert captured["model_kwargs"]["device"] == "cuda"
     assert captured["model_kwargs"]["model_kwargs"]["torch_dtype"] is torch.float16
     assert captured["encode_kwargs"]["batch_size"] == 8
 
 
-def test_document_conversion_stays_in_process():
-    docs = data_loader.convert_to_documents(
-        pd.DataFrame([{"name": "RTX 4060", "category": "GPU", "search_text": "ignored"}])
+def test_canonical_product_preserves_legacy_facts():
+    record = ProductRecord(
+        product_id="product:gpu:rtx-4060",
+        category="GPU",
+        name="RTX 4060",
+        brand="NVIDIA",
+        price=8_000_000,
+        attributes={"bộ nhớ": 8},
     )
 
-    assert [doc.page_content for doc in docs] == ["Name: RTX 4060 | Category: GPU"]
+    item = record.as_legacy_dict()
+    assert item["tên"] == "RTX 4060"
+    assert item["giá"] == 8_000_000
+    assert item["bộ nhớ"] == 8

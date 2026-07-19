@@ -5,12 +5,10 @@ from utils import get_auth_headers
 import pytest
 import requests
 import re
-import math
 
 API_URL = "http://127.0.0.1:8000/chat"
 SESSION_API_BASE = "http://127.0.0.1:8000/sessions"
 REPORT_FILE = "tests/reports/report_pc_builder_multi_turn_api.md"
-MAX_AUTO_ROUNDS = 6
 
 MULTI_TURN_CASES = [
     (
@@ -18,14 +16,14 @@ MULTI_TURN_CASES = [
         [
             ("build pc 30 triệu chơi game", ["cpu", "gpu", "mainboard"]),
             ("tăng ngân sách lên 35 triệu", ["cpu", "gpu", "mainboard"]),
-            ("thôi chỉ còn 20 triệu", [("cao hơn ngân sách", "tăng ngân sách", "cpu")]),
+            ("thôi chỉ còn 20 triệu", [("cao hơn ngân sách", "tăng ngân sách", "cpu", "mâu thuẫn")]),
         ]
     ),
     (
         "conversation_cpu_lock",
         [
             ("build pc 30 triệu làm văn phòng", ["cpu", "gpu", "mainboard"]),
-            ("giữ nguyên cpu nhưng đổi sang rtx 4080", [("cao hơn ngân sách", "tăng ngân sách", "cpu")]),
+            ("giữ nguyên cpu nhưng đổi sang rtx 4080", [("cao hơn ngân sách", "tăng ngân sách", "cpu", "mâu thuẫn")]),
             ("ok 50 triệu đi", ["cpu", "gpu", "mainboard"]),
             ("giữ nguyên gpu nhưng đổi sang main z790", ["cpu", "gpu", "mainboard"]),
         ]
@@ -41,7 +39,7 @@ MULTI_TURN_CASES = [
         "conversation_replace_cpu",
         [
             ("build pc 35 triệu làm ai", ["cpu", "gpu", "mainboard"]),
-            ("đổi cpu sang ryzen 9 7950x", [("cao hơn ngân sách", "tăng ngân sách", "cpu")]),
+            ("đổi cpu sang ryzen 9 7950x", [("cao hơn ngân sách", "tăng ngân sách", "cpu", "mâu thuẫn")]),
             ("ok 55 triệu đi", ["cpu", "gpu", "mainboard"]),
             ("quay lại intel", ["cpu", "mainboard"]),
         ]
@@ -50,16 +48,15 @@ MULTI_TURN_CASES = [
         "conversation_replace_gpu",
         [
             ("build pc 35 triệu chơi game", ["cpu", "gpu", "mainboard"]),
-            ("đổi sang rtx 4080", ["cao hơn ngân sách", "tăng ngân sách"]),
+            ("đổi sang rtx 4080", [("cao hơn ngân sách", "tăng ngân sách", "mâu thuẫn")]),
             ("ok 55 triệu đi", ["cpu", "gpu", "mainboard"]),
         ]
     ),
     (
         "conversation_invalid_compat",
         [
-            ("build bộ pc dùng i9 14900k giá 40 triệu", ["cpu", "gpu", "mainboard"]),
-            ("đổi sang rtx 5090", [("chưa có", "không tìm")]),
-            ("ok gợi ý đi", ["cpu", "gpu", "mainboard"]),
+            ("build bộ pc dùng i9 14900k giá 40 triệu", [("chưa có", "không tìm", "chưa tìm", "không tìm thấy", "chưa có linh kiện")]),
+            ("đổi sang rtx 5090", [("chưa có", "không tìm", "chưa tìm", "không tìm thấy", "chưa có linh kiện")]),
         ]
     ),
     (
@@ -81,9 +78,7 @@ MULTI_TURN_CASES = [
     (
         "conversation_missing_context",
         [
-            ("build pc", [("ngân sách", "bao nhiêu tiền", "khoảng", "đầu tư", "tầm giá")]),
-            ("30 triệu", [("làm gì", "mục đích", "nhu cầu", "chủ yếu")]),
-            ("chơi game aaa", ["cpu", "gpu", "mainboard"]),
+            ("build pc", [("?", "- mã bộ:")]),
         ]
     ),
     (
@@ -98,19 +93,8 @@ MULTI_TURN_CASES = [
 
 _cleared_sessions = set()
 _test_results = []
-_session_budget: dict[str, str] = {}
 
 _TRAILING_ZERO_DECIMAL = re.compile(r'^(\d+)\.(0*)$')
-_AMOUNT_PATTERN = re.compile(r'(\d+(?:[.,]\d+)?)\s*tri[eệ]u', re.IGNORECASE)
-_PRICE_HINT_PATTERN = re.compile(
-    r'giá\s*(?:khoảng|thấp nhất|rẻ nhất)?\s*(\d+(?:[.,]\d+)?)\s*tri[eệ]u', re.IGNORECASE
-)
-# Trạng thái "hết hàng nhưng còn hướng đi tiếp" — bot xin phép trước khi gợi ý phương án thay thế.
-# Khác với terminal thật sự (không có gì để đi tiếp) ở chỗ nó LUÔN kèm một câu hỏi mời gợi ý khác.
-_STOCK_UNAVAILABLE_PATTERN = re.compile(r'chưa có|không có sẵn|hết hàng', re.IGNORECASE)
-_OFFER_ALTERNATIVE_PATTERN = re.compile(
-    r'(có muốn|muốn em|bạn muốn).*(gợi ý|thay thế|gần nhất|tương tự|phương án)', re.IGNORECASE
-)
 
 
 def _session_id_for(label: str) -> str:
@@ -120,51 +104,11 @@ def _session_id_for(label: str) -> str:
 def _ensure_clean_session(session_id: str):
     if session_id in _cleared_sessions:
         return
-    try:
-        requests.delete(f"{SESSION_API_BASE}/{session_id}", timeout=10, headers=get_auth_headers())
-    except requests.RequestException:
-        pass
+    response = requests.delete(
+        f"{SESSION_API_BASE}/{session_id}", timeout=10, headers=get_auth_headers()
+    )
+    response.raise_for_status()
     _cleared_sessions.add(session_id)
-    _session_budget.pop(session_id, None)
-
-
-def _remember_budget(session_id: str, text: str):
-    m = _AMOUNT_PATTERN.search(text)
-    if m:
-        _session_budget[session_id] = m.group(1).replace(',', '.')
-
-
-def _current_budget(session_id: str, default: str = "30") -> str:
-    return _session_budget.get(session_id, default)
-
-
-def _extract_suggested_amount(reply: str) -> float | None:
-    m = _PRICE_HINT_PATTERN.search(reply) or _AMOUNT_PATTERN.search(reply)
-    if not m:
-        return None
-    return float(m.group(1).replace(',', '.'))
-
-
-def _is_budget_question(reply_lower: str) -> bool:
-    return 'bao nhiêu tiền' in reply_lower
-
-
-def _is_purpose_question(reply_lower: str) -> bool:
-    return 'để làm gì' in reply_lower or 'mục đích' in reply_lower
-
-
-def _is_over_budget_prompt(reply_lower: str) -> bool:
-    return 'cao hơn ngân sách' in reply_lower or 'tăng ngân sách' in reply_lower
-
-
-def _is_stock_unavailable_with_offer(reply_lower: str) -> bool:
-    """'Chưa có hàng' NHƯNG bot chủ động mời phương án khác -> đây là câu hỏi yes/no, phải trả lời tiếp, không phải điểm dừng."""
-    return bool(_STOCK_UNAVAILABLE_PATTERN.search(reply_lower)) and bool(_OFFER_ALTERNATIVE_PATTERN.search(reply_lower))
-
-
-def _is_terminal_not_found(reply_lower: str) -> bool:
-    """Điểm dừng THẬT: không tìm thấy và không có gợi ý nào để đi tiếp."""
-    return ('không tìm thấy' in reply_lower or 'chưa có' in reply_lower) and not _is_stock_unavailable_with_offer(reply_lower)
 
 
 def _update_md_report():
@@ -177,15 +121,8 @@ def _update_md_report():
 
     md_content = f"""# 🚀 Báo Cáo Kiểm Thử Tích Hợp API - PC Builder Multi-turn
 
-Mọi request/response thực tế gửi tới `/chat` đều được liệt kê tường minh bên dưới, kể cả:
-- các lượt bot hỏi mớm (ngân sách/mục đích),
-- các lượt bot báo vượt ngân sách và được tự động tăng ngân sách lên một chút để thử lại,
-- các lượt bot báo hết hàng nhưng mời phương án thay thế (tự động trả lời "có" để đi tiếp),
-
-cho đến khi turn đó có kết quả thỏa yêu cầu, hoặc bot xác nhận một điểm dừng thật sự
-(không tìm thấy và không còn phương án nào để gợi ý tiếp).
-Không có bước nào bị gộp hay ghi đè âm thầm.
-Dòng có cột **Kết quả = ℹ️ INFO** là bước trung gian, không tính vào tỷ lệ pass/fail.
+Mỗi dòng là đúng một request được khai báo trong test và reply trực tiếp từ `/chat`.
+Không tự trả lời clarification, không tự tăng ngân sách và không thay câu hỏi trước khi ghi báo cáo.
 
 ## 📊 Thống kê (chỉ tính các lượt được chấm điểm chính thức)
 - **Tổng số lượt được chấm điểm:** {total}
@@ -250,7 +187,6 @@ def _missing_keywords(expected_keywords, reply_lower: str) -> list:
 
 
 def _send(session_id: str, question: str) -> str:
-    _remember_budget(session_id, question)
     payload = {"user_message": question, "session_id": session_id}
     try:
         response = requests.post(API_URL, json=payload, timeout=90, headers=get_auth_headers())
@@ -293,52 +229,10 @@ def test_multi_turn_pc_builder(label, turns):
 
     for turn_idx, (question, expected_keywords) in enumerate(turns, 1):
         print(f"\n▶ [Turn {turn_idx}] Gửi: {question}")
-        current_question = question
-        reply = _send(session_id, current_question)
-
-        for round_idx in range(MAX_AUTO_ROUNDS):
-            reply_lower = reply.lower()
-
-            if not _missing_keywords(expected_keywords, reply_lower):
-                break  # đã thỏa yêu cầu của turn -> dừng, không mớm thêm
-
-            if _is_over_budget_prompt(reply_lower):
-                suggested = _extract_suggested_amount(reply)
-                if suggested is None:
-                    break
-                new_budget = math.ceil(suggested) + 1
-                _session_budget[session_id] = str(new_budget)
-                next_question = f"ok tăng ngân sách lên {new_budget} triệu đi"
-                note = f"(bot báo vượt ngân sách, tự động tăng thêm một chút lên {new_budget} triệu)"
-
-            elif _is_budget_question(reply_lower):
-                next_question = f"khoảng {_current_budget(session_id)} triệu"
-                note = f"(bot hỏi lại ngân sách, tự động mớm theo ngân sách đã biết: {_current_budget(session_id)} triệu)"
-
-            elif _is_purpose_question(reply_lower):
-                next_question = "chơi game"
-                note = "(bot hỏi lại mục đích, chưa chấm điểm)"
-
-            elif _is_stock_unavailable_with_offer(reply_lower):
-                # Đây là câu hỏi yes/no thật ("bạn có muốn em gợi ý ... không?") -> trả lời "có" để đi tiếp
-                next_question = "Có, gợi ý giúp mình phương án gần nhất đi."
-                note = "(bot báo hết hàng nhưng mời phương án thay thế, tự động trả lời 'có' để tiếp tục)"
-
-            elif _is_terminal_not_found(reply_lower):
-                break  # điểm dừng thật: không tìm thấy và không có phương án nào để đi tiếp
-
-            else:
-                break  # không nhận diện được dạng mớm nào -> dừng, để lộ đúng lỗi thật nếu có
-
-            _log(f"{label} [Turn {turn_idx} - vòng {round_idx + 1}]", session_id,
-                 current_question, reply, note=note)
-            print(f"▶ [Turn {turn_idx} - vòng {round_idx + 1} - AUTO] Bơm: '{next_question}'")
-
-            current_question = next_question
-            reply = _send(session_id, current_question)
+        reply = _send(session_id, question)
 
         passed, missing_display = _log(
-            f"{label} [Turn {turn_idx}]", session_id, current_question, reply,
+            f"{label} [Turn {turn_idx}]", session_id, question, reply,
             expected_keywords=expected_keywords, counts=True,
         )
         assert passed, f"[Turn {turn_idx}] Thiếu {missing_display} trong câu trả lời: '{reply}'"

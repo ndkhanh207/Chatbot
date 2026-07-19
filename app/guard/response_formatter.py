@@ -51,52 +51,6 @@ def is_spec_range_query(user_message: str, matched_items: list) -> bool:
 
 
 # ──────────────────────────────────────────────
-# Phát hiện điều kiện khoảng giá trong câu hỏi
-# khong dung
-# ──────────────────────────────────────────────
-def parse_price_range_vnd(user_message: str) -> Optional[Tuple[float, float]]:
-    """
-    Phát hiện điều kiện khoảng giá trong câu hỏi.
-    Trả về (min_vnd, max_vnd) hoặc None nếu không có điều kiện giá.
-    """
-    msg = user_message.lower()
-
-    m = re.search(r'(?:từ\s*)?(\d+(?:[.,]\d+)?)\s*(?:đến|tới|-)\s*(\d+(?:[.,]\d+)?)\s*tri[eệ]u', msg)
-    if m:
-        lo = float(m.group(1).replace(",", "."))
-        hi = float(m.group(2).replace(",", "."))
-        return lo * 1_000_000, hi * 1_000_000
-
-    m = re.search(r'dưới\s*(\d+(?:[.,]\d+)?)\s*tri[eệ]u', msg)
-    if m:
-        hi = float(m.group(1).replace(",", "."))
-        return 0.0, hi * 1_000_000
-
-    m = re.search(r'trên\s*(\d+(?:[.,]\d+)?)\s*tri[eệ]u', msg)
-    if m:
-        lo = float(m.group(1).replace(",", "."))
-        return lo * 1_000_000, float("inf")
-
-    # Bắt "khoảng/tầm/cỡ X triệu" -> lấy biên độ +/- 20%
-    m = re.search(r'(?:khoảng|tầm|cỡ|mức|quanh)\s*(?:giá\s*)?(\d+(?:[.,]\d+)?)\s*tri[eệ]u', msg)
-    if m:
-        val = float(m.group(1).replace(",", "."))
-        lo = max(0.0, val * 0.8)
-        hi = val * 1.2
-        return lo * 1_000_000, hi * 1_000_000
-        
-    # Bắt "giá X triệu" (chính xác mức giá, lấy +/- 10% bù trừ)
-    m = re.search(r'giá\s*(\d+(?:[.,]\d+)?)\s*tri[eệ]u', msg)
-    if m:
-        val = float(m.group(1).replace(",", "."))
-        lo = max(0.0, val * 0.9)
-        hi = val * 1.1
-        return lo * 1_000_000, hi * 1_000_000
-
-    return None
-
-
-# ──────────────────────────────────────────────
 # Build summary cho format_hint — KHÔNG bỏ qua sản phẩm thiếu data,
 # ghi nhận rõ ràng để LLM không tự suy luận thay
 # ──────────────────────────────────────────────

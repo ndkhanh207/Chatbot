@@ -14,6 +14,7 @@ from app.core.intent.prompts import (
 )
 from app.core.intent.history_context import build_history_context, extract_structured_state
 from app.specification.field_resolver import resolve_explicit_spec_detail
+from app.pc_builder.extractor import detect_build_pc_intent
 
 # ==============================================================================
 # CONSTANTS & CONFIG
@@ -50,12 +51,6 @@ SPEC_TRIGGERS = [
 FOLLOW_UP_MARKERS = ['vậy', 'thì sao', 'thế còn', 'còn', 'nó', 'của']
 PRICE_TRIGGERS = ['giá', 'bao nhiêu tiền', 'nhiêu tiền']
 BUDGET_TRIGGERS = ['triệu', 'tr', 'tầm', 'khoảng', 'dưới', 'trên']
-BUILD_TRIGGERS = ['build', 'bộ pc', 'bộ máy', 'dàn', 'máy', 'pc']
-BUILD_TRIGGER_PATTERN = re.compile(
-    rf"(?<!\w)(?:{'|'.join(map(re.escape, BUILD_TRIGGERS))})(?!\w)",
-    re.IGNORECASE,
-)
-
 CPU_PATTERN = re.compile(r'(amd ryzen\s*[3579]\s+\d{4,5}[a-z0-9]*|intel core i[3579][-\s]?\d{4,5}[a-z0-9]*|ryzen\s*[3579]\s+\d{4,5}[a-z0-9]*|i[3579][-\s]?\d{4,5}[a-z0-9]*|ryzen\s+[3579])', re.IGNORECASE)
 GPU_PATTERN = re.compile(r'((?:(?:asus|msi|gigabyte|galax|sapphire|powercolor|asrock|zotac|evga|palit|inno3d)\s+(?:\w+\s+){0,4})?(?:geforce\s+)?(?:rtx|gtx)\s*\d{3,4}(?:\s*ti|\s*super)?(?:\s*(?:\d{1,2}gb?|\d{1,2}g|gddr\d+x?|black|white|oc|gaming|trio))*|radeon\s+rx\s*\d{3,4}(?:\s*xt)?|rx\s*\d{3,4}(?:\s*xt)?)', re.IGNORECASE)
 MAIN_PATTERN = re.compile(r'(asus\s+[bzhx]\d{2,3}m?(?:-[a-z0-9]+)?|gigabyte\s+[bzhx]\d{2,3}m?(?:-[a-z0-9]+)?|msi\s+[bzhx]\d{2,3}m?(?:-[a-z0-9]+)?|asrock\s+[bzhx]\d{2,3}m?(?:-[a-z0-9]+)?|[bzhx]\d{2,3}m?(?:-[a-z0-9]+)?|mainboard\s+(?!(?:asus|msi|gigabyte|asrock)\b)[a-z0-9-]+|main\s+(?!(?:asus|msi|gigabyte|asrock)\b)[a-z0-9-]+)', re.IGNORECASE)
@@ -141,7 +136,7 @@ def _count_components(msg_l: str) -> tuple:
     return comp_count, cpu_match, gpu_match, main_match
 
 def _has_explicit_build(msg: str) -> bool:
-    return BUILD_TRIGGER_PATTERN.search(msg) is not None
+    return detect_build_pc_intent(msg)
 
 def _apply_pre_extraction_guards(
     msg_l: str,
@@ -197,8 +192,7 @@ def _apply_pre_extraction_guards(
             return last_intent
 
     # Nếu nhắc đích danh linh kiện cụ thể (comp_count >= 1) thì không thể là tìm kiếm chung chung.
-    # Nếu Pass-1 ra build_pc nhưng không hề có chữ 'build', 'bộ', 'pc', 'dàn', 'máy' -> Ảo giác.
-    if comp_count >= 1 and (intent_pass1 in ["general_search", "none"] or (intent_pass1 == "build_pc" and not is_explicit_build)):
+    if comp_count >= 1 and intent_pass1 in ["general_search", "none"]:
         if last_intent not in ["general_search", "none"]:
             print(f"\u26a0\ufe0f [GUARD] Nhắc tên linh kiện cụ thể nhưng Pass 1 trả {intent_pass1}. Ép kế thừa: {last_intent}")
             return last_intent
@@ -466,6 +460,11 @@ async def parse_master_intent(user_msg: str, chat_history: list = None) -> Maste
 
         # 2. Pre-extraction Guards (Vẫn chạy để vớt các trường hợp LLM Pass 1 phân loại sai)
         intent_pass1 = _apply_pre_extraction_guards(msg_l, comp_count, intent_pass1, structured_state)
+
+        # PC Builder owns its own trained turn extraction. Running the generic
+        # entity pass here would parse the same message twice.
+        if intent_pass1 == "build_pc":
+            return MasterIntentSchema(intent="build_pc")
             
         # 3. PASS 2
         parsed = await _run_extraction_pass(user_msg, intent_pass1)

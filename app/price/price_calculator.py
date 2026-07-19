@@ -4,10 +4,9 @@ Module độc lập xử lý yêu cầu TÍNH TỔNG GIÁ linh kiện.
 LLM bóc tách tên linh kiện → Python tra DB lấy giá → cộng tổng cứng (không dùng LLM tính toán).
 """
 
-from app.core.search_engine import hybrid_search
+from app.catalog import ShopCatalog, resolve_component
 from app.core.intent.master_intent import MasterIntentSchema
-from app.compatibility.compat_logic import _get_field
-from app.price.pricing_util import format_currency_vietnam
+from app.utils.format import get_field, format_currency_vietnam
 
 # Trigger từ khóa mồi để gọi luồng tính giá
 PRICE_CALCULATION_TRIGGERS = [
@@ -20,23 +19,12 @@ def is_price_calculation_query(message: str) -> bool:
     return any(t in message for t in PRICE_CALCULATION_TRIGGERS)
 
 
-def _resolve_item(name: str, category: str, knowledge_base, vector_store):
-    """Tra cứu 1 linh kiện trong DB. Trả về None nếu 'none'/rỗng hoặc không tìm thấy."""
-    if not name or name.strip().lower() == "none":
-        return None
-    normalized = name.lower().replace("-", " ")
-    results = hybrid_search(normalized, category, 1, knowledge_base, vector_store)
-    return results[0] if results else None
-
-
-def build_price_calculation_context(intent: MasterIntentSchema, knowledge_base, vector_store) -> str:
-    """
-    Xây dựng context tính tổng giá cho các linh kiện đã được LLM bóc tách.
-    Giá được lấy từ DB và cộng bằng Python — KHÔNG để LLM tự tính.
-    """
-    cpu  = _resolve_item(intent.cpu,       "CPU",       knowledge_base, vector_store)
-    main = _resolve_item(intent.mainboard, "MAINBOARD", knowledge_base, vector_store)
-    gpu  = _resolve_item(intent.gpu,       "GPU",       knowledge_base, vector_store)
+def build_price_calculation_context(intent: MasterIntentSchema, catalog: ShopCatalog) -> str:
+    """Xây dựng context tính tổng giá cho các linh kiện đã được LLM bóc tách.
+    Giá được lấy từ DB và cộng bằng Python — KHÔNG để LLM tự tính."""
+    cpu  = resolve_component(intent.cpu,       "CPU",       catalog)
+    main = resolve_component(intent.mainboard, "MAINBOARD", catalog)
+    gpu  = resolve_component(intent.gpu,       "GPU",       catalog)
 
     lines         = ["Dạ, chi tiết giá các linh kiện anh/chị cần tính đây ạ:\n"]
     total_price   = 0
@@ -51,13 +39,13 @@ def build_price_calculation_context(intent: MasterIntentSchema, knowledge_base, 
         if not item_name or item_name.strip().lower() == "none":
             continue
         if item:
-            price_raw = _get_field(item, "giá", "price", default=0)
+            price_raw = get_field(item, "giá", "price", default=0)
             try:
                 price_val = int(float(price_raw)) if price_raw else 0
             except Exception:
                 price_val = 0
             total_price += price_val
-            name_disp = _get_field(item, "tên", "name", default=item_name)
+            name_disp = get_field(item, "tên", "name", default=item_name)
             lines.append(f"- [{category}] '{name_disp}' | Giá: {format_currency_vietnam(price_raw)} VNĐ")
             found_items.append(category)
         else:

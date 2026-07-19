@@ -8,10 +8,9 @@ from main import app
 from app.api.auth.firebase_auth import verify_firebase_token
 
 client = TestClient(app)
-import pandas as pd
-app.state.knowledge_base = pd.DataFrame(columns=["category", "search_text"])
-app.state.vector_store = None
-app.state.build_data = None
+from app.catalog import ShopCatalog
+from config.config import Config
+app.state.catalog = ShopCatalog.load(Config.PC_STORE_DATA)
 
 # Bypass Firebase Auth để test độc lập Backend
 def override_verify_token():

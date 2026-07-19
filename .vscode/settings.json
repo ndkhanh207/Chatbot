@@ -4,23 +4,28 @@
         "**/__pycache__/**": true,
         "**/.pytest_cache/**": true,
         "**/.git/**": true,
-        "**/chroma_db/**": true
+        "**/chroma_db/**": true,
+        "**/data/**": true,
+        "**/archive/**": true,
+        "**/ragas_runs/**": true,
+        "**/plan/**": true
     },
     "search.exclude": {
         "**/.venv": true,
         "**/__pycache__": true,
         "**/.pytest_cache": true,
         "**/.git": true,
-        "**/chroma_db": true
+        "**/chroma_db": true,
+        "**/data": true,
+        "**/archive": true,
+        "**/ragas_runs": true,
+        "**/plan": true
     },
-    "python.analysis.exclude": [
-        "**/.venv/**",
-        "**/__pycache__/**",
-        "**/chroma_db/**"
-    ],
     "python.testing.pytestArgs": [
         "."
     ],
+    "python.analysis.indexing": false,
+    "python.analysis.packageIndexDepths": [],
     "python.testing.unittestEnabled": false,
     "python.testing.pytestEnabled": true
 }

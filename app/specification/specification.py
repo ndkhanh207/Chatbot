@@ -1,5 +1,5 @@
-from app.core.search_engine import hybrid_search
-from app.specification.context_builder import build_product_context
+from app.catalog import ProductQuery, ShopCatalog
+from app.catalog.context_builder import build_product_context
 import pandas as pd
 from app.constants import FIELD_KEYWORD_ALIASES
 
@@ -78,7 +78,7 @@ def _build_clock_hint(item: dict) -> str:
     )
 
 
-def build_specification_context(parsed_intent, category, knowledge_base, vector_store, search_query) -> tuple[str, str]:
+def build_specification_context(parsed_intent, category, catalog: ShopCatalog, search_query) -> tuple[str, str]:
     """
     Container xử lý riêng cho luồng hỏi thông số kỹ thuật.
     Trả về: (context, format_hint)
@@ -92,22 +92,15 @@ def build_specification_context(parsed_intent, category, knowledge_base, vector_
         else:
             lookup_term = search_query
 
-    matched_items = hybrid_search(lookup_term, category, SEARCH_TOP_K, knowledge_base, vector_store) or []
-
-    if not matched_items and lookup_term != search_query:
-        matched_items = hybrid_search(search_query, category, SEARCH_TOP_K, knowledge_base, vector_store) or []
-    
-    if matched_items and len(matched_items) > 1:
-        lookup_clean = lookup_term.replace('-', ' ').lower()
-        lookup_tokens = [w for w in lookup_clean.split() if len(w) > 1]
-        
-        def name_match_score(item):
-            name = (item.get('tên') or item.get('name') or '').replace('-', ' ').lower()
-            exact_bonus = 100 if lookup_clean in name or all(t in name for t in lookup_tokens) else 0
-            return exact_bonus + sum(1 for t in lookup_tokens if t in name)
-            
-        matched_items.sort(key=name_match_score, reverse=True)
-        matched_items = matched_items[:RERANK_TOP_K]
+    from app.catalog.lookup import lookup_and_rerank
+    matched_items = lookup_and_rerank(
+        catalog=catalog,
+        lookup_term=lookup_term,
+        search_query=search_query,
+        category=category,
+        top_k=SEARCH_TOP_K,
+        rerank_top_k=RERANK_TOP_K
+    )
     
     context = build_product_context(search_query, category, matched_items, include_all_fields=True)
     
@@ -149,7 +142,7 @@ def build_specification_context(parsed_intent, category, knowledge_base, vector_
         
     return context, format_hint
 
-def build_general_search_context(parsed_intent, msg_lower, category, knowledge_base, vector_store, search_query) -> tuple[str, str]:
+def build_general_search_context(parsed_intent, msg_lower, category, catalog: ShopCatalog, search_query) -> tuple[str, str]:
     """
     Container xử lý riêng cho luồng tìm kiếm chung chung (general_search).
     Hỗ trợ Regex lấy số lượng (ví dụ: "top 5").
@@ -161,7 +154,9 @@ def build_general_search_context(parsed_intent, msg_lower, category, knowledge_b
         
     # q_clean was used in chat_handler, but search_query is essentially q_clean or very close. 
     # To be exactly identical, we will just use search_query here.
-    matched_items = hybrid_search(search_query, category, top_k, knowledge_base, vector_store) or []
+    matched_items = [item.as_legacy_dict() for item in catalog.search_products(
+        ProductQuery(text=search_query, category=category, limit=top_k)
+    )]
     context = build_product_context(search_query, category, matched_items, include_all_fields=False)
     
     return context, ""

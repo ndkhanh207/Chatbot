@@ -4,78 +4,74 @@ Orchestrator Module: Kết nối các module Logic, Intent, và Format.
 Giữ nguyên giao diện API để không ảnh hưởng đến các module gọi từ ngoài (chat_handler).
 """
 
-from typing import Optional
+from app.catalog import ProductQuery, ShopCatalog, resolve_component
+from app.constants import CATEGORY_MAP, CPU_TERMS, GPU_TERMS, MAIN_TERMS
 
 # --- Import & Expose các thành phần từ các module con ---
 from app.compatibility.compat_logic import (
-    CATEGORY_MAP, _get_field, check_cpu_main_compat, check_gpu_main_compat, check_cpu_gpu_compat,
-    is_compatibility_query, find_compatible_build,
-    CPU_TERMS, GPU_TERMS, MAIN_TERMS  # Expose cho chat_handler
+    check_cpu_main_compat, check_gpu_main_compat,
+    find_compatible_build,
 )
-from app.compatibility.compat_format import _fmt_component_combo, _fmt_cpu_main, _fmt_gpu_main, _fmt_cpu_gpu
 from app.core.intent.master_intent import MasterIntentSchema
-from app.price.pricing_util import format_currency_vietnam
+from app.utils.format import get_field, format_currency_vietnam
 
 __all__ = [
     "build_compatibility_context", "build_suggestion_context",
     "resolve_component",
-    "is_compatibility_query",
     "CPU_TERMS", "GPU_TERMS", "MAIN_TERMS",
 ]
 
-
-def resolve_component(name: str, category: str, knowledge_base, vector_store) -> Optional[dict]:
-    """Tra cứu 1 linh kiện trong DB từ tên đã bóc tách. None nếu 'none'/rỗng
-    hoặc hybrid_search không tìm thấy match nào."""
-    if not name or name.strip().lower() == "none":
-        return None
-    # Deferred import to avoid circular dependency:
-    # search_engine → query_parser → compatibility → search_engine
-    from app.core.search_engine import hybrid_search
-    normalized_name = name.lower().replace("-", " ")
-    results = hybrid_search(normalized_name, category, 1, knowledge_base, vector_store)
-    return results[0] if results else None
 
 
 # ──────────────────────────────────────────────
 # Tích hợp với chat_handler
 # ──────────────────────────────────────────────
-def build_compatibility_context(intent: MasterIntentSchema, knowledge_base, vector_store) -> str:
-    """Check 1 cặp hoặc combo CPU/Mainboard/GPU từ tên linh kiện đã bóc tách."""
-    cpu  = resolve_component(intent.cpu,       "CPU",       knowledge_base, vector_store)
-    main = resolve_component(intent.mainboard, "MAINBOARD", knowledge_base, vector_store)
-    gpu  = resolve_component(intent.gpu,       "GPU",       knowledge_base, vector_store)
+def build_compatibility_context(intent: MasterIntentSchema, catalog: ShopCatalog) -> str:
+    """Return catalog facts and exact comparisons; the model owns the wording."""
+    cpu  = resolve_component(intent.cpu,       "CPU",       catalog)
+    main = resolve_component(intent.mainboard, "MAINBOARD", catalog)
+    gpu  = resolve_component(intent.gpu,       "GPU",       catalog)
 
-    if cpu and main and gpu:
-        return _fmt_component_combo(
-            cpu,
-            main,
-            gpu,
-            check_cpu_main_compat(cpu, main),
-            check_gpu_main_compat(gpu, main),
-            check_cpu_gpu_compat(cpu, gpu),
-        )
+    cpu_main = check_cpu_main_compat(cpu, main) if cpu and main else None
+    gpu_main = check_gpu_main_compat(gpu, main) if gpu and main else None
+    if cpu_main and cpu_main["status"] == "incompatible":
+        overall = "incompatible"
+    elif cpu_main or gpu_main:
+        statuses = [check["status"] for check in (cpu_main, gpu_main) if check]
+        overall = "compatible" if all(status == "compatible" for status in statuses) else "unknown"
+    elif cpu and gpu:
+        overall = "not_directly_checkable"
+    else:
+        overall = "unknown"
 
-    context = ""
-    if cpu and main:
-        context += _fmt_cpu_main(cpu, main, check_cpu_main_compat(cpu, main))
-    if gpu and main:
-        context += _fmt_gpu_main(gpu, main, check_gpu_main_compat(gpu, main))
-    if cpu and gpu and not main:
-        context += _fmt_cpu_gpu(cpu, gpu, check_cpu_gpu_compat(cpu, gpu))
+    def field(item: dict | None, *keys):
+        return get_field(item, *keys, default=None) if item else None
 
-    if not context:
-        return (
-            "[CẢNH BÁO TỪ HỆ THỐNG]\n"
-            "Khách hỏi về độ tương thích nhưng kho dữ liệu hiện tại KHÔNG CÓ thông tin "
-            "về một trong các linh kiện khách nhắc đến. Không thể trích xuất Socket/PCIe để kiểm tra.\n"
-            "Nhiệm vụ: Lịch sự báo cho khách biết cửa hàng không có linh kiện này."
-        )
-        
-    return context
+    facts = {
+        "OVERALL_STATUS": overall,
+        "CPU_MODEL": field(cpu, "tên", "name"),
+        "CPU_SOCKET": cpu_main.get("cpu_socket") if cpu_main else field(cpu, "socket", "socket_type"),
+        "MAINBOARD_MODEL": field(main, "tên", "name"),
+        "MAINBOARD_SOCKET": cpu_main.get("mainboard_socket") if cpu_main else field(main, "socket", "socket_type"),
+        "SOCKET_MATCH": cpu_main.get("socket_match") if cpu_main else None,
+        "GPU_MODEL": field(gpu, "tên", "name"),
+        "GPU_MAIN_STATUS": gpu_main.get("status") if gpu_main else None,
+        "GPU_PCIE_GEN": gpu_main.get("gpu_pcie_gen") if gpu_main else None,
+        "MAINBOARD_PCIE_GEN": gpu_main.get("main_pcie_gen") if gpu_main else None,
+        "BANDWIDTH_LIMITED": gpu_main.get("bandwidth_limited") if gpu_main else None,
+    }
+    render = lambda value: "null" if value is None else str(value).lower() if isinstance(value, bool) else str(value)
+    return "[CATALOG_COMPATIBILITY_FACTS]\n" + "\n".join(
+        f"- {key}: {render(value)}" for key, value in facts.items()
+    )
 
 
-def build_suggestion_context(intent: MasterIntentSchema, knowledge_base, vector_store, top_k: int = 5) -> str:
+def build_suggestion_context(
+    intent: MasterIntentSchema,
+    catalog: ShopCatalog,
+    query_text: str = "",
+    top_k: int = 5,
+) -> str:
     """Gợi ý build dựa trên ĐÚNG 1 linh kiện đã có (intent.intent == 'suggestion')."""
     candidates = [("cpu", intent.cpu), ("mainboard", intent.mainboard), ("gpu", intent.gpu)]
     owned = [(t, n) for t, n in candidates if n and n.strip().lower() != "none"]
@@ -104,18 +100,26 @@ def build_suggestion_context(intent: MasterIntentSchema, knowledge_base, vector_
             f"Hiện tại, hệ thống kiểm tra tương thích tự động CHỈ HỖ TRỢ các linh kiện: CPU, Mainboard, và VGA (Card màn hình).\n"
             f"Nhiệm vụ: Hãy lịch sự thông báo cho khách rằng tính năng gợi ý/kiểm tra tương thích cho '{cat_name}' chưa được hỗ trợ và đang trong quá trình cập nhật."
         )
-    have_item = resolve_component(have_name, CATEGORY_MAP[have_type], knowledge_base, vector_store)
+    have_item = resolve_component(have_name, CATEGORY_MAP[have_type], catalog)
     if not have_item:
         return (
             f"[CẢNH BÁO TỪ HỆ THỐNG]\n"
             f"Khách cần tìm linh kiện ghép với '{have_name}', nhưng kho dữ liệu của cửa hàng "
-            f"KHÔNG CÓ sản phẩm '{have_name}' này để trích xuất thông số (như socket, tdp...).\n"
+            f"KHÔNG CÓ sản phẩm '{have_name}' này để trích xuất thông số tương thích.\n"
             f"=> Do đó không thể lọc tự động linh kiện tương thích.\n"
             f"Nhiệm vụ: Báo rõ cho khách biết hệ thống thiếu '{have_name}' nên chưa thể gợi ý chính xác."
         )
 
-    build = find_compatible_build(have_type, have_item, knowledge_base, top_k=top_k)
-    have_display_name = _get_field(have_item, "tên", "name", default="")
+    inventory = []
+    for category in ("CPU", "MAINBOARD", "GPU"):
+        inventory.extend(
+            product.as_legacy_dict()
+            for product in catalog.search_products(
+                ProductQuery(text=query_text, category=category, limit=1000)
+            )
+        )
+    build = find_compatible_build(have_type, have_item, inventory, top_k=top_k)
+    have_display_name = get_field(have_item, "tên", "name", default="")
     lines = [f"[GỢI Ý LINH KIỆN TƯƠNG THÍCH VỚI '{have_display_name}']"]
 
     for key, label in (("mainboards", "Mainboard"), ("cpus", "CPU"), ("gpus", "GPU")):
@@ -124,16 +128,15 @@ def build_suggestion_context(intent: MasterIntentSchema, knowledge_base, vector_
             continue
         lines.append(f"\n{label} phù hợp:")
         for entry in items[:top_k]:
-            name = _get_field(entry["item"], "tên", "name", default="")
-            price_raw = _get_field(entry["item"], "giá", "price", default=0)
+            name = get_field(entry["item"], "tên", "name", default="")
+            price_raw = get_field(entry["item"], "giá", "price", default=0)
             try:
                 price_str = format_currency_vietnam(price_raw)
             except Exception:
                 price_str = str(price_raw)
-            warn = entry["compat"].get("warning")
             line = f"  • {name} | {price_str} VNĐ"
-            if warn:
-                line += f" (Cảnh báo: {warn})"
+            if entry["compat"].get("bandwidth_limited"):
+                line += " (PCIe chạy theo thế hệ của mainboard)"
             lines.append(line)
 
     if len(lines) == 1:

@@ -1,14 +1,13 @@
 import re
 from app.core.query_parser import detect_brand
-from app.specification.context_builder import build_product_context
-from app.price.price_logic import filter_knowledge_base_by_price
 from app.guard.response_formatter import build_range_summary
-from app.core.search_engine import hybrid_search
-from app.compatibility.compat_logic import _get_field
-from app.price.pricing_util import format_currency_vietnam
+from app.catalog.context_builder import build_product_context
+from app.catalog import ProductQuery, ShopCatalog
+from app.catalog.lookup import lookup_and_rerank
+from app.utils.format import get_field, format_currency_vietnam
 
 
-def build_price_check_context(parsed_intent, category, knowledge_base, vector_store, search_query) -> tuple[str, str]:
+def build_price_check_context(parsed_intent, category, catalog: ShopCatalog, search_query) -> tuple[str, str]:
     """
     Container xử lý riêng cho luồng kiểm tra giá bán của 1 linh kiện cụ thể (price check).
     Trả về: (context, format_hint)
@@ -22,29 +21,22 @@ def build_price_check_context(parsed_intent, category, knowledge_base, vector_st
         else:
             lookup_term = search_query
 
-    matched_items = hybrid_search(lookup_term, category, 3, knowledge_base, vector_store) or []
-    
-    if not matched_items and lookup_term != search_query:
-        matched_items = hybrid_search(search_query, category, 3, knowledge_base, vector_store) or []
-
-    # Re-rank: ưu tiên sản phẩm có tên chứa nhiều token của lookup_term nhất
-    if matched_items and len(matched_items) > 1:
-        lookup_clean = lookup_term.replace('-', ' ').lower()
-        lookup_tokens = [w for w in lookup_clean.split() if len(w) > 1]
-        def name_match_score(item):
-            name = (item.get('tên') or item.get('name') or '').replace('-', ' ').lower()
-            exact_bonus = 100 if lookup_clean in name or all(t in name for t in lookup_tokens) else 0
-            return exact_bonus + sum(1 for t in lookup_tokens if t in name)
-        matched_items.sort(key=name_match_score, reverse=True)
-        matched_items = matched_items[:2]
+    matched_items = lookup_and_rerank(
+        catalog=catalog,
+        lookup_term=lookup_term,
+        search_query=search_query,
+        category=category,
+        top_k=3,
+        rerank_top_k=2
+    )
         
     context = build_product_context(search_query, category, matched_items, include_all_fields=False)
     
     format_hint = ""
     if matched_items:
         item = matched_items[0]
-        price_raw = _get_field(item, "giá", "price", default=0)
-        name_disp = _get_field(item, "tên", "name", default=lookup_term)
+        price_raw = get_field(item, "giá", "price", default=0)
+        name_disp = get_field(item, "tên", "name", default=lookup_term)
         price_str = format_currency_vietnam(price_raw)
         format_hint = (
             f"\n[CHỈ THỊ CỦA HỆ THỐNG]: Khách hàng muốn hỏi giá. BẮT BUỘC chỉ trả lời đúng 1 câu ngắn gọn, không giải thích dài dòng: "
@@ -54,7 +46,7 @@ def build_price_check_context(parsed_intent, category, knowledge_base, vector_st
     return context, format_hint
 
 
-def build_budget_search_context(parsed_intent, msg_lower, category, knowledge_base, user_message, search_query) -> tuple[str, str]:
+def build_budget_search_context(parsed_intent, msg_lower, category, catalog: ShopCatalog, user_message, search_query) -> tuple[str, str]:
     """
     Container xử lý riêng cho luồng tìm kiếm linh kiện theo tầm giá / ngân sách tối đa,
     kèm phân tích Regex động cho khoảng giá (từ X đến Y), top rẻ nhất (asc), đắt nhất (desc).
@@ -101,16 +93,17 @@ def build_budget_search_context(parsed_intent, msg_lower, category, knowledge_ba
     if m_top:
         top_k = int(m_top.group(1))
     
-    # Lọc trực tiếp từ DB/DataFrame
-    matched_items, total_count = filter_knowledge_base_by_price(
-        knowledge_base, 
-        category, 
-        lo, 
-        hi, 
-        brand=brand, 
-        top_k=top_k,
-        sort_order=sort_order
-    )
+    matches = catalog.search_products(ProductQuery(
+        text=search_query,
+        category=category,
+        brand=brand,
+        price_min=int(lo),
+        price_max=int(hi),
+        order=sort_order,
+        limit=1000,
+    ))
+    total_count = len(matches)
+    matched_items = [item.as_legacy_dict() for item in matches[:top_k]]
     
     context = build_product_context(search_query, category, matched_items)
     

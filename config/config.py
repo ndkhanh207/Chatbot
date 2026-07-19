@@ -1,6 +1,6 @@
 import os
 # Tối ưu hóa bộ nhớ PyTorch cho GPU 4GB VRAM: ĐẶT TRƯỚC KHI IMPORT TORCH ĐỂ CÓ TÁC DỤNG
-os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True,garbage_collection_threshold:0.8,max_split_size_mb:128"
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "garbage_collection_threshold:0.8,max_split_size_mb:128"
 os.environ.setdefault("HF_HUB_ETAG_TIMEOUT", "10")
 os.environ.setdefault("HF_HUB_DOWNLOAD_TIMEOUT", "10")
 

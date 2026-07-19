@@ -5,14 +5,14 @@ from langchain_core.prompts import ChatPromptTemplate
 from config.config import Config
 from app.utils.model_utils import get_ollama_model
 from app.templates.prompt_templates import (
-    BASIC_SEARCH_TEMPLATE, COMPAT_CHECK_TEMPLATE, SUGGESTION_TEMPLATE, EMERGENCY_LIST_TEMPLATE,
+    BASIC_SEARCH_TEMPLATE, COMPAT_CHECK_TEMPLATE, SUGGESTION_TEMPLATE, EMERGENCY_LIST_TEMPLATE
 )
 
 _reformulate_chain = None
 _basic_search_chain: RunnableSequence | None = None
 _compat_check_chain = None
 _suggestion_chain = None
-_emergency_chain     = None  
+_emergency_chain     = None
 _pc_build_qa_chain = None
 
 def _get_strict_llm() -> ChatOllama:

@@ -3,7 +3,8 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 
-from app.api.api_handler.chat_services import process_chat_message, search_knowledge_base
+from app.api.api_handler.chat_services import process_chat_message
+from app.catalog import ProductQuery
 from app.api.auth.firebase_auth import verify_firebase_token
 from app.api.model.chat_models import (
     ChatRequest,
@@ -45,9 +46,14 @@ CHAT_ERROR_RESPONSES = {
     responses={422: {"model": ErrorResponse, "description": "Request validation error"}},
 )
 def test_kb(request: Request, q: str | None = None, category: str | None = None, top_k: int = 5):
-    if getattr(request.app.state, "knowledge_base", None) is None:
+    if getattr(request.app.state, "catalog", None) is None:
         return {"status": "Kho hàng trống!"}
-    return search_knowledge_base(request, q, category, top_k)
+    return [
+        item.as_legacy_dict()
+        for item in request.app.state.catalog.search_products(
+            ProductQuery(text=q or "", category=category, limit=top_k)
+        )
+    ]
 
 
 @router.post(
@@ -61,7 +67,7 @@ def test_kb(request: Request, q: str | None = None, category: str | None = None,
     },
 )
 def get_embeddings(request: Request, data: EmbeddingRequest):
-    if getattr(request.app.state, "vector_store", None) is None:
+    if getattr(request.app.state, "catalog", None) is None:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=ErrorResponse(
@@ -71,9 +77,18 @@ def get_embeddings(request: Request, data: EmbeddingRequest):
             ).model_dump(),
         )
 
-    embedder = request.app.state.vector_store.embeddings
     inputs = data.input if isinstance(data.input, list) else [data.input]
-    embeddings = embedder.embed_documents(inputs)
+    try:
+        embeddings = request.app.state.catalog.embed_documents(inputs)
+    except RuntimeError as error:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=ErrorResponse(
+                error="Service Unavailable",
+                message=str(error),
+                code="EMBEDDING_NOT_READY",
+            ).model_dump(),
+        ) from error
     return {
         "object": "list",
         "data": [

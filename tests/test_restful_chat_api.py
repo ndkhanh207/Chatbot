@@ -13,7 +13,6 @@ from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 from fastapi.testclient import TestClient
 from starlette.exceptions import HTTPException as StarletteHTTPException
-import pandas as pd
 
 # Thêm đường dẫn gốc của project vào sys.path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -32,9 +31,7 @@ mock_app.include_router(chat_router)
 mock_app.add_exception_handler(RequestValidationError, validation_exception_handler)
 mock_app.add_exception_handler(StarletteHTTPException, http_exception_handler)
 mock_app.add_exception_handler(Exception, unhandled_exception_handler)
-mock_app.state.knowledge_base = pd.DataFrame()
-mock_app.state.vector_store = None
-mock_app.state.build_data = None
+mock_app.state.catalog = object()
 
 
 client = TestClient(mock_app, raise_server_exceptions=False)
@@ -339,9 +336,7 @@ def test_different_users_may_share_session_id():
         fake_request = SimpleNamespace(
             app=SimpleNamespace(
                 state=SimpleNamespace(
-                    knowledge_base=pd.DataFrame({"name": ["mock"]}),
-                    vector_store=None,
-                    build_data=None,
+                    catalog=object(),
                 )
             )
         )
@@ -397,9 +392,7 @@ def test_busy_sessions_queue_without_model_overlap():
         fake_request = SimpleNamespace(
             app=SimpleNamespace(
                 state=SimpleNamespace(
-                    knowledge_base=pd.DataFrame({"name": ["mock"]}),
-                    vector_store=None,
-                    build_data=None,
+                    catalog=object(),
                 )
             )
         )
@@ -474,7 +467,7 @@ def test_model_allows_two_parallel_requests_and_queues_third():
         chat_services._MODEL_REQUEST_SLOTS = asyncio.Semaphore(chat_services.Config.MAX_PARALLEL_REQUESTS)
         fake_request = SimpleNamespace(
             app=SimpleNamespace(
-                state=SimpleNamespace(knowledge_base=pd.DataFrame({"name": ["mock"]}), vector_store=None, build_data=None)
+                state=SimpleNamespace(catalog=object())
             )
         )
         two_started = asyncio.Event()
@@ -543,7 +536,7 @@ def test_model_queue_releases_after_failure(failure, expected_status):
         chat_services._MODEL_REQUEST_SLOTS = asyncio.Semaphore(1)
         fake_request = SimpleNamespace(
             app=SimpleNamespace(
-                state=SimpleNamespace(knowledge_base=pd.DataFrame({"name": ["mock"]}), vector_store=None, build_data=None)
+                state=SimpleNamespace(catalog=object())
             )
         )
         first_started = asyncio.Event()
@@ -602,7 +595,7 @@ def test_processing_timeout_cancels_only_stuck_request():
         chat_services._MODEL_REQUEST_SLOTS = asyncio.Semaphore(2)
         fake_request = SimpleNamespace(
             app=SimpleNamespace(
-                state=SimpleNamespace(knowledge_base=pd.DataFrame({"name": ["mock"]}), vector_store=None, build_data=None)
+                state=SimpleNamespace(catalog=object())
             )
         )
         stuck_cancelled = asyncio.Event()
@@ -655,7 +648,7 @@ def test_model_queue_returns_429_after_5_seconds():
         chat_services._MODEL_REQUEST_SLOTS = asyncio.Semaphore(1)
         fake_request = SimpleNamespace(
             app=SimpleNamespace(
-                state=SimpleNamespace(knowledge_base=pd.DataFrame({"name": ["mock"]}), vector_store=None, build_data=None)
+                state=SimpleNamespace(catalog=object())
             )
         )
         first_started = asyncio.Event()

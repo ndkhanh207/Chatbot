@@ -30,11 +30,11 @@ COMPAT_TEST_CASES = [
      "Intel Core i9-14900K có lắp được với main MSI B850 PRO không",
      [("không tương thích", "không phù hợp", "không lắp được", "khác socket")]),
 
-    # ─── CPU - MAINBOARD: socket KHỚP (cả 2 LGA1700) nhưng tier KHÔNG đủ ─── không cấp đủ điện
+    # ─── CPU - MAINBOARD: socket khớp; không suy VRM/cấp điện từ tên chipset ───
    
     ("compat_cpu_main_tier_insufficient",
      "Intel Core i9-13900K có lắp được với main Asus H610 PRIME không",
-     [("không tương thích", "không phù hợp"), ("tier", "cấp điện", "khả năng cấp điện")]),
+     [("tương thích", "phù hợp", "lắp được")]),
 
     # ─── GPU - MAINBOARD: PCIe gen lệch → vẫn tương thích, có cảnh báo băng thông ───
     ("compat_gpu_main_pcie_warning",
@@ -51,13 +51,10 @@ COMPAT_TEST_CASES = [
      "AMD Ryzen 7 9800X3D + MSI B850 PRO B850M-VC WIFI6E AM5 DDR5 Micro ATX + GIGABYTE GeForce RTX 5070 Ti GAMING 16G có tương thích với nhau không?",
      ["9800x3d", "b850", "rtx 5070 ti", ("tương thích", "phù hợp"), ("cpu", "mainboard"), ("gpu", "pcie")]),
 
-    # ─── CPU - GPU: CPU yếu (tier 1, do suffix G giảm tier) + GPU mạnh (tier 3)
-    # → cảnh báo CPU là điểm nghẽn. Case này không cần giả định gì — toàn bộ
-    # phép tính (line tier, suffix modifier, GPU 2-số-cuối) đều xác định
-    # bằng regex trên chính tên sản phẩm, không phụ thuộc TDP/giá trong DB. ───
+    # ─── CPU - GPU: không có ràng buộc vật lý trực tiếp; không đoán bottleneck từ tên ───
     ("compat_cpu_gpu_bottleneck",
      "AMD Ryzen 3 3200G đi với GPU MSI VENTUS 2X OC GeForce RTX 5070 12GB GDDR7 có ổn không",
-     [("nghẽn", "điểm nghẽn", "CPU yếu hơn", "CPU có thể là điểm nghẽn")]),
+     [("tương thích", "phù hợp", "ổn")]),
 ]
 
 _cleared_sessions = set()

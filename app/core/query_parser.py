@@ -1,7 +1,6 @@
 import re
 from typing import Optional
 from app.constants import *
-from app.compatibility.compat_logic import is_compatibility_query
 
 _MODEL_PATTERN = re.compile(
     r'(rtx|gtx|rx)\s*-?\s*(\d{3,4})\s*(ti|xt|gre|super|xtx)?',
@@ -12,10 +11,10 @@ def normalize_user_message(user_message: str) -> str:
     msg = user_message.lower()
     # Thay thế compound trước, rồi mới thay từ đơn
     # (tránh "mainboard" bị tách thành "bo mạch chủboard")
-    # main 
+    # main
     msg = re.sub(r'\bmainboard\b', 'bo mạch chủ', msg)
     msg = re.sub(r'\bmain\b',      'bo mạch chủ', msg)
-    # card 
+    # card
     msg = re.sub(r'\bchip\b', 'cpu', msg)
     msg = msg.replace("card đồ họa",   "gpu")
     msg = msg.replace("vga",           "gpu")
@@ -42,30 +41,23 @@ def clean_search_query(text: str) -> str:
     words = text.split()
     filtered_words = [w for w in words if w not in _STOPWORDS]
     return " ".join(filtered_words)
-    
+
 OWNERSHIP_HINTS = ['tôi có', 'tôi đã có', 'sẵn có', 'đang dùng', 'đang có']
 
 def has_ownership_signal(msg_lower: str) -> bool:
     return any(h in msg_lower for h in OWNERSHIP_HINTS)
 
-def detect_intent(msg_lower: str):
-    is_compat = is_compatibility_query(msg_lower)
-    has_cpu   = any(w in msg_lower for w in CPU_TERMS)
-    has_gpu   = any(w in msg_lower for w in GPU_TERMS)
-    has_main  = any(w in msg_lower for w in MAIN_TERMS)
-    return is_compat, has_cpu, has_gpu, has_main
-
 def get_category(msg_lower: str) -> str | None:
     first_idx = float('inf')
     best_cat = None
-    
+
     for cat_name, terms in [('MAINBOARD', MAIN_TERMS), ('GPU', GPU_TERMS), ('CPU', CPU_TERMS)]:
         for term in terms:
             idx = msg_lower.find(term)
             if idx != -1 and idx < first_idx:
                 first_idx = idx
                 best_cat = cat_name
-                
+
     return best_cat
 
 def detect_brand(msg_lower: str) -> Optional[str]:
@@ -121,4 +113,4 @@ def build_recent_user_focus(user_message: str, chat_history: list, max_chars: in
     return (
         f"Câu hỏi hiện tại đang nối tiếp cùng nhu cầu/chủ đề của câu trước: '{previous_user_msg}'. "
         "Hãy trả lời đúng nhu cầu đó cho câu hiện tại; không tự chuyển sang giá hoặc xung nếu khách không hỏi."
-    )
+    )

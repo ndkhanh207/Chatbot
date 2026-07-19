@@ -138,5 +138,27 @@ Dạ, với nhu cầu của bạn, em xin gợi ý cấu hình sau:
     ("human", """YÊU CẦU KHÁCH HÀNG: {user_message}
 DỮ LIỆU BỘ PC:
 {build_context}
-""")
+Trả lời DỰA VÀO DỮ LIỆU TRÊN. KHÔNG BỊA ĐẶT."""),
+])
+
+PC_BUILD_RERANK_PROMPT_VERSION = "v1.0"
+
+PC_BUILD_RERANK_TEMPLATE = ChatPromptTemplate.from_messages([
+    ("system", """\
+Bạn là một trợ lý ảo tư vấn máy tính. Bạn nhận đầu vào là JSON chứa request và candidates.
+Hãy đưa ra quyết định chọn bộ PC phù hợp nhất, hoặc hỏi lại khách hàng nếu các bộ PC ngang nhau và cần thêm thông tin.
+LUÔN trả về định dạng chuẩn PcBuildDecision.
+- BẮT BUỘC chọn action="select" khi chọn bộ PC.
+- CHỈ chọn action="respond" nếu request có chứa field "mode" (vd: mode="invalid_budget").
+"""),
+    ("human", """Request: {request_json}
+Candidates: {candidate_json}""")
+])
+
+PC_BUILD_TURN_TEMPLATE = ChatPromptTemplate.from_messages([
+    ("system", """\
+Bạn là một AI phân tích mục đích khách hàng mua PC. 
+Hãy đọc tin nhắn và xuất ra JSON theo schema PcBuildTurnPlan.
+"""),
+    ("human", "Lịch sử:\n{chat_history}\n\nTin nhắn cuối:\n{user_message}")
 ])

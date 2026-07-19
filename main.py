@@ -1,14 +1,10 @@
 """FastAPI application entry point."""
 
-from pathlib import Path
-import pandas as pd
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from config.config import EMBEDDING_MODEL as EMBEDDING_MODEL_NAME, EMBEDDING_DEVICE, Config
-from langchain_chroma import Chroma
-
-from app.core.data_loader import create_embeddings, load_knowledge_base, initialize_vector_db
+from app.catalog import ChromaSemanticIndex, ShopCatalog, create_embeddings
 from app.api.chat import router as chat_router
 from app.api.health import router as health_router
 from app.guard.security import limiter
@@ -44,55 +40,39 @@ from app.core.health import check_ollama_status, check_mysql_status, reset_ollam
 # ──────────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    print("\n=== 🚀 [SYSTEM STARTUP] TRẠM KIỂM TRA HỆ THỐNG ===")
+    print("\n=== [SYSTEM STARTUP] TRAM KIEM TRA HE THONG ===")
 
     # 1. Kiểm tra các dịch vụ cứng trước khi load dữ liệu nặng vào RAM
     ollama_ok = await check_ollama_status()
     mysql_ok = await check_mysql_status()
 
     if not ollama_ok or not mysql_ok:
-        print("❌ [CRITICAL] KHỞI ĐỘNG THẤT BẠI: Một số dịch vụ nền (Ollama/MySQL) chưa sẵn sàng!")
-        print("⚠️ Hệ thống sẽ dừng lại tại đây để bạn kiểm tra docker/service.")
+        print("[CRITICAL] KHOI DONG THAT BAI: Mot so dich vu nen (Ollama/MySQL) chua san sang!")
+        print("He thong se dung lai tai day de ban kiem tra docker/service.")
         raise RuntimeError("External services are offline.")
 
     print("--------------------------------------------------")
     print("=== [SYSTEM] Dịch vụ nền OK! Bắt đầu nạp Knowledge Base... ===")
 
     try:
-        app.state.knowledge_base = load_knowledge_base()
+        semantic_index = None
+        # try:
+        #     embeddings = create_embeddings()
+        #     embeddings.embed_query("test")
+        #     semantic_index = ChromaSemanticIndex(Config.VECTOR_DB_DIR, embeddings)
+        # except Exception as index_error:
+        #     print(f"[CATALOG] Starting in keyword-only mode: {index_error}")
 
-        # Load dữ liệu bộ PC (Pc_build_data.csv)
-        try:
-            _build_csv = Path(Config.PC_STORE_DATA) / 'Pc_build_data.csv'
-            app.state.build_data = pd.read_csv(_build_csv)
-            print(f"=== [HỆ THỐNG] Đã load {len(app.state.build_data)} bộ PC từ Pc_build_data.csv ===")
-        except Exception as build_err:
-            app.state.build_data = None
-            print(f"⚠️ [HỆ THỐNG] Không load được dữ liệu bộ PC: {build_err}")
-
-        print(f"=== [HỆ THỐNG] Gộp thành công! Tổng số linh kiện: {len(app.state.knowledge_base)} dòng. ===")
-        print(f"=== [SYSTEM] EMBEDDING MODEL: {EMBEDDING_MODEL_NAME} | DEVICE: {EMBEDDING_DEVICE} ===")
-
-        # Load once: same CUDA model builds and serves the vector DB.
-        print(f"=== [SYSTEM] Loading Embedding Model '{Config.EMBEDDING_MODEL}' to {Config.EMBEDDING_DEVICE}... ===")
-        embeddings = create_embeddings()
-
-        # Khởi tạo Vector DB nếu chưa có
-        print("=== [SYSTEM] Checking Vector DB... ===")
-        try:
-            initialize_vector_db(embeddings)
-        except Exception as db_err:
-            print(f"❌ LỖI TẠO VECTOR DB: {db_err}")
-
-        # Nạp Chroma DB vào RAM
-        # Test thử gọi hàm chạy embedding xem có nổ VRAM không
-        embeddings.embed_query("test")
-        print("=== [SYSTEM] Embedding Model ready. Loading Chroma DB... ===")
-        app.state.vector_store = Chroma(
-            persist_directory=Config.VECTOR_DB_DIR, 
-            embedding_function=embeddings
+        app.state.catalog = ShopCatalog.load(
+            Config.PC_STORE_DATA,
+            semantic_index=semantic_index,
+            embedding_config=(
+                f"model={EMBEDDING_MODEL_NAME};device={EMBEDDING_DEVICE};"
+                "batch=8;metric=cosine"
+            ),
         )
-        print("=== [SYSTEM] Successfully loaded Chroma Vector DB! ===")
+        status = app.state.catalog.status()
+        print(f"=== [CATALOG] {status.product_count} products | {status.build_count} builds | {status.mode} ===")
         print("=== [SYSTEM] Server initialization complete! Ready for API requests. ===\n")
 
     except Exception as e:
@@ -104,9 +84,8 @@ async def lifespan(app: FastAPI):
     finally:
         print("=== [SYSTEM] Shutting down Server... ===")
         try:
-            # Xóa reference tới Chroma và Embeddings model
-            if hasattr(app.state, "vector_store"):
-                del app.state.vector_store
+            if hasattr(app.state, "catalog"):
+                del app.state.catalog
             
             # Ép Python dọn rác bộ nhớ
             import gc

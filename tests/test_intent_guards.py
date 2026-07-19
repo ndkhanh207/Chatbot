@@ -175,6 +175,37 @@ def test_build_trigger_requires_word_boundary(message, expected):
     assert _has_explicit_build(message) is expected
 
 
+def test_explicit_pc_build_skips_both_intent_llm_passes(monkeypatch):
+    async def forbidden(*args, **kwargs):
+        raise AssertionError("explicit PC Builder request must bypass intent LLM calls")
+
+    monkeypatch.setattr(master_intent, "_run_classification_pass", forbidden)
+    monkeypatch.setattr(master_intent, "_run_extraction_pass", forbidden)
+
+    parsed = asyncio.run(master_intent.parse_master_intent("tư vấn pc 20 triệu"))
+
+    assert parsed.intent == "build_pc"
+
+
+def test_classified_pc_build_skips_generic_extraction_pass(monkeypatch):
+    calls = []
+
+    async def classify(*args, **kwargs):
+        calls.append("classify")
+        return "build_pc"
+
+    async def forbidden(*args, **kwargs):
+        raise AssertionError("PC Builder planner replaces generic extraction")
+
+    monkeypatch.setattr(master_intent, "_run_classification_pass", classify)
+    monkeypatch.setattr(master_intent, "_run_extraction_pass", forbidden)
+
+    parsed = asyncio.run(master_intent.parse_master_intent("cần một cấu hình chuyên dụng"))
+
+    assert parsed.intent == "build_pc"
+    assert calls == ["classify"]
+
+
 def test_master_schema_uses_null_for_missing_entities():
     parsed = MasterIntentSchema(intent="none", cpu="none")
 

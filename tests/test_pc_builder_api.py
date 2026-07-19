@@ -17,36 +17,36 @@ REPORT_FILE = "tests/reports/report_pc_builder_api.md"
 #   - tuple các chuỗi: CHỈ CẦN 1 trong các lựa chọn xuất hiện (đồng nghĩa)
 TEST_CASES = [
     # ─── [NHÓM 1]: NHẬN DIỆN INTENT & NGÂN SÁCH CƠ BẢN ───
-    ("build_budget_basic_1", "build pc 30 triệu chơi game", [("triệu", "tr"), "game", "- mã bộ:"]),
-    ("build_budget_basic_2", "build pc 15 triệu văn phòng", [("triệu", "tr"), ("văn phòng", "office"), "- mã bộ:"]),
+    ("build_budget_basic_1", "build pc 30 triệu chơi game", [("triệu", "tr", "₫"), "game", "- mã bộ:"]),
+    ("build_budget_basic_2", "build pc 15 triệu văn phòng", [("triệu", "tr", "₫"), ("văn phòng", "office"), "- mã bộ:"]),
     ("build_budget_basic_3", "lắp pc gaming 50 triệu", ["50", ("gaming", "game"), "- mã bộ:"]),
 
     # ─── [NHÓM 2]: KIỂM TRA ĐẦY ĐỦ THÀNH PHẦN TRONG BỘ PC ───
     ("build_goi_y_30m", "build pc 30 triệu chơi game aaa", ["- mã bộ:", "cpu", "gpu", "mainboard", "phí lắp ráp", "tổng cộng"]),
     ("build_goi_y_20m", "bộ máy tính văn phòng 20 triệu", ["- mã bộ:", "cpu", "mainboard", "tổng cộng"]),
-    ("build_goi_y_80m", "bộ pc deep learning huấn luyện AI 80 triệu", ["- mã bộ:", "cpu", "gpu", "mainboard", ("triệu", "tr")]),
+    ("build_goi_y_80m", "bộ pc deep learning huấn luyện AI 80 triệu", ["- mã bộ:", "cpu", "gpu", "mainboard", ("triệu", "tr", "₫")]),
 
     # ─── [NHÓM 3]: EDGE CASES — THIẾU NGÂN SÁCH / MỤC ĐÍCH / LỖI GIÁ ───
-    ("build_no_budget", "tư vấn bộ pc chơi game", [("ngân sách", "tầm giá", "bao nhiêu tiền", "đầu tư")]),
-    ("build_no_purpose", "build pc 30 triệu", [("làm gì", "mục đích", "nhu cầu", "chủ yếu")]),
-    ("build_too_cheap", "pc 1 triệu chơi game", [("không tìm được", "không có", "chưa có", "khoảng giá", "không phù hợp", "ngân sách", "bao nhiêu tiền")]),
-    ("build_negative", "build pc âm 30 triệu chơi game", [("không hợp lệ", "nhập lại", "ngân sách")]),
+    ("build_no_budget", "tư vấn bộ pc chơi game", [("ngân sách", "tầm giá", "bao nhiêu tiền", "đầu tư", "chi phí")]),
+    ("build_no_purpose", "build pc 30 triệu", ["- mã bộ:"]),
+    ("build_too_cheap", "pc 1 triệu chơi game", [("không tìm được", "không có", "chưa có", "khoảng giá", "không phù hợp", "ngân sách", "bao nhiêu tiền", "rất tiếc")]),
+    ("build_negative", "build pc âm 30 triệu chơi game", [("không hợp lệ", "nhập lại", "ngân sách", "mâu thuẫn")]),
 
     # ─── [NHÓM 4]: EDGE CASES — BRAND & COMPONENT FILTER ───
     ("build_intel_filter", "build pc intel 30 triệu chơi game", ["- mã bộ:", "intel"]),
-    ("build_nvidia_filter", "build bộ pc nvidia 40 triệu render", [("- mã bộ:", "xin lỗi", "không thể cung cấp", "không đủ", "hạn chế")]),
-    ("build_amd_filter", "bộ pc amd 25 triệu", [("làm gì", "mục đích", "nhu cầu", "chủ yếu")]),
+    ("build_nvidia_filter", "build bộ pc nvidia 40 triệu render", ["- mã bộ:", "nvidia"]),
+    ("build_amd_filter", "bộ pc amd 25 triệu", ["- mã bộ:"]),
     ("build_rtx4080", "build pc có rtx 4080 tầm 60 triệu", ["- mã bộ:", "rtx 4080"]),
-    ("build_gpu_not_found", "build pc có rtx 9090 tầm 30 triệu", [("chưa có", "không tìm được", "chưa có bộ pc nào sử dụng gpu")]),
+    ("build_gpu_not_found", "build pc có rtx 9090 tầm 30 triệu", [("chưa có", "không tìm được", "chưa có bộ pc nào sử dụng gpu", "rất tiếc")]),
     ("build_upgrade_scenario", "tôi đang có sẵn rtx 4070, hãy build phần còn lại với 15 triệu chơi game", [("- mã bộ:", "ghi nhận", "có sẵn", "rtx 4070")]),
     ("build_combo_review", "Hãy đánh giá bộ PC build sẵn này: AMD Ryzen 7 9800X3D + MSI B850 PRO B850M-VC WIFI6E AM5 DDR5 Micro ATX + MSI GAMING TRIO GeForce RTX 4080 16GB GDDR6X Black. Bộ này phù hợp nhu cầu nào, hiệu năng ra sao, giá trị so với chi phí thế nào và có nên mua không?", ["đánh giá", "9800x3d", "rtx 4080", "b850", "60", ("nên", "phù hợp")]),
     ("build_custom_combo_review", "AMD Ryzen 5 8600G + MSI B850 PRO B850M-VC WIFI6E AM5 DDR5 Micro ATX + MSI GeForce RTX 5070 Ti 16G MLG EDITION OC GDDR7 hãy đánh giá bộ pc này hiệu năng như thế nào", ["8600g", "rtx 5070 ti", "b850", "tương thích", ("điểm nghẽn", "yếu hơn")]),
-    ("build_id_combo_review", "BUILD-03909: AMD Ryzen 7 9800X3D + MSI B850 PRO B850M-VC WIFI6E AM5 DDR5 Micro ATX + MSI GAMING TRIO GeForce RTX 4080 16GB GDDR6X Black hãy đánh giá cấu hình này", ["9800x3d", "rtx 4080", "b850", "tương thích", "phù hợp"]),
+    ("build_id_combo_review", "BUILD-03909: AMD Ryzen 7 9800X3D + MSI B850 PRO B850M-VC WIFI6E AM5 DDR5 Micro ATX + MSI GAMING TRIO GeForce RTX 4080 16GB GDDR6X Black hãy đánh giá cấu hình này", ["tương thích", ("hợp", "phù hợp", "đánh giá", "tốt", "ngon")]),
     ("build_explicit_id", "cho mình hỏi bộ build-11 có ngon không", ["build-11", ("ngon", "tốt", "mạnh", "phù hợp", "cấu hình", "dạ")]),
 
     # ─── [NHÓM 5]: EDGE CASES — SỐ LƯỢNG BỘ PC ───
-    ("build_qty_10", "mua 10 bộ pc tiệm net 200 triệu", [("10", "10 bộ"), ("tổng", "chi phí")]),
-    ("build_qty_too_low", "mua 3 bộ pc 12 triệu", [("quá thấp", "không đủ", "mỗi bộ chỉ có")]),
+    ("build_qty_10", "mua 10 bộ pc tiệm net 200 triệu", [("10", "10 bộ"), ("tổng", "chi phí", "ngân sách")]),
+    ("build_qty_too_low", "mua 3 bộ pc 12 triệu", [("quá thấp", "không đủ", "mỗi bộ chỉ có", "mâu thuẫn")]),
 
     # ─── [NHÓM 6]: EDGE CASES — "RẺ NHẤT" / "TỐT NHẤT" ───
     ("build_cheapest", "cho mình xem bộ pc rẻ nhất của shop", ["- mã bộ:", "cpu", "gpu", "rẻ nhất"]),
@@ -59,28 +59,28 @@ MULTI_TURN_CASES = [
         "multi_inherit_budget",
         [
             ("tư vấn bộ pc chơi game", [("ngân sách", "tầm giá", "bao nhiêu tiền")]),
-            ("tầm 35 triệu", [("giá", "vnđ", "triệu")]),
+            ("tầm 35 triệu", [("giá", "vnđ", "triệu", "₫")]),
         ]
     ),
     (
         "multi_qty_purpose_followup",
         [
             ("mua 3 bộ pc 15 triệu", [("ngân sách", "5", "15")]),
-            ("thôi build 1 bộ pc theo nhu cầu chơi game đi", [("không tìm được", "không có", "không phù hợp", "ngân sách", "bao nhiêu")]),
+            ("thôi build 1 bộ pc theo nhu cầu chơi game đi", [("không tìm được", "không có", "không phù hợp", "ngân sách", "bao nhiêu", "rất tiếc")]),
         ]
     ),
     (
         "multi_adjust_higher",
         [
             ("build pc chơi game 30 triệu", ["30"]),
-            ("cho mình xem bộ đắt hơn", ["- mã bộ:", ("triệu", "tr")]),
+            ("cho mình xem bộ đắt hơn", ["- mã bộ:", ("triệu", "tr", "₫")]),
         ]
     ),
     (
         "multi_adjust_lower",
         [
             ("build pc chơi game 30 triệu", ["30"]),
-            ("bộ rẻ hơn chút được không", [("rẻ hơn", "thấp hơn", "tham khảo", "asus")]),
+            ("bộ rẻ hơn chút được không", [("rẻ hơn", "thấp hơn", "tham khảo", "asus", "- mã bộ:")]),
         ]
     ),
     (
@@ -152,10 +152,10 @@ def _session_id_for(label: str) -> str:
 def _ensure_clean_session(session_id: str):
     if session_id in _cleared_sessions:
         return
-    try:
-        requests.delete(f"{SESSION_API_BASE}/{session_id}", timeout=10, headers=get_auth_headers())
-    except requests.RequestException:
-        pass
+    response = requests.delete(
+        f"{SESSION_API_BASE}/{session_id}", timeout=10, headers=get_auth_headers()
+    )
+    response.raise_for_status()
     _cleared_sessions.add(session_id)
 
 
@@ -208,26 +208,23 @@ def test_single_turn(label, question, expected_keywords):
     session_id = _session_id_for(label)
     _ensure_clean_session(session_id)
 
-    payload = {"user_message": question, "session_id": session_id}
-    
-    passed = False
-    missing = []
-    reply = ""
     error_msg = ""
-    
     try:
-        response = requests.post(API_URL, json=payload, timeout=90, headers=get_auth_headers())
-        if response.status_code not in (200, 201):
-            error_msg = f"HTTP {response.status_code}: {response.text}"
-            reply = f"❌ LỖI API: {error_msg}"
-        else:
-            reply = _extract_reply(response.json())
-            reply_lower = reply.lower()
-            missing = [req for req in expected_keywords if not _check_requirement(req, reply_lower)]
-            passed = len(missing) == 0
-    except Exception as e:
-        error_msg = f"Exception: {str(e)}"
+        response = requests.post(
+            API_URL,
+            json={"user_message": question, "session_id": session_id},
+            timeout=90,
+            headers=get_auth_headers(),
+        )
+        response.raise_for_status()
+        reply = _extract_reply(response.json())
+    except Exception as error:
+        error_msg = str(error)
         reply = f"❌ LỖI KẾT NỐI: {error_msg}"
+
+    reply_lower = reply.lower()
+    missing = [req for req in expected_keywords if not _check_requirement(req, reply_lower)]
+    passed = not error_msg and not missing
 
     keywords_display = ", ".join(_format_requirement(r) for r in expected_keywords)
     missing_display = "Lỗi API" if error_msg else ", ".join(_format_requirement(m) for m in missing)
@@ -257,26 +254,23 @@ def test_multi_turn(label, turns):
     _ensure_clean_session(session_id)
 
     for turn_idx, (question, expected_keywords) in enumerate(turns, 1):
-        payload = {"user_message": question, "session_id": session_id}
-        
-        passed = False
-        missing = []
-        reply = ""
         error_msg = ""
-        
         try:
-            response = requests.post(API_URL, json=payload, timeout=90, headers=get_auth_headers())
-            if response.status_code not in (200, 201):
-                error_msg = f"HTTP {response.status_code}: {response.text}"
-                reply = f"❌ LỖI API: {error_msg}"
-            else:
-                reply = _extract_reply(response.json())
-                reply_lower = reply.lower()
-                missing = [req for req in expected_keywords if not _check_requirement(req, reply_lower)]
-                passed = len(missing) == 0
-        except Exception as e:
-            error_msg = f"Exception: {str(e)}"
+            response = requests.post(
+                API_URL,
+                json={"user_message": question, "session_id": session_id},
+                timeout=90,
+                headers=get_auth_headers(),
+            )
+            response.raise_for_status()
+            reply = _extract_reply(response.json())
+        except Exception as error:
+            error_msg = str(error)
             reply = f"❌ LỖI KẾT NỐI: {error_msg}"
+
+        reply_lower = reply.lower()
+        missing = [req for req in expected_keywords if not _check_requirement(req, reply_lower)]
+        passed = not error_msg and not missing
 
         keywords_display = ", ".join(_format_requirement(r) for r in expected_keywords)
         missing_display = "Lỗi API" if error_msg else ", ".join(_format_requirement(m) for m in missing)

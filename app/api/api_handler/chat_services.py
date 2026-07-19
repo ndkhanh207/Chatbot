@@ -3,7 +3,6 @@ import threading
 from time import perf_counter
 from fastapi import Request, status
 from fastapi.responses import JSONResponse
-from app.core.search_engine import hybrid_search
 from app.core.chat_handler import handle_chat
 from app.api.model.chat_models import ChatRequest, ChatResponse, ErrorResponse, EvalChatResponse
 from config.config import Config
@@ -47,21 +46,6 @@ def _release_processing_slot(session_key: str | None) -> None:
     with _PROCESSING_LOCK:
         PROCESSING_SESSIONS.discard(session_key)
 
-def search_knowledge_base(
-    request: Request,
-    q: str | None = None,
-    category: str | None = None,
-    top_k: int = 5,
-):
-    """Thin wrapper around ``hybrid_search`` that injects the global state."""
-    kb = getattr(request.app.state, "knowledge_base", None)
-    vector_store = getattr(request.app.state, "vector_store", None)
-    
-    if kb is None or vector_store is None:
-        return []
-
-    return hybrid_search(q, category, top_k, kb, vector_store)
-
 async def process_chat_message(
     request: Request,
     data: ChatRequest,
@@ -69,8 +53,8 @@ async def process_chat_message(
     include_contexts: bool = False,
 ) -> ChatResponse | EvalChatResponse | JSONResponse:
     """Run one chat request with per-session admission and bounded model execution."""
-    kb = getattr(request.app.state, "knowledge_base", None)
-    if kb is None:
+    catalog = getattr(request.app.state, "catalog", None)
+    if catalog is None:
         return JSONResponse(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             content=ErrorResponse(
@@ -84,8 +68,6 @@ async def process_chat_message(
     if lock_response is not None:
         return lock_response
 
-    vector_store = getattr(request.app.state, "vector_store", None)
-    build_df = getattr(request.app.state, "build_data", None)
     started = perf_counter()
 
     try:
@@ -107,11 +89,9 @@ async def process_chat_message(
                 result = await asyncio.wait_for(
                     handle_chat(
                         data.user_message,
-                        kb,
-                        vector_store,
+                        catalog,
                         user_uid=user_uid,
                         session_id=data.session_id,
-                        build_df=build_df,
                     ),
                     timeout=Config.MODEL_PROCESSING_TIMEOUT_SECONDS
                 )

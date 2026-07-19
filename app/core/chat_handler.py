@@ -37,15 +37,13 @@ MAX_INPUT_LENGTH = 500  # Ký tự tối đa
 # ──────────────────────────────────────────────
 # Main entry point
 # ──────────────────────────────────────────────
-async def handle_chat(user_message: str, knowledge_base,
-                vector_store,
+async def handle_chat(user_message: str, catalog,
                 user_uid: str,
-                session_id: str = "default",
-                build_df=None) -> dict:
+                session_id: str = "default") -> dict:
 
     memory = ConversationContext(user_uid, session_id)
 
-    if knowledge_base is None:
+    if catalog is None:
         return {"chatbot_reply": "HỆ THỐNG CHƯA SẴN SÀNG!"}
 
     # ── Security: Layer 4 Input Guards ──
@@ -118,21 +116,23 @@ async def handle_chat(user_message: str, knowledge_base,
                 parsed_intent.intent = "build_pc"  # Ghi đè intent để luồng chạy đúng
 
 
-        # those two does not use llm chain so we place it here for early return, prevent chain break
-        pc_build_result = handle_pc_build_flow(
-            user_uid=user_uid,
-            session_id=session_id,
-            user_message=user_message,
-            user_message_fixed=user_message_fixed,
-            msg_lower=msg_lower,
-            search_query=search_query,
-            chat_history=chat_history,
-            build_df=build_df,
-            is_build_pc=is_build_pc,
-            recognized_intent=parsed_intent.intent,
-        )
-        if pc_build_result is not None:
-            return pc_build_result
+        if parsed_intent.intent == "combo_review":
+            # Handled elsewhere
+            pass
+        else:
+            pc_build_result = await handle_pc_build_flow(
+                user_uid=user_uid,
+                session_id=session_id,
+                user_message=user_message,
+                user_message_fixed=user_message_fixed,
+                msg_lower=msg_lower,
+                search_query=search_query,
+                chat_history=chat_history,
+                catalog=catalog,
+                is_build_pc=is_build_pc,
+            )
+            if pc_build_result is not None:
+                return pc_build_result
         # check co combo de review khong, neu khong thi hoi lai
         if parsed_intent.intent in ["specification", "price_check"]:
             has_product = any(
@@ -149,11 +149,9 @@ async def handle_chat(user_message: str, knowledge_base,
             return handle_combo_review(
                 parsed_intent=parsed_intent,
                 user_message=user_message_fixed,
-                knowledge_base=knowledge_base,
-                vector_store=vector_store,
+                catalog=catalog,
                 user_uid=user_uid,
                 session_id=session_id,
-                build_df=build_df,
             )
 
         # khoi tao 
@@ -165,30 +163,30 @@ async def handle_chat(user_message: str, knowledge_base,
         # 7. ĐIỀU HƯỚNG context cho các intent còn lại
         # 🔹 NHÁNH 1: KIỂM TRA TƯƠNG THÍCH (compatibility check)
         if parsed_intent.intent == "compatibility":
-            context = build_compatibility_context(parsed_intent, knowledge_base, vector_store)
+            context = build_compatibility_context(parsed_intent, catalog)
             chain = get_compat_check_chain()
 
         # 🔹 NHÁNH 2: de xuat linh kien phu hop
         elif parsed_intent.intent == "suggestion":
-            context = build_suggestion_context(parsed_intent, knowledge_base, vector_store)
+            context = build_suggestion_context(parsed_intent, catalog)
             chain = get_suggestion_chain() 
             
         # 🔹 NHÁNH 3: TÍNH TỔNG TIỀN
         elif parsed_intent.intent == "price_calculation":
-            context = build_price_calculation_context(parsed_intent, knowledge_base, vector_store)
+            context = build_price_calculation_context(parsed_intent, catalog)
             chain = None
 
         # 🔹 NHÁNH 4: HỎI THÔNG SỐ CỤ THỂ
         elif parsed_intent.intent == "specification":
             context, format_hint = build_specification_context(
-                parsed_intent, category, knowledge_base, vector_store, search_query
+                parsed_intent, category, catalog, search_query
             )
             chain = get_basic_search_chain()
 
         # 🔹 NHÁNH 4b: HỎI GIÁ CỦA 1 MÓN CỤ THỂ (price check)
         elif parsed_intent.intent == "price_check":
             context, format_hint = build_price_check_context(
-                parsed_intent, category, knowledge_base, vector_store, search_query
+                parsed_intent, category, catalog, search_query
             )
             chain = None
 
@@ -196,14 +194,14 @@ async def handle_chat(user_message: str, knowledge_base,
         elif parsed_intent.intent == "budget_search" or (parsed_intent.intent == "general_search" and getattr(parsed_intent, 'budget_amount', 0) > 0):
             parsed_intent.intent = "budget_search"
             context, format_hint = build_budget_search_context(
-                parsed_intent, msg_lower, category, knowledge_base, user_message, search_query
+                parsed_intent, msg_lower, category, catalog, user_message, search_query
             )
             chain = get_suggestion_chain()
 
         # 🔹 NHÁNH 6: TÌM KIẾM/HỎI GIÁ CHUNG CHUNG (Fallback)
         else:
             context, format_hint = build_general_search_context(
-                parsed_intent, msg_lower, category, knowledge_base, vector_store, q_clean
+                parsed_intent, msg_lower, category, catalog, q_clean
             )
             chain = get_basic_search_chain()
         
@@ -214,7 +212,7 @@ async def handle_chat(user_message: str, knowledge_base,
                 chain = get_basic_search_chain()
             elif parsed_intent.intent not in ["budget_search", "compatibility", "suggestion"]: # Chặn lưới cứu vớt mù quáng
                 print(f"⚠️ [ROUTER-FALLBACK] Kích hoạt lưới cứu vớt diện rộng cho intent: {parsed_intent.intent.upper()}")
-                matched_items = hybrid_search(q_clean, category, 4, knowledge_base, vector_store) or []
+                matched_items = hybrid_search(q_clean, category, 4, catalog) or []
                 if matched_items:
                     context = build_product_context(search_query, category, matched_items)
                     if not chain:
