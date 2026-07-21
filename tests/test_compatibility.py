@@ -12,11 +12,14 @@ và session prefix riêng để 2 bộ test không lẫn dữ liệu vào nhau.
 
 import re
 import pytest
-import requests
-import os
+from fastapi.testclient import TestClient
+from main import app
 
-API_URL = "http://127.0.0.1:8000/chat"
-SESSION_API_BASE = "http://127.0.0.1:8000/sessions"
+client = TestClient(app)
+
+
+API_URL = "/chat"
+SESSION_API_BASE = "/sessions"
 REPORT_FILE = "tests/reports/report_compatibility.md"
 
 COMPAT_TEST_CASES = [
@@ -97,8 +100,8 @@ def _ensure_clean_session(session_id: str):
     if session_id in _cleared_sessions:
         return
     try:
-        requests.delete(f"{SESSION_API_BASE}/{session_id}", timeout=10, headers=get_auth_headers())
-    except requests.RequestException:
+        client.delete(f"{SESSION_API_BASE}/{session_id}", headers=get_auth_headers())
+    except Exception:
         pass
     _cleared_sessions.add(session_id)
 
@@ -130,7 +133,7 @@ def test_compatibility(label, question, expected_keywords):
     error_msg = ""
     
     try:
-        response = requests.post(API_URL, json=payload, timeout=120, headers=get_auth_headers())
+        response = client.post(API_URL, json=payload, headers=get_auth_headers())
         if response.status_code not in (200, 201):
             error_msg = f"HTTP {response.status_code}: {response.text}"
             reply = f"❌ LỖI API: {error_msg}"

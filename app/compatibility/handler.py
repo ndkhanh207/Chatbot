@@ -83,12 +83,6 @@ class CompatibilityHandler:
 
         if generation.ok and generation.value:
             reply = generation.value.answer
-            
-            # Guard Layer 2: enforce true compatibility state against LLM hallucination
-            if overall == "incompatible" and "không" not in reply.lower():
-                reply = "Dạ rất tiếc, các linh kiện này không tương thích với nhau. " + reply
-            elif overall == "compatible" and "không tương thích" in reply.lower():
-                reply = "Dạ các linh kiện này tương thích với nhau ạ. "
                 
             return ChatResult(
                 reply=reply,
@@ -99,21 +93,8 @@ class CompatibilityHandler:
                 },
             )
 
-        return self._format_fallback(evidence)
-
-    def _format_fallback(self, evidence: EvidencePackage) -> ChatResult:
-        report = next((item for item in evidence.items if item.source_type == "compatibility_report"), None)
-        overall = report.facts.get("overall_status") if report else "unknown"
-        
-        if overall == "compatible":
-            reply = "Dạ theo thông số kỹ thuật thì các linh kiện này tương thích với nhau ạ."
-        elif overall == "incompatible":
-            reply = "Dạ rất tiếc, các linh kiện này không tương thích với nhau do khác thông số kỹ thuật (ví dụ khác socket)."
-        else:
-            reply = "Dạ em chưa đủ thông tin kỹ thuật để xác nhận sự tương thích của các linh kiện này ạ."
-
         return ChatResult(
-            reply=reply,
+            reply="Dạ hệ thống đang xử lý chậm nên chưa thể kiểm tra tương thích. Bạn vui lòng thử lại sau nhé.",
             contexts=[item.source_id for item in evidence.items],
             metadata={"intent": evidence.intent, "fallback": True}
         )

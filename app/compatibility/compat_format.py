@@ -1,6 +1,5 @@
 import re
 
-
 def _value(context: str, key: str) -> str | None:
     match = re.search(rf"^- {re.escape(key)}: (.+)$", context, re.MULTILINE)
     if not match:
