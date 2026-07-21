@@ -30,6 +30,14 @@ class PCBuilderHandler:
         current_context = versioned_ctx.context
         expected_version = versioned_ctx.version
         
+        if route_decision is None:
+            from app.routing.models import RouteDecision, TaskRelation
+            route_decision = RouteDecision(
+                handler_name="build_pc",
+                rewritten_query=request.user_message,
+                task_relation=TaskRelation.CONTINUE_TASK
+            )
+
         command_result = await extract_pc_build_command(
             user_message=request.user_message,
             recent_history=request.chat_history,

@@ -52,7 +52,7 @@ async def handle_chat(user_message: str, catalog, user_uid: str, session_id: str
         routing_request = RoutingRequest(
             user_message=msg_clean,
             recent_history=tuple(
-                msg.content if hasattr(msg, "content") else str(msg)
+                str(msg.content) if hasattr(msg, "content") else str(msg)
                 for msg in chat_history[-6:]
             ),
             active_tasks=active_tasks,
@@ -89,7 +89,7 @@ async def handle_chat(user_message: str, catalog, user_uid: str, session_id: str
         if route_decision.handler_name != "build_pc":
             intent_service = IntentService()
             intent_result = await intent_service.parse(message=msg_clean, history=chat_history)
-            parsed_intent = intent_result.value if intent_result.ok else ParsedIntent(intent="none")
+            parsed_intent = intent_result.value or ParsedIntent(intent="none")
         else:
             parsed_intent = ParsedIntent(intent="build_pc")
         # -------------------------------------------

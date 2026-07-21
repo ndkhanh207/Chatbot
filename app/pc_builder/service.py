@@ -59,7 +59,7 @@ class PcBuildService:
         return self._outcome(reply, ctx, original_ctx, contexts=[reply])
 
     async def _build_reply(self, build: BuildRecord, user_message: str, ctx: PcBuildContext, original_ctx: PcBuildContext) -> PcBuildOutcome:
-        ctx.build_id = build.id
+        ctx.build_id = build.build_id
         clear_satisfied_pending_question(ctx)
 
         reply = await write_build_response(
@@ -69,7 +69,10 @@ class PcBuildService:
             user_message=user_message,
         )
         
-        reply += f"\n\n{render_selected_build_reply(build, ctx.quantity)}"
+        reply = render_selected_build_reply(
+            canonical_block=format_build_context(build),
+            explanation=reply,
+        )
 
         return self._outcome(
             reply=reply,
@@ -213,7 +216,7 @@ class PcBuildService:
                 original_ctx,
             )
 
-        selected = next((c for c in candidates if c.id == decision.selected_id), None)
+        selected = next((c for c in candidates if c.build_id == decision.selected_build_id), None)
         if not selected:
             selected = candidates[0]
 
