@@ -6,12 +6,11 @@ import os
 import sys
 import json
 import pytest
-import requests
+from fastapi.testclient import TestClient
+from main import app
 
-# Thêm đường dẫn gốc của project vào sys.path để tránh lỗi ModuleNotFoundError khi chạy lệnh pytest trực tiếp
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-
-API_KB = "http://127.0.0.1:8000/test-knowledge-base"
+client = TestClient(app)
+API_KB = "/test-knowledge-base"
 REPORT_FILE = "tests/reports/report_knowledge_base_api.md"
 
 _test_results = []
@@ -57,7 +56,7 @@ def test_kb_search_valid_query():
     params = {"q": "RTX 3080", "top_k": 3}
     resp_body = ""
     try:
-        response = requests.get(API_KB, params=params, timeout=10, headers=get_auth_headers())
+        response = client.get(API_KB, params=params, headers=get_auth_headers())
         data = response.json()
         resp_body = json.dumps(data, ensure_ascii=False)
         passed = (response.status_code == 200)
@@ -85,7 +84,7 @@ def test_kb_search_category_filter():
     params = {"q": "RTX", "category": "GPU", "top_k": 2}
     resp_body = ""
     try:
-        response = requests.get(API_KB, params=params, timeout=10, headers=get_auth_headers())
+        response = client.get(API_KB, params=params, headers=get_auth_headers())
         data = response.json()
         resp_body = json.dumps(data, ensure_ascii=False)
         passed = (response.status_code == 200)
@@ -113,7 +112,7 @@ def test_kb_search_empty_query():
     params = {"top_k": 5}
     resp_body = ""
     try:
-        response = requests.get(API_KB, params=params, timeout=10, headers=get_auth_headers())
+        response = client.get(API_KB, params=params, headers=get_auth_headers())
         data = response.json()
         resp_body = json.dumps(data, ensure_ascii=False)
         passed = (response.status_code == 200)

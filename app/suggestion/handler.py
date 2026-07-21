@@ -14,7 +14,7 @@ class SuggestionHandler:
     def __init__(self, catalog: ShopCatalog):
         self._catalog = catalog
 
-    async def handle(self, request: DomainRequest, intent: ParsedIntent) -> ChatResult:
+    async def handle(self, request: DomainRequest, intent: ParsedIntent, route_decision=None) -> ChatResult:
         candidates = [("cpu", intent.cpu), ("mainboard", intent.mainboard), ("gpu", intent.gpu)]
         owned = [(t, n) for t, n in candidates if n and n.strip().lower() != "none"]
         

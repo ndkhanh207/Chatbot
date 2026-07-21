@@ -11,13 +11,11 @@ class PriceHandler:
     def __init__(self, catalog: ShopCatalog):
         self._catalog = catalog
 
-    async def handle(self, request: DomainRequest, intent: ParsedIntent) -> ChatResult:
-        if intent.intent == "price_check":
-            return await self._handle_price_check(request, intent)
-        elif intent.intent == "price_calculation":
+    async def handle(self, request: DomainRequest, intent: ParsedIntent, route_decision=None) -> ChatResult:
+        if intent.intent == "price_calculation":
             return await self._handle_price_calculation(request, intent)
         else:
-            raise ValueError(f"Unsupported price intent: {intent.intent}")
+            return await self._handle_price_check(request, intent)
 
     async def _handle_price_check(self, request: DomainRequest, intent: ParsedIntent) -> ChatResult:
         # Resolve target

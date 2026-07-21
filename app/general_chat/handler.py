@@ -5,7 +5,7 @@ from app.rag.models import EvidencePackage, GroundedAnswerRequest
 from app.rag.generator import generate_grounded_answer
 
 class GeneralChatHandler:
-    async def handle(self, request: DomainRequest, intent: ParsedIntent) -> ChatResult:
+    async def handle(self, request: DomainRequest, intent: ParsedIntent, route_decision=None) -> ChatResult:
         evidence = EvidencePackage(
             query=request.user_message,
             intent=intent.intent,

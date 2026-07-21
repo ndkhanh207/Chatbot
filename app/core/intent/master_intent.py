@@ -14,7 +14,14 @@ from app.core.intent.prompts import (
 )
 from app.core.intent.history_context import build_history_context, extract_structured_state
 from app.specification.field_resolver import resolve_explicit_spec_detail
-from app.pc_builder.extractor import detect_build_pc_intent
+BUILD_KEYWORDS = [
+    "build pc", "build máy", "build", "ráp pc", "lắp pc", "ráp máy", "lắp máy", "cấu hình", "dàn máy", "mua máy",
+    "bộ pc", "máy tính bàn", "desktop", "tư vấn pc", "tư vấn máy", "gợi ý pc", "máy tính", "bộ máy", "thùng máy"
+]
+
+def detect_build_pc_intent(msg: str) -> bool:
+    msg_l = msg.lower()
+    return any(kw in msg_l for kw in BUILD_KEYWORDS)
 
 # ==============================================================================
 # CONSTANTS & CONFIG

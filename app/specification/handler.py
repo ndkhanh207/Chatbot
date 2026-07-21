@@ -10,7 +10,7 @@ class SpecificationHandler:
     def __init__(self, catalog: ShopCatalog):
         self._catalog = catalog
 
-    async def handle(self, request: DomainRequest, intent: ParsedIntent) -> ChatResult:
+    async def handle(self, request: DomainRequest, intent: ParsedIntent, route_decision=None) -> ChatResult:
         lookup_term = intent.target_product or request.user_message
 
         # Fallback to specific component if target_product is empty

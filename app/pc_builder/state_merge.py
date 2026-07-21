@@ -3,8 +3,8 @@ from pydantic import BaseModel, Field
 from typing import Literal
 
 from app.catalog.catalog import ShopCatalog
-from app.pc_builder.context import PcBuildContext
-from app.pc_builder.extractor import Interpretation
+from app.pc_builder.context import PcBuildContext, PcBuildStatus
+from app.pc_builder.models import PcBuildCommand
 
 class MergeIssue(BaseModel):
     level: Literal["warning", "error"]
@@ -18,15 +18,15 @@ class StateMergeResult(BaseModel):
     has_errors: bool = False
     clarification_question: str | None = None
 
-async def apply_interpretation_delta(
+async def merge_command_into_context(
     current: PcBuildContext,
-    delta: Interpretation,
+    command: PcBuildCommand,
     catalog: ShopCatalog,
 ) -> StateMergeResult:
     # Clone the context to avoid mutating original immediately if errors occur
     next_state = current.model_copy(deep=True)
     
-    if delta.action == "reset":
+    if command.action == "reset" or command.action == "create":
         next_state.budget = None
         next_state.purpose = None
         next_state.quantity = 1
@@ -35,29 +35,52 @@ async def apply_interpretation_delta(
         next_state.excluded_brands = []
         next_state.build_id = None
         next_state.pending_question = None
+        next_state.status = PcBuildStatus.COLLECTING
     
-    if delta.quantity is not None:
-        next_state.quantity = delta.quantity
+    if command.quantity is not None:
+        next_state.quantity = command.quantity
         
-    if delta.budget is not None:
+    if command.budget is not None:
         # User explicitly mentioned budget scope
         qty = next_state.quantity
         if qty > 1:
-            if delta.budget_scope == "total":
-                next_state.budget = delta.budget // qty
-            elif delta.budget_scope == "per_unit":
-                next_state.budget = delta.budget
+            if command.budget_scope == "total":
+                next_state.budget = command.budget // qty
+            elif command.budget_scope == "per_unit":
+                next_state.budget = command.budget
             else:
                 return StateMergeResult(
                     next_state=next_state,
                     has_errors=True,
-                    clarification_question=f"Ngân sách {delta.budget:,} đồng là tổng cho {qty} bộ hay là ngân sách cho mỗi bộ?".replace(",", ".")
+                    clarification_question=f"Ngân sách {command.budget:,} đồng là tổng cho {qty} bộ hay là ngân sách cho mỗi bộ?".replace(",", ".")
                 )
         else:
-            next_state.budget = delta.budget
+            next_state.budget = command.budget
 
-    if delta.purpose is not None:
-        next_state.purpose = delta.purpose
+    if command.purpose is not None:
+        next_state.purpose = command.purpose
+        
+    if command.keep_components:
+        for cat in command.keep_components:
+            if cat in next_state.required_components:
+                # the keep logic just means we don't clear it.
+                pass
+                
+    if command.required_components:
+        for cat, val in command.required_components.items():
+            next_state.required_components[cat] = val
+            
+    if command.preferred_components:
+        for cat, vals in command.preferred_components.items():
+            next_state.preferred_components[cat] = vals
+            
+    if command.excluded_brands:
+        next_state.excluded_brands = list(set(next_state.excluded_brands + command.excluded_brands))
+
+    if command.action == "alternative":
+        pass
+
+    next_state.status = PcBuildStatus.COLLECTING
         
     # -------------------------------------------------------------
     # RAG / RESOLUTION
@@ -67,7 +90,7 @@ async def apply_interpretation_delta(
     from app.catalog.lookup import resolve_component
     
     resolved_required = {}
-    for cat, name in delta.required_components.items():
+    for cat, name in next_state.required_components.items():
         comp = resolve_component(name, cat, catalog)
         if not comp:
             from app.pc_builder.reranker import write_build_response
@@ -84,10 +107,6 @@ async def apply_interpretation_delta(
 
     # Immutable updates following coding standards
     next_state.required_components = {**next_state.required_components, **resolved_required}
-    next_state.preferred_components = {**next_state.preferred_components, **delta.preferred_components}
-    
-    new_excluded = [b for b in delta.excluded_brands if b not in next_state.excluded_brands]
-    next_state.excluded_brands = next_state.excluded_brands + new_excluded
 
     # Note: keep_components is collected by extractor but deliberately ignored in this simple merge strategy. 
     # Component retention is implicit (we don't delete keys unless explicit action="reset").

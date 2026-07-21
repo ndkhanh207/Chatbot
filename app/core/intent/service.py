@@ -18,7 +18,6 @@ from app.core.intent.master_intent import (
 )
 from app.core.intent.history_context import extract_structured_state, build_history_context
 from app.core.intent.models import IntentResult
-from app.pc_builder.extractor import detect_build_pc_intent
 
 class IntentService:
     async def parse(
@@ -31,12 +30,6 @@ class IntentService:
         msg_l = message.lower()
         
         # 1. Fast Paths & Deterministic Regex Guards
-        if detect_build_pc_intent(message):
-            return IntentResult(
-                value=MasterIntentSchema(intent="build_pc"),
-                source="fast_path"
-            )
-
         structured_state = extract_structured_state(history)
         comp_count, cpu_match, gpu_match, main_match = _count_components(msg_l)
 

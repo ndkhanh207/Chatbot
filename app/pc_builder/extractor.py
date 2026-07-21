@@ -1,24 +1,11 @@
 import json
 import re
-import asyncio
-from typing import Literal
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
-import ollama
+from app.pc_builder.models import PcBuildCommand, PcBuildAction
+from app.pc_builder.context import PcBuildContext
+from app.routing.models import RouteDecision
+from app.llm.gateway import safe_llm_call, LlmResult
 from app.utils.model_utils import get_ollama_model
-
-class InterpretationError(Exception):
-    pass
-
-
-
-BUILD_KEYWORDS = [
-    "build pc", "build máy", "build", "ráp pc", "lắp pc", "ráp máy", "lắp máy", "cấu hình", "dàn máy", "mua máy",
-    "bộ pc", "máy tính bàn", "desktop", "tư vấn pc", "tư vấn máy", "gợi ý pc", "máy tính", "bộ máy", "thùng máy"
-]
-
-def detect_build_pc_intent(msg: str) -> bool:
-    msg_l = msg.lower()
-    return any(kw in msg_l for kw in BUILD_KEYWORDS)
+import ollama
 
 def extract_budget_fallback(msg: str) -> int | None:
     match = re.search(r'(-|âm\s+)?(\d+)\s*(triệu|củ|tr|trieu|cu)\b', msg, flags=re.IGNORECASE)
@@ -43,106 +30,48 @@ def extract_components_fallback(msg: str) -> dict[str, str]:
         comps["gpu"] = gpu_match.group(1).lower()
     return comps
 
-def answers_pending_question(
-    message: str,
-    pending_question: str | None,
-) -> bool:
-    if not pending_question:
-        return False
-
-    text = " ".join(
-        message.strip().casefold().split()
-    )
-
-    if pending_question == "budget":
-        return any(char.isdigit() for char in text)
-
-
-    return False
-
-ComponentCategory = Literal["cpu", "gpu", "mainboard"]
-BudgetScope = Literal["total", "per_unit", "unknown"]
-
-class Interpretation(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    route: Literal["pc_builder", "current_build_qa", "pass"]
-    action: Literal["continue", "reset", "alternative"] = "continue"
-
-    budget: int | None = Field(default=None)
-    budget_scope: BudgetScope = "unknown"
-    quantity: int | None = Field(default=None, ge=1, le=100)
-    purpose: str | None = Field(default=None, max_length=300)
-
-    required_components: dict[ComponentCategory, str] = Field(default_factory=dict)
-    preferred_components: dict[ComponentCategory, list[str]] = Field(default_factory=dict)
-    excluded_brands: list[str] = Field(default_factory=list)
-
-    keep_components: list[ComponentCategory] = Field(default_factory=list)
-
-    @model_validator(mode="before")
-    @classmethod
-    def clean_categories(cls, data: dict):
-        valid_comps = {"cpu", "gpu", "mainboard"}
-        for key in ["required_components", "preferred_components"]:
-            if key in data and isinstance(data[key], dict):
-                data[key] = {k: v for k, v in data[key].items() if k in valid_comps}
-        if "keep_components" in data and isinstance(data["keep_components"], list):
-            data["keep_components"] = [k for k in data["keep_components"] if k in valid_comps]
-        return data
-
-INTERPRET_SYSTEM_PROMPT = """Bạn là AI đọc hiểu yêu cầu ráp PC.
-Bạn nhận được lịch sử hội thoại, cấu hình hiện tại và câu nói mới nhất của khách hàng.
-Hãy trích xuất thông tin sang JSON chính xác nhất.
+INTERPRET_SYSTEM_PROMPT = """Bạn là AI chuyên trích xuất lệnh cho chức năng Build PC.
+Bạn nhận được ngữ cảnh hiện tại của bộ PC, lịch sử hội thoại, quyết định định tuyến và câu nói mới nhất của khách hàng.
+Hãy trích xuất thông tin sang JSON chính xác nhất cho lớp PcBuildCommand.
 
 YÊU CẦU QUAN TRỌNG NHẤT:
+- action: Hành động khách muốn thực hiện (create, update, alternative, reset, question_current_build). 
+  - Chọn 'update' nếu khách yêu cầu đổi/giữ linh kiện, tăng/giảm ngân sách, thay đổi mục đích.
+  - Chọn 'alternative' nếu khách yêu cầu cấu hình khác.
+  - Chọn 'create' nếu đây là yêu cầu build mới.
+  - Chọn 'question_current_build' nếu khách hỏi về cấu hình hiện tại đang chọn (không thay đổi gì).
 - budget: TÌM BẰNG ĐƯỢC số tiền khách yêu cầu (triệu, củ, k) và dịch ra số nguyên VND. KHÔNG ĐƯỢC TỰ Ý NHÂN CHIA, chỉ trích xuất đúng con số khách viết (kể cả khi mua nhiều bộ). Nếu khách nói "âm", "trừ" (VD: âm 30 triệu), BẮT BUỘC trả về số âm (VD: -30000000).
 - budget_scope: "total" (nếu budget là tổng cho nhiều máy), "per_unit" (mỗi máy), "unknown" (không rõ).
-- purpose: Trích xuất ĐÚNG NGUYÊN VĂN mục đích sử dụng khách viết (VD: "văn phòng", "esport", "render", "chơi game"). Không được tự ý tóm tắt.
+- purpose: Trích xuất ĐÚNG NGUYÊN VĂN mục đích sử dụng khách viết. Không được tự ý tóm tắt.
 - keep_components: Các linh kiện khách BẢO GIỮ LẠI (VD: giữ nguyên cpu -> ["cpu"]).
 - required_components: Các linh kiện khách YÊU CẦU MỚI hoặc ĐỔI SANG. BẮT BUỘC trích xuất nếu khách nhắc đến tên linh kiện (VD: đổi sang rtx 4080 -> {"gpu": "rtx 4080"}). KHÔNG ĐƯỢC để trống nếu khách có nhắc.
-- route: Chọn "pc_builder" nếu đang ráp máy, "current_build_qa" nếu hỏi về bộ hiện tại, "pass" nếu hỏi vớ vẩn ngoài lề.
-- action: "continue", "reset", "alternative". BẮT BUỘC trả về "continue" nếu khách yêu cầu đổi/giữ linh kiện.
-- BẮT BUỘC trả về JSON theo ĐÚNG định dạng sau:
-{
-  "route": "pc_builder",
-  "action": "continue",
-  "budget": 35000000,
-  "budget_scope": "per_unit",
-  "purpose": "chơi game",
-  "quantity": 1,
-  "keep_components": [],
-  "required_components": {"cpu": "ryzen 9 7950x"},
-  "preferred_components": {},
-  "excluded_brands": []
-}
+
+BẮT BUỘC trả về JSON theo đúng schema của PcBuildCommand.
 """
 
 def _get_async_client():
     return ollama.AsyncClient()
 
-async def interpret_build_turn(
+async def _extract_command(
     user_message: str,
-    chat_history: str,
-    trusted_snapshot: dict,
-    forced_route: str | None = None,
-) -> Interpretation:
-    system_prompt = INTERPRET_SYSTEM_PROMPT
-    if forced_route:
-        system_prompt += f"\nCHÚ Ý: Lượt này BẮT BUỘC đặt route='{forced_route}' (không được trả route='pass'). Tuy nhiên bạn vẫn phải trích xuất các thông tin khác từ câu mới nhất."
-
+    recent_history: list[str],
+    current_context: PcBuildContext,
+    route_decision: RouteDecision,
+) -> PcBuildCommand:
     messages = [
         {
             "role": "system",
-            "content": system_prompt,
+            "content": INTERPRET_SYSTEM_PROMPT,
         },
         {
             "role": "user",
             "content": (
-                "Trạng thái ứng dụng hiện tại:\n"
-                f"{json.dumps(trusted_snapshot, ensure_ascii=False)}\n\n"
+                "Trạng thái bộ PC hiện tại:\n"
+                f"{current_context.model_dump_json(indent=2)}\n\n"
+                "Quyết định định tuyến (cho biết hướng xử lý chung):\n"
+                f"{route_decision.model_dump_json(indent=2)}\n\n"
                 "Lịch sử gần đây:\n"
-                f"{chat_history}\n\n"
+                f"{chr(10).join(recent_history)}\n\n"
                 "Câu nói mới nhất:\n"
                 f"{user_message}"
             ),
@@ -153,53 +82,45 @@ async def interpret_build_turn(
         model=get_ollama_model(),
         messages=messages,
         options={"temperature": 0.0, "num_predict": 512},
-        format=Interpretation.model_json_schema(),
+        format=PcBuildCommand.model_json_schema(),
     )
-    raw = response["message"]["content"].strip()
-    print("====== EXTRACTOR RAW ======")
-    print(raw)
-    print("===========================")
-    interpretation = Interpretation.model_validate_json(response["message"]["content"])
+    
+    command = PcBuildCommand.model_validate_json(response["message"]["content"])
+    
+    # Fallback and adjustments
     fallback_budget = extract_budget_fallback(user_message)
     if fallback_budget is not None and fallback_budget < 0:
-        interpretation.budget = fallback_budget
-    elif interpretation.budget is None and fallback_budget is not None:
-        interpretation.budget = fallback_budget
+        command.budget = fallback_budget
+    elif command.budget is None and fallback_budget is not None:
+        command.budget = fallback_budget
         
-    if interpretation.budget is not None and interpretation.budget > 0 and fallback_budget is not None:
-        # Prevent LLM from multiplying budget by quantity
-        if interpretation.quantity and interpretation.quantity > 1 and interpretation.budget > fallback_budget:
-            print(f"DEBUG: Overriding LLM budget {interpretation.budget} with fallback {fallback_budget}")
-            interpretation.budget = fallback_budget
-            interpretation.budget_scope = "total"
+    if command.budget is not None and command.budget > 0 and fallback_budget is not None:
+        if command.quantity and command.quantity > 1 and command.budget > fallback_budget:
+            command.budget = fallback_budget
+            command.budget_scope = "total"
             
-    print(f"DEBUG: Final interpretation={interpretation.model_dump()}")
-    
-    if not interpretation.required_components:
+    if not command.required_components:
         fallback_comps = extract_components_fallback(user_message)
         if fallback_comps:
-            interpretation.required_components = fallback_comps  # type: ignore
+            command.required_components = fallback_comps  # type: ignore
             
-    return interpretation
+    return command
 
-from app.llm.gateway import safe_llm_call
-from app.llm.result import LlmResult
-
-async def interpret_build_turn_safe(
+async def extract_pc_build_command(
     *,
     user_message: str,
-    chat_history: str,
-    trusted_snapshot: dict,
-    forced_route: str | None = None,
-) -> LlmResult[Interpretation]:
+    recent_history: list[str],
+    current_context: PcBuildContext,
+    route_decision: RouteDecision,
+) -> LlmResult[PcBuildCommand]:
     return await safe_llm_call(
-        lambda: interpret_build_turn(
+        lambda: _extract_command(
             user_message=user_message,
-            chat_history=chat_history,
-            trusted_snapshot=trusted_snapshot,
-            forced_route=forced_route,
+            recent_history=recent_history,
+            current_context=current_context,
+            route_decision=route_decision,
         ),
         timeout_seconds=12,
         max_attempts=2,
-        operation_name="pc_builder_interpretation",
+        operation_name="extract_pc_build_command",
     )

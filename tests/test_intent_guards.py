@@ -200,7 +200,7 @@ def test_classified_pc_build_skips_generic_extraction_pass(monkeypatch):
     monkeypatch.setattr(master_intent, "_run_classification_pass", classify)
     monkeypatch.setattr(master_intent, "_run_extraction_pass", forbidden)
 
-    parsed = asyncio.run(master_intent.parse_master_intent("cần một cấu hình chuyên dụng"))
+    parsed = asyncio.run(master_intent.parse_master_intent("tôi muốn tìm một thiết bị làm việc chuyên dụng"))
 
     assert parsed.intent == "build_pc"
     assert calls == ["classify"]
@@ -248,11 +248,13 @@ def test_combo_review_inherits_verified_components():
 def test_extraction_pass_receives_current_message_only(monkeypatch):
     captured = {}
 
-    async def fake_chat(**kwargs):
-        captured.update(kwargs)
-        return {"message": {"content": '{"intent":"price_check","target_product":"rtx 4060"}'}}
+    class FakeClient:
+        def __init__(self, **kwargs): pass
+        async def chat(self, **kwargs):
+            captured.update(kwargs)
+            return {"message": {"content": '{"intent":"price_check","target_product":"rtx 4060"}'}}
 
-    monkeypatch.setattr(master_intent._async_client, "chat", fake_chat)
+    monkeypatch.setattr(master_intent, "_get_async_client", lambda: FakeClient())
 
     parsed = asyncio.run(_run_extraction_pass("giá rtx 4060", "price_check"))
 

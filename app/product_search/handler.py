@@ -11,7 +11,7 @@ class ProductSearchHandler:
     def __init__(self, catalog: ShopCatalog):
         self._catalog = catalog
 
-    async def handle(self, request: DomainRequest, intent: ParsedIntent) -> ChatResult:
+    async def handle(self, request: DomainRequest, intent: ParsedIntent, route_decision=None) -> ChatResult:
         query = self._build_product_query(request.user_message, intent)
         
         matches = self._catalog.search_products(query)

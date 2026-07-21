@@ -1,5 +1,15 @@
 from pydantic import BaseModel, Field
 from typing import Literal
+from enum import Enum
+
+from app.pc_builder.policy import PendingQuestion
+
+class PcBuildStatus(str, Enum):
+    IDLE = "idle"
+    COLLECTING = "collecting"
+    CONFIGURED = "configured"
+    SELECTED = "selected"
+
 
 from app.pc_builder.policy import PendingQuestion
 
@@ -9,6 +19,7 @@ class PcBuildContext(BaseModel):
     """Deep module state for PC Builder multi-turn context."""
     schema_version: int = 8
 
+    status: PcBuildStatus = PcBuildStatus.IDLE
     build_id: str | None = None
     budget: int | None = None
     quantity: int = Field(default=1, ge=1)

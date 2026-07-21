@@ -12,7 +12,7 @@ class CompatibilityHandler:
     def __init__(self, catalog: ShopCatalog):
         self._catalog = catalog
 
-    async def handle(self, request: DomainRequest, intent: ParsedIntent) -> ChatResult:
+    async def handle(self, request: DomainRequest, intent: ParsedIntent, route_decision=None) -> ChatResult:
         # Resolve components via legacy helper or ShopCatalog
         cpu = resolve_component(intent.cpu or "", "CPU", self._catalog) if intent.cpu else None
         main = resolve_component(intent.mainboard or "", "MAINBOARD", self._catalog) if intent.mainboard else None
@@ -82,8 +82,16 @@ class CompatibilityHandler:
         )
 
         if generation.ok and generation.value:
+            reply = generation.value.answer
+            
+            # Guard Layer 2: enforce true compatibility state against LLM hallucination
+            if overall == "incompatible" and "không" not in reply.lower():
+                reply = "Dạ rất tiếc, các linh kiện này không tương thích với nhau. " + reply
+            elif overall == "compatible" and "không tương thích" in reply.lower():
+                reply = "Dạ các linh kiện này tương thích với nhau ạ. "
+                
             return ChatResult(
-                reply=generation.value.answer,
+                reply=reply,
                 contexts=[item.source_id for item in evidence.items],
                 metadata={
                     "intent": intent.intent,
