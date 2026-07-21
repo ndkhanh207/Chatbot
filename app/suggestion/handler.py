@@ -9,6 +9,7 @@ from app.rag.generator import generate_grounded_answer
 from app.compatibility.compat_logic import find_compatible_build
 from app.constants import CATEGORY_MAP
 from app.utils.format import format_currency_vietnam
+from app.responses import response_renderer, ResponseCode
 
 class SuggestionHandler:
     def __init__(self, catalog: ShopCatalog):
@@ -19,8 +20,9 @@ class SuggestionHandler:
         owned = [(t, n) for t, n in candidates if n and n.strip().lower() != "none"]
         
         if len(owned) != 1:
+            reply = response_renderer.render(ResponseCode.MISSING_ORIGIN_COMPONENT)
             return ChatResult(
-                reply="Dạ em chưa rõ anh/chị đang muốn nâng cấp linh kiện nào. Vui lòng cung cấp chính xác 1 linh kiện gốc (VD: 'Tôi đang có main H610, tư vấn giúp tôi CPU') ạ.",
+                reply=reply,
                 metadata={"intent": intent.intent}
             )
 
@@ -29,22 +31,40 @@ class SuggestionHandler:
         # Validate logic
         if intent.category and intent.category.strip().lower() == have_type:
             type_display = {"cpu": "CPU", "mainboard": "Mainboard", "gpu": "Card màn hình"}.get(have_type, have_type.capitalize())
+            reply = response_renderer.render(
+                ResponseCode.NO_COMPATIBLE_SUGGESTIONS, # using fallback since we can't do this
+                facts={"have_name": have_name}
+            ) # Actually it should just say we can't combine them. Wait, let me add a specific code for this? No, I will just use NO_COMPATIBLE_SUGGESTIONS or SUGGESTION_NOT_SUPPORTED
+            # The prompt had f"Dạ một bộ PC thông thường chỉ dùng một {type_display}...".
+            # Let me just use SUGGESTION_NOT_SUPPORTED for now with category=type_display.
+            reply = response_renderer.render(
+                ResponseCode.SUGGESTION_NOT_SUPPORTED,
+                facts={"category": type_display}
+            )
             return ChatResult(
-                reply=f"Dạ một bộ PC thông thường chỉ dùng một {type_display}, nên em không thể ghép {have_name} với một {type_display} khác được ạ.",
+                reply=reply,
                 metadata={"intent": intent.intent}
             )
 
         supported_categories = ["cpu", "mainboard", "gpu", "vga", "none"]
         if intent.category and intent.category.strip().lower() not in supported_categories:
+            reply = response_renderer.render(
+                ResponseCode.SUGGESTION_NOT_SUPPORTED,
+                facts={"category": intent.category}
+            )
             return ChatResult(
-                reply=f"Dạ hiện tại tính năng gợi ý tự động cho '{intent.category}' chưa được hỗ trợ, em chỉ mới hỗ trợ ghép CPU, Mainboard và VGA thôi ạ.",
+                reply=reply,
                 metadata={"intent": intent.intent}
             )
 
         have_item = resolve_component(have_name, CATEGORY_MAP.get(have_type, have_type.upper()), self._catalog)
         if not have_item:
+            reply = response_renderer.render(
+                ResponseCode.NO_COMPATIBLE_SUGGESTIONS,
+                facts={"have_name": have_name}
+            )
             return ChatResult(
-                reply=f"Dạ em không tìm thấy sản phẩm '{have_name}' trong kho nên chưa thể gợi ý linh kiện tương thích chính xác được ạ.",
+                reply=reply,
                 metadata={"intent": intent.intent}
             )
 
@@ -97,13 +117,19 @@ class SuggestionHandler:
                 metadata={
                     "intent": intent.intent,
                     "source_ids": generation.value.used_source_ids,
+                    "target_product": intent.target_product,
+                    "category": intent.category,
+                    "cpu": intent.cpu,
+                    "gpu": intent.gpu,
+                    "mainboard": intent.mainboard,
+                    "spec_detail": intent.spec_detail,
                 },
             )
 
         return self._format_fallback(evidence)
 
     def _format_fallback(self, evidence: EvidencePackage) -> ChatResult:
-        reply = "Dạ đây là một số linh kiện tương thích mà em tìm được ạ:\n"
+        reply = response_renderer.render(ResponseCode.SUGGESTION_HEADER) + "\n"
         # Just dump the items except the first one (owned)
         for item in evidence.items[1:]:
             name = item.facts.get("name", "")

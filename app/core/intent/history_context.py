@@ -119,7 +119,7 @@ def build_intent_metadata(parsed_intent) -> dict:
     return {"intent_state": {k: v for k, v in fields.items() if _clean(v)}}
 
 
-def build_history_context(chat_history: list = None) -> str:
+def build_history_context(chat_history: list | None = None) -> str:
     if not chat_history:
         return ""
 

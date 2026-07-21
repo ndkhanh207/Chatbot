@@ -5,7 +5,7 @@ from app.core.intent.master_intent import MasterIntentSchema as ParsedIntent
 from app.catalog import ShopCatalog, ProductQuery
 from app.rag.models import EvidencePackage, EvidenceItem, GroundedAnswerRequest
 from app.rag.generator import generate_grounded_answer
-
+from app.utils.format import format_currency_vietnam
 class SpecificationHandler:
     def __init__(self, catalog: ShopCatalog):
         self._catalog = catalog
@@ -27,8 +27,13 @@ class SpecificationHandler:
         ))
 
         if not matches:
+            from app.responses import response_renderer, ResponseCode
+            reply = response_renderer.render(
+                ResponseCode.PRODUCT_NOT_FOUND,
+                facts={"query": lookup_term}
+            )
             return ChatResult(
-                reply="Dạ hiện tại em chưa tìm thấy mã sản phẩm này trong kho ạ.",
+                reply=reply,
                 metadata={"intent": intent.intent}
             )
 
@@ -38,12 +43,14 @@ class SpecificationHandler:
             "product_id": product.product_id,
             "name": product.name,
             "category": product.category,
-            "price": product.price,
+            "price": format_currency_vietnam(product.price),
         }
         
         # Merge attributes into facts
         if product.attributes:
-            facts.update(product.attributes)
+            for k, v in product.attributes.items():
+                if k.lower() not in ("giá", "price", "tên", "name", "category"):
+                    facts[k] = v
 
         evidence = EvidencePackage(
             query=request.user_message,
@@ -72,6 +79,12 @@ class SpecificationHandler:
                 metadata={
                     "intent": intent.intent,
                     "source_ids": generation.value.used_source_ids,
+                    "target_product": intent.target_product,
+                    "category": intent.category,
+                    "cpu": intent.cpu,
+                    "gpu": intent.gpu,
+                    "mainboard": intent.mainboard,
+                    "spec_detail": intent.spec_detail,
                 },
             )
 
@@ -81,7 +94,11 @@ class SpecificationHandler:
         product = evidence.items[0]
         name = product.facts.get("name", "sản phẩm")
         
-        reply = f"Dạ đây là thông tin kỹ thuật của {name}. Do lỗi kết nối, em chỉ có thể cung cấp nguyên mẫu hệ thống: {product.facts}"
+        from app.responses import response_renderer, ResponseCode
+        reply = response_renderer.render(
+            ResponseCode.SPECIFICATION_FALLBACK,
+            facts={"name": name, "facts": product.facts}
+        )
             
         return ChatResult(
             reply=reply,

@@ -1,39 +1,45 @@
 import traceback
 import logging
-from app.guard.input_guard import run_input_guards, check_semantic_guards
+from app.guard.input_guard import run_input_guards
 from app.memory.context_manager import ConversationContext
 from app.chat.models import DomainRequest
 from app.chat.registry import create_handler_registry
-from app.pc_builder.repository import PcContextRepositoryImpl
+from app.infrastructure.pc_context_repository import SqlPcContextRepository
 from app.routing.planner import RoutePlanner
 from app.routing.capability_index import AllCapabilitiesIndex
 from app.routing.models import RoutingRequest
 from app.tasks.registry import TaskRegistry, PcBuildTaskSummaryProvider
 from app.core.llm_chains import get_llm
+from app.responses import ResponseCode, response_renderer, ResponseGenerationUnavailable, CatalogUnavailable
 
 logger = logging.getLogger(__name__)
 
 async def handle_chat(user_message: str, catalog, user_uid: str, session_id: str = "default") -> dict:
     memory = ConversationContext(user_uid, session_id)
-    pc_repo = PcContextRepositoryImpl()
+    pc_repo = SqlPcContextRepository()
 
     if catalog is None:
         return {"chatbot_reply": "HỆ THỐNG CHƯA SẴN SÀNG!"}
 
     # 1. Security/input validation
-    error_reply, user_message = run_input_guards(user_message, session_id)
-    if error_reply:
-        memory.commit(user_message, error_reply["chatbot_reply"], {"intent": "none"})
-        return error_reply
+    guard_decision, user_message = run_input_guards(user_message, session_id)
+    if not guard_decision.allowed:
+        rc = ResponseCode.UNSAFE_CONTENT
+        if guard_decision.response_code is not None:
+            mapping = {
+                "message_too_long": ResponseCode.INPUT_TOO_LONG,
+                "empty_input": ResponseCode.EMPTY_INPUT,
+                "invalid_format": ResponseCode.INVALID_FORMAT,
+                "unsafe_content": ResponseCode.UNSAFE_CONTENT,
+            }
+            rc = mapping.get(guard_decision.response_code.value, ResponseCode.UNSAFE_CONTENT)
+            
+        reply = response_renderer.render(rc)
+        memory.commit(user_message, reply, {"intent": "none"})
+        return {"chatbot_reply": reply, "contexts": []}
 
     msg_clean = user_message.strip()
     chat_history = memory.history()
-
-    # 2. Semantic shortcut/off-topic guard
-    semantic_reply = check_semantic_guards(msg_clean, chat_history)
-    if semantic_reply:
-        memory.commit(msg_clean, semantic_reply["chatbot_reply"], {"intent": "none"})
-        return semantic_reply
 
     try:
         # 3. Setup Registries
@@ -72,7 +78,7 @@ async def handle_chat(user_message: str, catalog, user_uid: str, session_id: str
                 "route_planner_failed",
                 extra={"error_kind": error_kind, "attempts": planner_result.attempts}
             )
-            reply = "Hệ thống đang xử lý chậm nên chưa thể xác định yêu cầu của bạn. Bạn thử lại sau một chút nhé."
+            reply = response_renderer.render(ResponseCode.ROUTING_UNAVAILABLE)
             memory.commit(
                 msg_clean,
                 reply,
@@ -133,7 +139,14 @@ async def handle_chat(user_message: str, catalog, user_uid: str, session_id: str
             "contexts": chat_result.contexts
         }
 
+    except ResponseGenerationUnavailable:
+        reply = response_renderer.render(ResponseCode.LLM_UNAVAILABLE)
+        return {"chatbot_reply": reply, "contexts": []}
+    except CatalogUnavailable:
+        reply = response_renderer.render(ResponseCode.CATALOG_UNAVAILABLE)
+        return {"chatbot_reply": reply, "contexts": []}
     except Exception as e:
         traceback.print_exc()
         print(f"❌ [INTERNAL ERROR - chat_handler] Lỗi xử lý: {str(e)}")
-        raise
+        reply = response_renderer.render(ResponseCode.SYSTEM_ERROR)
+        return {"chatbot_reply": reply, "contexts": []}

@@ -2,10 +2,9 @@ import logging
 from app.chat.models import DomainRequest, ChatResult
 from app.routing.models import RouteDecision
 from app.pc_builder.service import PcBuildService
-from app.pc_builder.context import PcBuildContext
 from app.pc_builder.models import PcBuildOutcome, PcContextRepository
-from app.core.intent.master_intent import MasterIntentSchema as ParsedIntent
 from app.pc_builder.extractor import extract_pc_build_command
+from app.core.intent.master_intent import MasterIntentSchema
 from app.catalog import ShopCatalog
 
 logger = logging.getLogger(__name__)
@@ -20,28 +19,34 @@ class PCBuilderHandler:
         self._catalog = catalog
         self._repository = repository
 
+    def _extraction_failure(self) -> ChatResult:
+        from app.responses import response_renderer, ResponseCode
+        reply = response_renderer.render(ResponseCode.LLM_UNAVAILABLE)
+        return ChatResult(
+            reply=reply,
+            contexts=[],
+            handled=False,
+        )
+
     async def handle(
         self,
         request: DomainRequest,
-        intent: ParsedIntent,
+        intent: MasterIntentSchema,
         route_decision: RouteDecision | None = None,
+        **kwargs
     ) -> ChatResult:
-        versioned_ctx = await self._repository.load(request.user_uid, request.session_id)
-        current_context = versioned_ctx.context
-        expected_version = versioned_ctx.version
-        
-        if route_decision is None:
-            from app.routing.models import RouteDecision, TaskRelation
-            route_decision = RouteDecision(
-                handler_name="build_pc",
-                rewritten_query=request.user_message,
-                task_relation=TaskRelation.CONTINUE_TASK
-            )
+        versioned = await self._repository.load(
+            request.user_uid,
+            request.session_id,
+        )
 
+        if route_decision is None:
+            logger.error("route_decision is required for PC build extraction but was None")
+            return self._extraction_failure()
         command_result = await extract_pc_build_command(
             user_message=request.user_message,
             recent_history=request.chat_history,
-            current_context=current_context,
+            current_context=versioned.context,
             route_decision=route_decision,
         )
 
@@ -57,21 +62,13 @@ class PCBuilderHandler:
                     "attempts": command_result.attempts,
                 },
             )
-            return ChatResult(
-                reply="Hệ thống đang xử lý chậm nên em chưa hiểu chắc yêu cầu vừa rồi. Bạn thử lại sau nhé.",
-                contexts=[],
-                handled=False,
-            )
+            return self._extraction_failure()
 
-        command = command_result.value
-
-        service = PcBuildService(
-            catalog=self._catalog,
-        )
+        service = PcBuildService(catalog=self._catalog)
 
         outcome: PcBuildOutcome = await service.execute(
-            command=command,
-            current_context=current_context,
+            command=command_result.value,
+            current_context=versioned.context,
             user_message=request.user_message,
         )
 
@@ -80,7 +77,7 @@ class PCBuilderHandler:
                 user_uid=request.user_uid,
                 session_id=request.session_id,
                 context=outcome.next_context,
-                expected_version=expected_version,
+                expected_version=versioned.version,
             )
 
         return outcome.result

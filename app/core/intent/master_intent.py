@@ -53,7 +53,7 @@ SPEC_TRIGGERS = [
     'mượt', 'khỏe', 'băng thông', 'tốc độ', 'chuẩn', 'giao tiếp', 'kích cỡ',
     'kích thước', 'chiều dài', 'dài bao nhiêu', 'màu', 'watt', 'điện năng',
     'công suất', 'chạy ở', 'gb ram', 'khe cắm', 'ram', 'ddr4', 'ddr5',
-    'hỗ trợ', 'loại'
+    'hỗ trợ', 'loại', 'kiến trúc', 'tên đầy đủ', 'tên chính xác', 'tên', 'cổng', 'đồ họa'
 ]
 
 FOLLOW_UP_MARKERS = ['vậy', 'thì sao', 'thế còn', 'còn', 'nó', 'của']
@@ -209,7 +209,13 @@ def _apply_pre_extraction_guards(
 
     return intent_pass1
 
-def _apply_post_extraction_guards(parsed: MasterIntentSchema, cpu_match, gpu_match, main_match, comp_count: int):
+def _is_substring_fuzzy(val: str, hist: str) -> bool:
+    if not hist: return False
+    v = re.sub(r'[^a-z0-9]', '', val.lower())
+    h = re.sub(r'[^a-z0-9]', '', hist.lower())
+    return v in h and len(v) < len(h)
+
+def _apply_post_extraction_guards(parsed: MasterIntentSchema, cpu_match, gpu_match, main_match, comp_count: int, structured_state: dict):
     # Tách gộp target_product
     if parsed.target_product:
         tp_lower = parsed.target_product.lower()
@@ -226,12 +232,19 @@ def _apply_post_extraction_guards(parsed: MasterIntentSchema, cpu_match, gpu_mat
             parsed.target_product = None
 
     # Explicit entities in current message always replace copied/history values.
+    # UNLESS the explicit entity is a substring of the detailed history value!
     if cpu_match:
-        parsed.cpu = cpu_match.group(1)
+        val = cpu_match.group(1)
+        hist = structured_state.get("cpu") or ""
+        parsed.cpu = hist if _is_substring_fuzzy(val, hist) else val
     if gpu_match:
-        parsed.gpu = gpu_match.group(1)
+        val = gpu_match.group(1)
+        hist = structured_state.get("gpu") or ""
+        parsed.gpu = hist if _is_substring_fuzzy(val, hist) else val
     if main_match:
-        parsed.mainboard = main_match.group(1)
+        val = main_match.group(1)
+        hist = structured_state.get("mainboard") or ""
+        parsed.mainboard = hist if _is_substring_fuzzy(val, hist) else val
 
     if parsed.intent in ["specification", "price_check"]:
         explicit_components = [
@@ -241,7 +254,9 @@ def _apply_post_extraction_guards(parsed: MasterIntentSchema, cpu_match, gpu_mat
         ]
         for match, category in explicit_components:
             if match:
-                parsed.target_product = match.group(1)
+                val = match.group(1)
+                hist = structured_state.get(category) or ""
+                parsed.target_product = hist if _is_substring_fuzzy(val, hist) else val
                 parsed.category = category
                 if category != "cpu":
                     parsed.cpu = None
@@ -356,9 +371,9 @@ def _check_retry_condition(parsed: MasterIntentSchema) -> str | None:
             
     return None
 
-async def _handle_retry(user_msg: str, parsed: MasterIntentSchema, fallback_intent: str) -> MasterIntentSchema:
+async def _handle_retry(user_msg: str, parsed: MasterIntentSchema, fallback_intent: str, history_context: str) -> MasterIntentSchema:
     print(f"\u26a0\ufe0f [RETRY] Guard detected mismatch ({parsed.intent} \u2192 {fallback_intent}). Retrying Pass 2...")
-    new_parsed = await _run_extraction_pass(user_msg, fallback_intent)
+    new_parsed = await _run_extraction_pass(user_msg, fallback_intent, history_context)
     new_parsed.intent = fallback_intent
     
     if fallback_intent == "suggestion" and new_parsed.target_product:
@@ -404,7 +419,7 @@ async def _run_classification_pass(user_msg: str, history_context: str) -> str:
         return "none"
 
 
-async def _run_extraction_pass(user_msg: str, intent: str) -> MasterIntentSchema:
+async def _run_extraction_pass(user_msg: str, intent: str, history_context: str) -> MasterIntentSchema:
     """Pass 2: Trích xuất Entity"""
     fewshots = _FEWSHOT_BY_INTENT.get(intent, _FEWSHOT_BY_INTENT["none"])
     prompt_msg = f"<system_hint>Intent = {intent}</system_hint>\n<user_input>{user_msg}</user_input>"
@@ -477,18 +492,18 @@ async def parse_master_intent(user_msg: str, chat_history: list | None = None) -
             return MasterIntentSchema(intent="build_pc")
             
         # 3. PASS 2
-        parsed = await _run_extraction_pass(user_msg, intent_pass1)
+        parsed = await _run_extraction_pass(user_msg, intent_pass1, history_context)
         parsed.intent = intent_pass1 
         
         # 4. Post-extraction Guards
-        _apply_post_extraction_guards(parsed, cpu_match, gpu_match, main_match, comp_count)
+        _apply_post_extraction_guards(parsed, cpu_match, gpu_match, main_match, comp_count, structured_state)
         _inherit_structured_followup_state(parsed, structured_state, cpu_match, gpu_match, main_match, msg_l)
 
         # 5. Retry Logic
         fallback_intent = _check_retry_condition(parsed)
         if fallback_intent:
-            parsed = await _handle_retry(user_msg, parsed, fallback_intent)
-            _apply_post_extraction_guards(parsed, cpu_match, gpu_match, main_match, comp_count)
+            parsed = await _handle_retry(user_msg, parsed, fallback_intent, history_context)
+            _apply_post_extraction_guards(parsed, cpu_match, gpu_match, main_match, comp_count, structured_state)
             _inherit_structured_followup_state(parsed, structured_state, cpu_match, gpu_match, main_match, msg_l)
 
         return parsed

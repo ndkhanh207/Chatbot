@@ -62,8 +62,14 @@ class RoutePlanner:
             user_message=request.user_message
         )
 
+        from typing import cast
+        
         async def _run() -> RouteDecision:
-            decision: RouteDecision = await self._model.ainvoke(messages)
+            result = await self._model.ainvoke(messages)
+            if isinstance(result, dict):
+                decision = RouteDecision.model_validate(result)
+            else:
+                decision = cast(RouteDecision, result)
             return validate_route_decision(
                 decision,
                 candidates=candidates,

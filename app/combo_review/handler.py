@@ -11,6 +11,7 @@ from app.memory.context_manager import ConversationContext
 from app.pc_builder.formatter import format_approx_million
 from app.chat.models import DomainRequest, ChatResult
 from app.chat.contracts import DomainHandler
+from app.routing.models import RouteDecision
 from app.core.intent.master_intent import MasterIntentSchema as ParsedIntent
 from app.catalog import ShopCatalog
 def _build_models(user_message: str, catalog: ShopCatalog) -> tuple[str, str, str] | None:
@@ -74,6 +75,7 @@ class ComboReviewHandler(DomainHandler):
         self,
         request: DomainRequest,
         intent: ParsedIntent,
+        route_decision: RouteDecision | None = None,
     ) -> ChatResult:
         user_message = request.user_message
         catalog = self._catalog
@@ -86,7 +88,7 @@ class ComboReviewHandler(DomainHandler):
         main = resolve_component(names[1], 'MAINBOARD', catalog)
         gpu = resolve_component(names[2], 'GPU', catalog)
         
-        if not all((cpu, main, gpu)):
+        if cpu is None or main is None or gpu is None:
             reply = "Dạ, em chưa tìm thấy đủ CPU, GPU và mainboard trong dữ liệu shop để đánh giá chính xác combo này ạ."
         else:
             reply = _format_review(cpu, main, gpu)
@@ -94,5 +96,13 @@ class ComboReviewHandler(DomainHandler):
         return ChatResult(
             reply=reply,
             contexts=[],
-            metadata={"intent": intent.intent}
+            metadata={
+                "intent": intent.intent,
+                "target_product": intent.target_product,
+                "category": intent.category,
+                "cpu": intent.cpu,
+                "gpu": intent.gpu,
+                "mainboard": intent.mainboard,
+                "spec_detail": intent.spec_detail,
+            }
         )

@@ -7,6 +7,7 @@ from app.catalog.lookup import resolve_component
 from app.rag.models import EvidencePackage, EvidenceItem, GroundedAnswerRequest
 from app.rag.generator import generate_grounded_answer
 from app.compatibility.compat_logic import check_cpu_main_compat, check_gpu_main_compat
+from app.responses import response_renderer, ResponseCode
 
 class CompatibilityHandler:
     def __init__(self, catalog: ShopCatalog):
@@ -19,8 +20,9 @@ class CompatibilityHandler:
         gpu = resolve_component(intent.gpu or "", "GPU", self._catalog) if intent.gpu else None
 
         if not any([cpu, main, gpu]):
+            reply = response_renderer.render(ResponseCode.COMPATIBILITY_MISSING_INFO)
             return ChatResult(
-                reply="Dạ thông tin linh kiện anh/chị cung cấp chưa đủ rõ ràng hoặc không có trong kho. Xin vui lòng cung cấp đúng tên linh kiện để em kiểm tra tương thích ạ.",
+                reply=reply,
                 metadata={"intent": intent.intent}
             )
 
@@ -90,11 +92,25 @@ class CompatibilityHandler:
                 metadata={
                     "intent": intent.intent,
                     "source_ids": generation.value.used_source_ids,
+                    "target_product": intent.target_product,
+                    "category": intent.category,
+                    "cpu": intent.cpu,
+                    "gpu": intent.gpu,
+                    "mainboard": intent.mainboard,
+                    "spec_detail": intent.spec_detail,
                 },
             )
 
+        details_str = f"CPU-Main: {cpu_main.get('status')} " if cpu_main else ""
+        details_str += f"GPU-Main: {gpu_main.get('status')}" if gpu_main else ""
+        
+        fallback_reply = response_renderer.render(
+            ResponseCode.COMPATIBILITY_FALLBACK,
+            facts={"overall": overall, "details": details_str.strip()}
+        )
+
         return ChatResult(
-            reply="Dạ hệ thống đang xử lý chậm nên chưa thể kiểm tra tương thích. Bạn vui lòng thử lại sau nhé.",
+            reply=fallback_reply,
             contexts=[item.source_id for item in evidence.items],
             metadata={"intent": evidence.intent, "fallback": True}
         )

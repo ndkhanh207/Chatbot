@@ -59,10 +59,11 @@ class IntentService:
                     source="fast_path"
                 )
         
+        history_context = build_history_context(history)
+        
         # 2. LLM Classification Pass
         try:
             if intent_pass1 == "none":
-                history_context = build_history_context(history)
                 intent_pass1 = await _run_classification_pass(message, history_context)
 
             # Pre-extraction Guards
@@ -75,18 +76,18 @@ class IntentService:
                 )
                 
             # 3. LLM Extraction Pass
-            parsed = await _run_extraction_pass(message, intent_pass1)
+            parsed = await _run_extraction_pass(message, intent_pass1, history_context)
             parsed.intent = intent_pass1 
             
             # Post-extraction Guards
-            _apply_post_extraction_guards(parsed, cpu_match, gpu_match, main_match, comp_count)
+            _apply_post_extraction_guards(parsed, cpu_match, gpu_match, main_match, comp_count, structured_state)
             _inherit_structured_followup_state(parsed, structured_state, cpu_match, gpu_match, main_match, msg_l)
 
             # Retry Logic
             fallback_intent = _check_retry_condition(parsed)
             if fallback_intent:
-                parsed = await _handle_retry(message, parsed, fallback_intent)
-                _apply_post_extraction_guards(parsed, cpu_match, gpu_match, main_match, comp_count)
+                parsed = await _handle_retry(message, parsed, fallback_intent, history_context)
+                _apply_post_extraction_guards(parsed, cpu_match, gpu_match, main_match, comp_count, structured_state)
                 _inherit_structured_followup_state(parsed, structured_state, cpu_match, gpu_match, main_match, msg_l)
 
             return IntentResult(

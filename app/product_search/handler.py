@@ -6,6 +6,7 @@ from app.catalog import ShopCatalog, ProductQuery
 from app.rag.models import EvidencePackage, EvidenceItem, GroundedAnswerRequest
 from app.rag.generator import generate_grounded_answer
 from app.utils.format import format_currency_vietnam
+from app.responses import response_renderer, ResponseCode
 
 class ProductSearchHandler:
     def __init__(self, catalog: ShopCatalog):
@@ -17,23 +18,33 @@ class ProductSearchHandler:
         matches = self._catalog.search_products(query)
         
         if not matches:
+            reply = response_renderer.render(
+                ResponseCode.PRODUCT_NOT_FOUND,
+                facts={"query": request.user_message}
+            )
             return ChatResult(
-                reply="Dạ hiện tại cửa hàng chưa có sản phẩm nào phù hợp với yêu cầu của anh/chị ạ.",
+                reply=reply,
                 metadata={"intent": intent.intent}
             )
 
         items = []
         for product in matches:
+            facts = {
+                "product_id": product.product_id,
+                "name": product.name,
+                "price": format_currency_vietnam(product.price),
+                "url": product.attributes.get("url", "")
+            }
+            if product.attributes:
+                for k, v in product.attributes.items():
+                    if k.lower() not in ("giá", "price", "tên", "name"):
+                        facts[k] = v
+                
             items.append(
                 EvidenceItem(
                     source_id=product.product_id,
                     source_type="product",
-                    facts={
-                        "product_id": product.product_id,
-                        "name": product.name,
-                        "price": product.price,
-                        "url": product.attributes.get("url", "")
-                    }
+                    facts=facts
                 )
             )
 
@@ -58,6 +69,12 @@ class ProductSearchHandler:
                 metadata={
                     "intent": intent.intent,
                     "source_ids": generation.value.used_source_ids,
+                    "target_product": intent.target_product,
+                    "category": intent.category,
+                    "cpu": intent.cpu,
+                    "gpu": intent.gpu,
+                    "mainboard": intent.mainboard,
+                    "spec_detail": intent.spec_detail,
                 },
             )
 
@@ -76,7 +93,8 @@ class ProductSearchHandler:
         )
 
     def _format_fallback(self, evidence: EvidencePackage) -> ChatResult:
-        lines = ["Dạ em tìm thấy các sản phẩm sau:"]
+        header = response_renderer.render(ResponseCode.SEARCH_HEADER)
+        lines = [header]
         for item in evidence.items:
             name = item.facts.get("name", "")
             price = item.facts.get("price", 0)

@@ -6,6 +6,7 @@ from app.catalog import ShopCatalog, ProductQuery, ProductRecord
 from app.rag.models import EvidencePackage, EvidenceItem, GroundedAnswerRequest
 from app.rag.generator import generate_grounded_answer
 from app.utils.format import format_currency_vietnam
+from app.responses import response_renderer, ResponseCode
 
 class PriceHandler:
     def __init__(self, catalog: ShopCatalog):
@@ -40,6 +41,17 @@ class PriceHandler:
 
         product = matches[0]
 
+        facts = {
+            "product_id": product.product_id,
+            "name": product.name,
+            "price": format_currency_vietnam(product.price),
+            "url": product.attributes.get("url", "")
+        }
+        if product.attributes:
+            for k, v in product.attributes.items():
+                if k.lower() not in ("giá", "price", "tên", "name"):
+                    facts[k] = v
+
         evidence = EvidencePackage(
             query=request.user_message,
             intent=intent.intent,
@@ -47,12 +59,7 @@ class PriceHandler:
                 EvidenceItem(
                     source_id=product.product_id,
                     source_type="product",
-                    facts={
-                        "product_id": product.product_id,
-                        "name": product.name,
-                        "price": product.price,
-                        "url": product.attributes.get("url", "")
-                    }
+                    facts=facts
                 )
             ]
         )
@@ -87,14 +94,18 @@ class PriceHandler:
                         facts={
                             "product_id": product.product_id,
                             "name": product.name,
-                            "price": product.price
+                            "price": format_currency_vietnam(product.price)
                         }
                     )
                 )
 
         if missing_terms:
+            reply = response_renderer.render(
+                ResponseCode.MISSING_PRICE_TERMS,
+                facts={"terms": ", ".join(missing_terms)}
+            )
             return ChatResult(
-                reply=f"Dạ em không tìm thấy thông tin cho: {', '.join(missing_terms)} ạ.",
+                reply=reply,
                 metadata={"intent": intent.intent}
             )
             
@@ -102,7 +113,7 @@ class PriceHandler:
             EvidenceItem(
                 source_id="calculation_result",
                 source_type="calculation",
-                facts={"calculated_total": total_price}
+                facts={"calculated_total": format_currency_vietnam(total_price)}
             )
         )
 
@@ -130,14 +141,21 @@ class PriceHandler:
                 metadata={
                     "intent": intent.intent,
                     "source_ids": generation.value.used_source_ids,
+                    "target_product": intent.target_product,
+                    "category": intent.category,
+                    "cpu": intent.cpu,
+                    "gpu": intent.gpu,
+                    "mainboard": intent.mainboard,
+                    "spec_detail": intent.spec_detail,
                 },
             )
 
         return self._format_fallback(evidence)
 
     def _not_found_result(self, intent: ParsedIntent) -> ChatResult:
+        reply = response_renderer.render(ResponseCode.PRODUCT_NOT_FOUND)
         return ChatResult(
-            reply="Dạ hiện tại em chưa tìm thấy mã sản phẩm này trong kho ạ.",
+            reply=reply,
             metadata={"intent": intent.intent}
         )
 
@@ -147,11 +165,17 @@ class PriceHandler:
             product = evidence.items[0]
             price = product.facts.get("price", 0)
             name = product.facts.get("name", "sản phẩm")
-            reply = f"Dạ, giá của {name} hiện tại là {format_currency_vietnam(price)} VNĐ ạ."
+            reply = response_renderer.render(
+                ResponseCode.PRICE_CHECK_FALLBACK,
+                facts={"name": name, "price_formatted": format_currency_vietnam(price)}
+            )
         else:
             calc_item = next((item for item in evidence.items if item.source_type == "calculation"), None)
             total = calc_item.facts.get("calculated_total", 0) if calc_item else 0
-            reply = f"Dạ, tổng giá tiền của các sản phẩm là {format_currency_vietnam(total)} VNĐ ạ."
+            reply = response_renderer.render(
+                ResponseCode.PRICE_CALCULATION_FALLBACK,
+                facts={"total_formatted": format_currency_vietnam(total)}
+            )
             
         return ChatResult(
             reply=reply,

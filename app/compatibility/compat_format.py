@@ -9,7 +9,7 @@ def _value(context: str, key: str) -> str | None:
 
 
 def format_compatibility_reply(context: str) -> str:
-    """Minimal factual fallback used only when generation fails validation."""
+    """Minimal factual fallback used only when generawtion fails validation."""
     status = _value(context, "OVERALL_STATUS")
     cpu = _value(context, "CPU_MODEL")
     main = _value(context, "MAINBOARD_MODEL")

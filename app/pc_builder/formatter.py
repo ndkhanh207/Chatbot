@@ -1,20 +1,10 @@
-
 from __future__ import annotations
 
 from typing import Any
 
 from app.catalog import BuildRecord
-from app.pc_builder.context import PcBuildContext
-from app.pc_builder.policy import PendingQuestion
-
-
-ROLE_MAP = {
-    "human": "user",
-    "user": "user",
-    "ai": "assistant",
-    "assistant": "assistant",
-    "system": "system",
-}
+from app.pc_builder.models import PcBuildContext
+from app.pc_builder.models import PendingQuestion
 
 
 def format_vnd(value: int | float | None) -> str:
@@ -32,7 +22,7 @@ def format_vnd(value: int | float | None) -> str:
     except (TypeError, ValueError, OverflowError):
         return "Không có dữ liệu"
 
-    return f"{amount:,}".replace(",", ".") + " ₫"
+    return f"{amount:,} ₫"
 
 
 def format_approx_million(value: int | float | None) -> str:
@@ -215,53 +205,3 @@ def render_selected_build_reply(
     parts.append(canonical_block)
 
     return "\n\n".join(parts)
-
-
-
-
-def _extract_message(
-    message: Any,
-) -> tuple[str, str]:
-    if isinstance(message, dict):
-        raw_role = str(
-            message.get("role", "unknown")
-        )
-        content = str(
-            message.get("content", "")
-        )
-    else:
-        raw_role = str(
-            getattr(message, "type", "unknown")
-        )
-        content = str(
-            getattr(message, "content", "")
-        )
-
-    role = ROLE_MAP.get(
-        raw_role.casefold(),
-        "unknown",
-    )
-    return role, content.strip()
-def format_chat_history(
-    messages: list,
-    limit: int,
-) -> str:
-    """
-    Chuyển lịch sử chat thành văn bản ngắn cho bước Interpretation.
-    """
-    if limit <= 0 or not messages:
-        return ""
-
-    formatted: list[str] = []
-
-    for message in messages[-limit:]:
-        role, content = _extract_message(message)
-
-        if not content:
-            continue
-
-        formatted.append(
-            f"{role}: {content}"
-        )
-
-    return "\n".join(formatted)

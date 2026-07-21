@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -59,14 +59,14 @@ def create_handler_registry(
             HandlerRegistration(
                 descriptor=HandlerDescriptor(
                     name="build_pc",
-                    description="Tạo, chỉnh sửa, tiếp tục hoặc trả lời các câu hỏi về cấu hình PC hoàn chỉnh đang được ráp.",
+                    description="Táº¡o, chá»‰nh sá»­a, tiáº¿p tá»¥c hoáº·c tráº£ lá»i cÃ¡c cÃ¢u há»i vá» cáº¥u hÃ¬nh PC hoÃ n chá»‰nh Ä‘ang Ä‘Æ°á»£c rÃ¡p.",
                     supported_operations=(
-                        "tạo cấu hình mới",
-                        "thay đổi ngân sách",
-                        "thay đổi linh kiện",
-                        "thay đổi mục đích",
-                        "yêu cầu cấu hình thay thế",
-                        "hỏi về cấu hình đã chọn",
+                        "táº¡o cáº¥u hÃ¬nh má»›i",
+                        "thay Ä‘á»•i ngÃ¢n sÃ¡ch",
+                        "thay Ä‘á»•i linh kiá»‡n",
+                        "thay Ä‘á»•i má»¥c Ä‘Ã­ch",
+                        "yÃªu cáº§u cáº¥u hÃ¬nh thay tháº¿",
+                        "há»i vá» cáº¥u hÃ¬nh Ä‘Ã£ chá»n",
                     ),
                     stateful=True,
                 ),
@@ -75,10 +75,10 @@ def create_handler_registry(
             HandlerRegistration(
                 descriptor=HandlerDescriptor(
                     name="price",
-                    description="Kiểm tra giá sản phẩm hoặc tính tổng tiền cho các sản phẩm đơn lẻ.",
+                    description="Kiá»ƒm tra giÃ¡ sáº£n pháº©m hoáº·c tÃ­nh tá»•ng tiá»n cho cÃ¡c sáº£n pháº©m Ä‘Æ¡n láº».",
                     supported_operations=(
-                        "kiểm tra giá sản phẩm",
-                        "tính tổng tiền sản phẩm",
+                        "kiá»ƒm tra giÃ¡ sáº£n pháº©m",
+                        "tÃ­nh tá»•ng tiá»n sáº£n pháº©m",
                     ),
                     stateful=False,
                 ),
@@ -87,10 +87,10 @@ def create_handler_registry(
             HandlerRegistration(
                 descriptor=HandlerDescriptor(
                     name="product_search",
-                    description="Tìm kiếm các linh kiện hoặc sản phẩm đơn lẻ dựa trên yêu cầu chung, ngân sách, hoặc thông số.",
+                    description="TÃ¬m kiáº¿m cÃ¡c linh kiá»‡n hoáº·c sáº£n pháº©m Ä‘Æ¡n láº» dá»±a trÃªn yÃªu cáº§u chung, ngÃ¢n sÃ¡ch, hoáº·c thÃ´ng sá»‘.",
                     supported_operations=(
-                        "tìm sản phẩm theo ngân sách",
-                        "tìm kiếm sản phẩm theo tên",
+                        "tÃ¬m sáº£n pháº©m theo ngÃ¢n sÃ¡ch",
+                        "tÃ¬m kiáº¿m sáº£n pháº©m theo tÃªn",
                     ),
                     stateful=False,
                 ),
@@ -99,8 +99,8 @@ def create_handler_registry(
             HandlerRegistration(
                 descriptor=HandlerDescriptor(
                     name="specification",
-                    description="Trả lời các câu hỏi về thông số kỹ thuật của các sản phẩm đơn lẻ.",
-                    supported_operations=("thông số kỹ thuật sản phẩm",),
+                    description="Tráº£ lá»i cÃ¡c cÃ¢u há»i vá» thÃ´ng sá»‘ ká»¹ thuáº­t cá»§a cÃ¡c sáº£n pháº©m Ä‘Æ¡n láº».",
+                    supported_operations=("thÃ´ng sá»‘ ká»¹ thuáº­t sáº£n pháº©m",),
                     stateful=False,
                 ),
                 handler=SpecificationHandler(catalog=catalog),
@@ -108,9 +108,9 @@ def create_handler_registry(
             HandlerRegistration(
                 descriptor=HandlerDescriptor(
                     name="compatibility",
-                    description="Kiểm tra xem các linh kiện có tương thích với nhau hay không.",
+                    description="Kiá»ƒm tra xem cÃ¡c linh kiá»‡n cÃ³ tÆ°Æ¡ng thÃ­ch vá»›i nhau hay khÃ´ng.",
                     supported_operations=(
-                        "kiểm tra tương thích linh kiện",
+                        "kiá»ƒm tra tÆ°Æ¡ng thÃ­ch linh kiá»‡n",
                     ),
                     stateful=False,
                 ),
@@ -119,9 +119,9 @@ def create_handler_registry(
             HandlerRegistration(
                 descriptor=HandlerDescriptor(
                     name="suggestion",
-                    description="Gợi ý linh kiện phù hợp khi người dùng đã có sẵn một hoặc nhiều linh kiện.",
+                    description="Gá»£i Ã½ linh kiá»‡n phÃ¹ há»£p khi ngÆ°á»i dÃ¹ng Ä‘Ã£ cÃ³ sáºµn má»™t hoáº·c nhiá»u linh kiá»‡n.",
                     supported_operations=(
-                        "gợi ý linh kiện ghép cùng linh kiện có sẵn",
+                        "gá»£i Ã½ linh kiá»‡n ghÃ©p cÃ¹ng linh kiá»‡n cÃ³ sáºµn",
                     ),
                     stateful=False,
                 ),
@@ -130,10 +130,10 @@ def create_handler_registry(
             HandlerRegistration(
                 descriptor=HandlerDescriptor(
                     name="combo_review",
-                    description="Đánh giá, phân tích cấu hình PC hoàn chỉnh có sẵn hoặc danh sách linh kiện cốt lõi do người dùng cung cấp (CPU + GPU + Mainboard).",
+                    description="ÄÃ¡nh giÃ¡, phÃ¢n tÃ­ch cáº¥u hÃ¬nh PC hoÃ n chá»‰nh cÃ³ sáºµn hoáº·c danh sÃ¡ch linh kiá»‡n cá»‘t lÃµi do ngÆ°á»i dÃ¹ng cung cáº¥p (CPU + GPU + Mainboard).",
                     supported_operations=(
-                        "đánh giá cấu hình PC người dùng cung cấp",
-                        "phân tích độ cân bằng linh kiện",
+                        "Ä‘Ã¡nh giÃ¡ cáº¥u hÃ¬nh PC ngÆ°á»i dÃ¹ng cung cáº¥p",
+                        "phÃ¢n tÃ­ch Ä‘á»™ cÃ¢n báº±ng linh kiá»‡n",
                     ),
                     stateful=False,
                 ),
@@ -142,11 +142,11 @@ def create_handler_registry(
             HandlerRegistration(
                 descriptor=HandlerDescriptor(
                     name="general_chat",
-                    description="Xử lý giao tiếp thông thường, chào hỏi, các câu hỏi không liên quan, và làm phương án dự phòng.",
+                    description="Xá»­ lÃ½ giao tiáº¿p thÃ´ng thÆ°á»ng, chÃ o há»i, cÃ¡c cÃ¢u há»i khÃ´ng liÃªn quan, vÃ  lÃ m phÆ°Æ¡ng Ã¡n dá»± phÃ²ng.",
                     supported_operations=(
-                        "chào hỏi",
-                        "giao tiếp thông thường",
-                        "câu hỏi chung chung",
+                        "chÃ o há»i",
+                        "giao tiáº¿p thÃ´ng thÆ°á»ng",
+                        "cÃ¢u há»i chung chung",
                     ),
                     stateful=False,
                 ),

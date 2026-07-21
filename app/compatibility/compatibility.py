@@ -28,9 +28,9 @@ __all__ = [
 # ──────────────────────────────────────────────
 def build_compatibility_context(intent: MasterIntentSchema, catalog: ShopCatalog) -> str:
     """Return catalog facts and exact comparisons; the model owns the wording."""
-    cpu  = resolve_component(intent.cpu,       "CPU",       catalog)
-    main = resolve_component(intent.mainboard, "MAINBOARD", catalog)
-    gpu  = resolve_component(intent.gpu,       "GPU",       catalog)
+    cpu  = resolve_component(intent.cpu,       "CPU",       catalog) if intent.cpu else None
+    main = resolve_component(intent.mainboard, "MAINBOARD", catalog) if intent.mainboard else None
+    gpu  = resolve_component(intent.gpu,       "GPU",       catalog) if intent.gpu else None
 
     cpu_main = check_cpu_main_compat(cpu, main) if cpu and main else None
     gpu_main = check_gpu_main_compat(gpu, main) if gpu and main else None

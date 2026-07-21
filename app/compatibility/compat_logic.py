@@ -50,7 +50,7 @@ def check_gpu_main_compat(gpu: dict, main: dict) -> dict[str, Any]:
         "gpu_pcie_gen": gpu_gen,
         "main_pcie_gen": main_gen,
         "backward_compatible": is_compatible,
-        "bandwidth_limited": bool(is_compatible and gpu_gen > main_gen),
+        "bandwidth_limited": bool(is_compatible and gpu_gen is not None and main_gen is not None and gpu_gen > main_gen),
     }
 
 

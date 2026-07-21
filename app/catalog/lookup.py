@@ -8,7 +8,7 @@ from app.catalog.catalog import ShopCatalog
 from app.catalog.models import ProductQuery
 
 
-def resolve_component(name: str, category: str, catalog: ShopCatalog) -> Optional[dict]:
+def resolve_component(name: str | None, category: str, catalog: ShopCatalog) -> Optional[dict]:
     """Look up one component by name and category. Returns None if name is
     empty/'none' or no match found in the catalog."""
     if not name or name.strip().lower() == "none":

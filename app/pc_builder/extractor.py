@@ -1,7 +1,9 @@
 import json
 import re
+from typing import Any
+
 from app.pc_builder.models import PcBuildCommand, PcBuildAction
-from app.pc_builder.context import PcBuildContext
+from app.pc_builder.models import PcBuildContext
 from app.routing.models import RouteDecision
 from app.llm.gateway import safe_llm_call, LlmResult
 from app.utils.model_utils import get_ollama_model
@@ -29,6 +31,62 @@ def extract_components_fallback(msg: str) -> dict[str, str]:
     if gpu_match:
         comps["gpu"] = gpu_match.group(1).lower()
     return comps
+
+ROLE_MAP = {
+    "human": "user",
+    "user": "user",
+    "ai": "assistant",
+    "assistant": "assistant",
+    "system": "system",
+}
+
+def _extract_message(
+    message: Any,
+) -> tuple[str, str]:
+    if isinstance(message, dict):
+        raw_role = str(
+            message.get("role", "unknown")
+        )
+        content = str(
+            message.get("content", "")
+        )
+    else:
+        raw_role = str(
+            getattr(message, "type", "unknown")
+        )
+        content = str(
+            getattr(message, "content", "")
+        )
+
+    role = ROLE_MAP.get(
+        raw_role.casefold(),
+        "unknown",
+    )
+    return role, content.strip()
+
+def format_chat_history(
+    messages: list,
+    limit: int,
+) -> str:
+    """
+    Chuyển lịch sử chat thành văn bản ngắn cho bước Interpretation.
+    """
+    if limit <= 0 or not messages:
+        return ""
+
+    formatted: list[str] = []
+
+    for message in messages[-limit:]:
+        role, content = _extract_message(message)
+
+        if not content:
+            continue
+
+        formatted.append(
+            f"{role}: {content}"
+        )
+
+    return "\n".join(formatted)
 
 INTERPRET_SYSTEM_PROMPT = """Bạn là AI chuyên trích xuất lệnh cho chức năng Build PC.
 Bạn nhận được ngữ cảnh hiện tại của bộ PC, lịch sử hội thoại, quyết định định tuyến và câu nói mới nhất của khách hàng.

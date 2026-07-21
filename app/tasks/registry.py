@@ -3,7 +3,7 @@ import asyncio
 from typing import Protocol
 
 from app.tasks.models import ActiveTaskSummary, TaskStatus
-from app.pc_builder.repository import PcContextRepository
+from app.pc_builder.models import PcContextRepository
 from app.pc_builder.models import PcBuildStatus
 
 

@@ -20,8 +20,13 @@ class GeneralChatHandler:
             )
         )
         
-        reply = generation.value.answer if (generation.ok and generation.value) else "Xin lỗi, hệ thống đang bận. Bạn vui lòng thử lại sau nhé."
-        
+        if generation.ok and generation.value:
+            reply = generation.value.answer
+        else:
+            from app.responses import response_renderer, ResponseCode
+            reply = response_renderer.render(ResponseCode.LLM_UNAVAILABLE)
+            
+
         return ChatResult(
             reply=reply,
             contexts=[],

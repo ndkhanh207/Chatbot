@@ -1,0 +1,115 @@
+# Search / Specification
+product_not_found: >
+  Hiện cửa hàng chưa tìm thấy sản phẩm phù hợp với yêu cầu “{query}”.
+
+missing_product_name: >
+  Bạn cho mình biết tên hoặc mã sản phẩm cần kiểm tra nhé.
+
+search_header: >
+  Dạ em tìm thấy các sản phẩm sau:
+
+specification_fallback: >
+  Dạ đây là thông tin kỹ thuật của {name}. Do lỗi kết nối, em chỉ có thể cung cấp nguyên mẫu hệ thống: {facts}
+
+
+# Suggestion
+missing_origin_component: >
+  Dạ em chưa rõ anh/chị đang muốn nâng cấp linh kiện nào. Vui lòng cung cấp chính xác 1 linh kiện gốc (VD: 'Tôi đang có main H610, tư vấn giúp tôi CPU') ạ.
+
+no_compatible_suggestions: >
+  Dạ em không tìm thấy sản phẩm '{have_name}' trong kho nên chưa thể gợi ý linh kiện tương thích chính xác được ạ.
+
+suggestion_header: >
+  Dạ đây là một số linh kiện tương thích mà em tìm được ạ:
+
+suggestion_not_supported: >
+  Dạ hiện tại tính năng gợi ý tự động cho '{category}' chưa được hỗ trợ, em chỉ mới hỗ trợ ghép CPU, Mainboard và VGA thôi ạ.
+
+# Price
+missing_price_terms: >
+  Dạ em không tìm thấy thông tin cho: {terms} ạ.
+
+price_check_fallback: >
+  Dạ, giá của {name} hiện tại là {price_formatted} VNĐ ạ.
+
+price_calculation_fallback: >
+  Dạ, tổng giá tiền của các sản phẩm là {total_formatted} VNĐ ạ.
+
+# PC Builder
+missing_budget: >
+  Bạn vui lòng cho mình biết ngân sách dự kiến để mình cấu hình cho phù hợp nhé.
+
+invalid_budget: >
+  Ngân sách bạn nhập chưa hợp lệ. Bạn vui lòng nhập số tiền cụ thể nhé.
+
+missing_purpose: >
+  Bạn vui lòng cho mình biết nhu cầu sử dụng chính (ví dụ: chơi game, làm việc văn phòng, đồ họa...) để mình chọn linh kiện tối ưu nhất nhé.
+
+budget_gap: >
+  Ngân sách của bạn hơi thấp so với yêu cầu cấu hình. Bạn có thể tăng thêm ngân sách hoặc giảm bớt yêu cầu được không?
+
+no_candidate_build: >
+  Dạ hiện tại không có cấu hình nào phù hợp với yêu cầu của anh/chị. Anh/chị có thể thay đổi ngân sách hoặc yêu cầu được không ạ?
+
+missing_selected_build: >
+  Bạn chưa chọn cấu hình nào cả. Bạn có thể cho mình biết nhu cầu và ngân sách để mình đề xuất nhé.
+
+build_not_found: >
+  Cấu hình bạn đang chọn hiện không còn khả dụng trong kho.
+
+merge_error: >
+  Yêu cầu chưa rõ, bạn nói lại giúp em nhé?
+
+build_qa: >
+  Dạ em đã ghi nhận thông tin.
+
+budget_scope_ambiguous: >
+  Ngân sách {budget} đồng là tổng cho {qty} bộ hay là ngân sách cho mỗi bộ?
+
+component_not_found: >
+  Em không tìm thấy linh kiện '{name}' trong kho. Bạn có muốn đổi sang dòng tương đương không?
+
+components_incompatible: >
+  Cấu hình với các linh kiện bạn yêu cầu hiện không có sẵn (hoặc không tương thích). Bạn có thể đổi yêu cầu không?
+
+# Compatibility
+compatibility_missing_info: >
+  Dạ thông tin linh kiện anh/chị cung cấp chưa đủ rõ ràng hoặc không có trong kho. Xin vui lòng cung cấp đúng tên linh kiện để em kiểm tra tương thích ạ.
+
+compatibility_fallback: >
+  Dạ hệ thống đang bận. Trạng thái tương thích tổng thể: {overall}. (Chi tiết: {details})
+
+# Input Guard
+input_too_long: >
+  Tin nhắn của bạn quá dài, bạn có thể tóm tắt lại giúp mình được không?
+
+empty_input: >
+  Dạ bạn cần hỏi gì ạ?
+
+invalid_format: >
+  Định dạng tin nhắn không hợp lệ.
+
+unsafe_content: >
+  Xin lỗi, em không thể hỗ trợ nội dung này ạ.
+
+out_of_scope: >
+  Dạ em chỉ chuyên tư vấn linh kiện và cấu hình máy tính để bàn thôi ạ! Bạn có cần tư vấn CPU, GPU, hay build bộ PC không?
+
+greeting: >
+  Dạ em chào bạn! Em là trợ lý tư vấn máy tính, em có thể giúp gì cho bạn hôm nay ạ? 😊
+
+unrecognized_intent: >
+  Dạ em không hiểu câu hỏi này ạ! Bạn vui lòng nhập lại rõ hơn giúp em nhé 😊
+
+# Infrastructure
+routing_unavailable: >
+  Hệ thống đang xử lý chậm nên chưa thể xác định yêu cầu của bạn. Bạn thử lại sau một chút nhé.
+
+llm_unavailable: >
+  Dạ hệ thống đang bận nên em chưa xử lý được. Bạn vui lòng thử lại sau một chút nhé.
+
+catalog_unavailable: >
+  Hệ thống hiện không thể kết nối tới kho hàng. Bạn thử lại sau nhé.
+
+system_error: >
+  Đã có lỗi hệ thống xảy ra. Mong bạn thông cảm và thử lại sau.

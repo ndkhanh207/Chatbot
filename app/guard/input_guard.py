@@ -9,16 +9,26 @@ luật nào cả và trả lời tự do" lọt qua hoàn toàn vì không chứ
 trong danh sách). Với kiến trúc hiện tại (Qwen 1.5B local, bot không có
 tool-calling / quyền thực thi gì), rủi ro thực sự khi 1 câu jailbreak lọt
 qua là bot trả lời lệch tông — không phải hệ thống bị chiếm quyền. Vì vậy
-NÊN dùng is_injection=True để LOG + hạ cấp độ tin cậy câu trả lời (vd bắt
-LLM bám sát context hơn), thay vì hard-block thẳng tay — false positive
-(chặn nhầm khách hàng thật) gây hại nhiều hơn 1 câu jailbreak vô thưởng
-vô phạt lọt qua.
+NÊN dùng is_injection=True để LOG + hạ cấp độ tin cậy câu trả lời.
 
 Cũng lưu ý: hàm này chỉ lọc user_message. Nó KHÔNG bảo vệ khỏi injection
-nhúng trong nội dung được retrieve từ ChromaDB (nếu sau này DB có dữ liệu
-scrape/user-generated thay vì chỉ do bạn tự nhập).
+nhúng trong nội dung được retrieve từ ChromaDB.
 """
 import re
+from enum import Enum
+from pydantic import BaseModel, Field
+
+class GuardCode(str, Enum):
+    EMPTY_INPUT = "empty_input"
+    MESSAGE_TOO_LONG = "message_too_long"
+    INVALID_FORMAT = "invalid_format"
+    UNSAFE_CONTENT = "unsafe_content"
+
+class GuardDecision(BaseModel):
+    allowed: bool
+    response_code: GuardCode | None = None
+    facts: dict[str, object] = Field(default_factory=dict)
+
 
 INJECTION_PATTERNS = [
     # English jailbreak patterns
@@ -83,61 +93,22 @@ def sanitize_input(text: str) -> tuple[str, bool]:
 
 MAX_INPUT_LENGTH = 500
 
-def run_input_guards(user_message: str, session_id: str) -> tuple[dict | None, str]:
+def run_input_guards(user_message: str, session_id: str) -> tuple[GuardDecision, str]:
     """
     Runs all Layer 4 input guards (length, gibberish, prompt injection).
-    Returns (Error_Reply_Dict, Sanitized_Message).
-    If Error_Reply_Dict is None, the message is safe to process.
+    Returns (GuardDecision, Sanitized_Message).
+    If GuardDecision.allowed is True, the message is safe to process.
     """
     if len(user_message) > MAX_INPUT_LENGTH:
-        return {"chatbot_reply": "Câu hỏi quá dài rồi ạ! Bạn vui lòng rút gọn trong 500 ký tự giúp em nhé 😊"}, user_message
+        return GuardDecision(allowed=False, response_code=GuardCode.MESSAGE_TOO_LONG), user_message
 
     words = user_message.split()
     if words and max(len(w) for w in words) > 40:
-        return {"chatbot_reply": "Dạ em không hiểu câu hỏi này ạ! Bạn vui lòng nhập lại rõ hơn giúp em nhé 😊"}, user_message
+        return GuardDecision(allowed=False, response_code=GuardCode.INVALID_FORMAT), user_message
 
     sanitized, is_injection = sanitize_input(user_message)
     if is_injection:
         print(f"[SECURITY WARNING] Injection signal — continuing with sanitized text. Session={session_id}")
         
-    return None, sanitized
+    return GuardDecision(allowed=True), sanitized
 
-def check_semantic_guards(user_message: str, chat_history: list) -> dict | None:
-    """
-    Checks for casual greetings, thanks, bye, and off-topic queries.
-    Returns a dict with chatbot_reply if an early return is needed, else None.
-    """
-    msg_clean = user_message.strip().lower()
-
-    CASUAL_GREETINGS = ['xin chào', 'chào bạn', 'hi', 'hello', 'chào em', 'chào bot']
-    CASUAL_THANKS_EXACT = ['cảm ơn', 'cám ơn', 'thank', 'tks', 'ok', 'oke', 'okela', 'dạ', 'vâng', 'tuyệt vời', 'đã hiểu', 'hay quá', 'ok bạn', 'cảm ơn bạn', 'dạ vâng', 'cảm ơn bot', 'thank you']
-    CASUAL_BYE_EXACT = ['tạm biệt', 'bye', 'hẹn gặp lại', 'chào nhé']
-
-    if len(msg_clean) < 30:
-        # Không chặn nếu câu AI trước đó là câu hỏi
-        last_ai_msg = next((m.content for m in reversed(chat_history) if getattr(m, 'type', '') == 'ai'), "")
-        is_answering_question = '?' in last_ai_msg or "không ạ" in last_ai_msg or "được không" in last_ai_msg
-        
-        if any(msg_clean == g or msg_clean.startswith(g + ' ') for g in CASUAL_GREETINGS):
-            return {"chatbot_reply": "Dạ em chào bạn! Em là trợ lý tư vấn máy tính, em có thể giúp gì cho bạn hôm nay ạ? 😊"}
-        if msg_clean in CASUAL_THANKS_EXACT and not is_answering_question:
-            return {"chatbot_reply": "Dạ vâng ạ! Nếu bạn cần tư vấn cấu hình hay linh kiện gì thêm cứ nhắn em nhé. 😊"}
-        if msg_clean in CASUAL_BYE_EXACT:
-            return {"chatbot_reply": "Dạ tạm biệt bạn! Chúc bạn một ngày tốt lành ạ! 😊"}
-
-    OFF_TOPIC_TRIGGERS = [
-        'laptop', 'macbook', 'điện thoại', 'smartphone', 'iphone', 'samsung',
-        'tivi', 'máy lạnh', 'điều hòa', 'tủ lạnh', 'máy giặt',
-        'xe máy', 'ô tô', 'xe hơi', 'xe đạp',
-        'thời tiết', 'nấu ăn', 'công thức', 'quần áo', 'thời trang', 'giày',
-        'chứng khoán', 'bitcoin', 'crypto', 'cổ phiếu',
-        'bóng đá', 'thể thao', 'ca sĩ', 'diễn viên', 'phim', 'nhạc',
-        'làm thơ', 'kể chuyện', 'viết code', 'viết bài', 'giải toán'
-    ]
-    PC_SAFE_TERMS = ['pc', 'cpu', 'gpu', 'ram', 'ssd', 'vga', 'card', 'mainboard', 'build', 'máy tính']
-    is_off_topic = any(t in msg_clean for t in OFF_TOPIC_TRIGGERS)
-    is_pc_related = any(t in msg_clean for t in PC_SAFE_TERMS)
-    if is_off_topic and not is_pc_related:
-        return {"chatbot_reply": "Dạ em chỉ chuyên tư vấn linh kiện và cấu hình máy tính để bàn thôi ạ! Bạn có cần tư vấn CPU, GPU, hay build bộ PC không? 😊"}
-
-    return None

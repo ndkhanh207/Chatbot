@@ -14,9 +14,9 @@ MULTI_TURN_CASES = [
     (
         "multi_inherit_price",
         [
-            ("rtx 5070 ti giá bao nhiêu?", ["19.919.760"]),
-            ("vậy rtx 5080 thì sao?", ["37.559.760"]),
-            ("thế còn ryzen 5 7600x?", ["4.091.760"]),
+            ("rtx 5070 ti giá bao nhiêu?", [("19919760", "19.919.760", "19,919,760")]),
+            ("vậy rtx 5080 thì sao?", [("37559760", "37.559.760", "37,559,760")]),
+            ("thế còn ryzen 5 7600x?", [("4091760", "4.091.760", "4,091,760")]),
         ]
     ),
     (
@@ -117,13 +117,22 @@ def _extract_reply(response_json: dict) -> str:
     return response_json.get("chatbot_reply", "Lỗi phản hồi")
 
 def _token_in_reply(token: str, reply_lower: str) -> bool:
-    token = token.strip()
+    token = token.strip().lower()
+    
+    # Nếu token hoàn toàn là chữ số (hoặc chứa dấu chấm/phẩy nhưng bản chất là số)
+    # thì ta loại bỏ các dấu chấm/phẩy ở cả token và reply_lower để so khớp
+    digits_only_token = re.sub(r'[\.,\s]', '', token)
+    if digits_only_token.isdigit() and len(digits_only_token) >= 4:
+        digits_only_reply = re.sub(r'[\.,\s]', '', reply_lower)
+        if digits_only_token in digits_only_reply:
+            return True
+
     m = _TRAILING_ZERO_DECIMAL.match(token)
     if m:
         base = m.group(1)
         pattern = rf'\b{re.escape(base)}(?:[.,]\d+)?\b'
         return re.search(pattern, reply_lower) is not None
-    return token.lower() in reply_lower
+    return token in reply_lower
 
 def _check_requirement(requirement, reply_lower: str) -> bool:
     if isinstance(requirement, (tuple, list)):

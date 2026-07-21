@@ -52,7 +52,7 @@ async def lifespan(app: FastAPI):
         raise RuntimeError("External services are offline.")
 
     print("--------------------------------------------------")
-    print("=== [SYSTEM] Dịch vụ nền OK! Bắt đầu nạp Knowledge Base... ===")
+    print("=== [SYSTEM] Dich vu nen OK! Bat dau nap Knowledge Base... ===")
 
     try:
         semantic_index = None

@@ -21,7 +21,7 @@ from app.catalog.models import (
     ComponentResolution,
 )
 from app.catalog.semantic import SemanticDocument, SemanticIndex
-from app.pc_builder.presets import PRESET_CONFIGS
+
 
 PRODUCT_COLLECTION = "products_v1"
 BUILD_COLLECTION = "builds_v4"
@@ -183,7 +183,7 @@ class ShopCatalog:
             products.extend(cls._read_products(path, category))
         build_path = data_directory / "Pc_build_data_v3.csv"
         builds = cls._read_builds(build_path) if build_path.exists() else []
-        builds.extend(cls._read_presets())
+      
         if not products:
             raise ValueError("Catalog contains no products")
         if build_path.exists() and not builds:
@@ -259,28 +259,6 @@ class ShopCatalog:
             ))
         return records
 
-    @staticmethod
-    def _read_presets() -> list[BuildRecord]:
-        records = []
-        for preset in PRESET_CONFIGS:
-            components = {}
-            if preset.get("cpu"):
-                components["cpu"] = BuildPart(category="CPU", model=str(preset["cpu"]), brand=_brand(str(preset["cpu"])))
-            if preset.get("gpu"):
-                components["gpu"] = BuildPart(category="GPU", model=str(preset["gpu"]), brand=_brand(str(preset["gpu"])))
-            if preset.get("mainboard"):
-                components["mainboard"] = BuildPart(category="MAINBOARD", model=str(preset["mainboard"]), brand=_brand(str(preset["mainboard"])))
-            
-            records.append(BuildRecord(
-                build_id=str(preset["id"]),
-                components=components,
-                assembly_fee=0,
-                total_price=_number(preset["budget"]),
-                detailed_purpose=" ".join(cast(list[str], preset.get("purposes", []))),
-                source="preset",
-                attributes=dict(preset),
-            ))
-        return records
 
     def _initialize_index(self) -> None:
         if self._semantic_index is None:

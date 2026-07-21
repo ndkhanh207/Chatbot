@@ -1,9 +1,9 @@
-from types import SimpleNamespace
+﻿from types import SimpleNamespace
 
 from app.core.intent.history_context import build_history_context, extract_structured_state
 from app.memory import memory_store
 from app.memory.context_manager import ConversationContext
-from app.pc_builder.context import PcBuildContext
+from app.pc_builder.models import PcBuildContext
 
 
 def test_followup_state_ignores_ai_prose_and_uses_metadata():
@@ -72,7 +72,7 @@ def test_structured_state_uses_latest_snapshot_without_mixing_turns():
             content="old",
             additional_kwargs={"intent": "price_check", "gpu": "rtx 4090"},
         ),
-        SimpleNamespace(type="human", content="i7 14700k giá bao nhiêu"),
+        SimpleNamespace(type="human", content="i7 14700k giÃ¡ bao nhiÃªu"),
         SimpleNamespace(
             type="ai",
             content="new",
