@@ -18,6 +18,7 @@ from app.catalog import (
     ShopCatalog,
     create_embeddings,
 )
+from app.catalog.models import BuildConstraints
 from app.catalog.catalog import normalize
 from app.pc_builder import reranker
 from config.config import Config
@@ -44,13 +45,13 @@ CASES = [
     Case("aaa-40m", BuildQuery(text="game AAA độ phân giải cao", budget=40_000_000, limit=5), ("GAME-04", "GAME-05", "GAME-07", "GAME-08")),
     Case("budget-10m", BuildQuery(text="phổ thông", budget=10_000_000, limit=5), expected_action="clarify"),
     Case("budget-25m", BuildQuery(text="cân bằng", budget=25_000_000, limit=5), expected_action="clarify"),
-    Case("intel", BuildQuery(text="gaming", budget=30_000_000, brands={"cpu": "Intel"}, limit=5)),
-    Case("amd", BuildQuery(text="gaming", budget=30_000_000, brands={"cpu": "AMD"}, limit=5)),
-    Case("upgrade-cpu", BuildQuery(text="nâng cấp phần còn lại", required_components={"cpu": "Ryzen 7 7700X"}, limit=5)),
-    Case("upgrade-gpu", BuildQuery(text="nâng cấp phần còn lại", required_components={"gpu": "RTX 4080"}, limit=5)),
-    Case("mainboard-filter", BuildQuery(text="gaming", required_components={"mainboard": "B850"}, limit=5)),
+    Case("intel", BuildQuery(text="gaming", budget=30_000_000, constraints=BuildConstraints(preferred_components={"cpu": ["Intel"]}), limit=5)),
+    Case("amd", BuildQuery(text="gaming", budget=30_000_000, constraints=BuildConstraints(preferred_components={"cpu": ["AMD"]}), limit=5)),
+    Case("upgrade-cpu", BuildQuery(text="nâng cấp phần còn lại", constraints=BuildConstraints(required_components={"cpu": "Ryzen 7 7700X"}), limit=5)),
+    Case("upgrade-gpu", BuildQuery(text="nâng cấp phần còn lại", constraints=BuildConstraints(required_components={"gpu": "RTX 4080"}), limit=5)),
+    Case("mainboard-filter", BuildQuery(text="gaming", constraints=BuildConstraints(required_components={"mainboard": "B850"}), limit=5)),
     Case("exclude-old", BuildQuery(text="gaming", budget=25_000_000, excluded_ids={"BUILD-06265"}, limit=5)),
-    Case("brand-gpu", BuildQuery(text="gaming", budget=30_000_000, brands={"gpu": "NVIDIA"}, limit=5)),
+    Case("brand-gpu", BuildQuery(text="gaming", budget=30_000_000, constraints=BuildConstraints(preferred_components={"gpu": ["NVIDIA"]}), limit=5)),
     Case(
         "vague-build",
         BuildQuery(text="build pc", limit=5),
@@ -93,17 +94,18 @@ def satisfies(query: BuildQuery, candidate) -> bool:
         return False
     if candidate.build_id.casefold() in {value.casefold() for value in query.excluded_ids}:
         return False
-    for category, model in query.required_components.items():
+    for category, model in query.constraints.required_components.items():
         key = "mainboard" if category.casefold() in {"main", "motherboard"} else category.casefold()
         if key not in candidate.components or normalize(model) not in normalize(candidate.components[key].model):
             return False
-    for category, brand in query.brands.items():
-        wanted = normalize(brand)
-        if category.casefold() == "any":
-            if not any(wanted in normalize(part.brand) for part in candidate.components.values()):
+    for category, brands in query.constraints.preferred_components.items():
+        for brand in brands:
+            wanted = normalize(brand)
+            if category.casefold() == "any":
+                if not any(wanted in normalize(part.brand) for part in candidate.components.values()):
+                    return False
+            elif wanted not in normalize(candidate.components[category.casefold()].brand):
                 return False
-        elif wanted not in normalize(candidate.components[category.casefold()].brand):
-            return False
     return True
 
 
@@ -154,8 +156,8 @@ async def run() -> None:
             decision = await reranker.choose_build({
                 "requirements": list(case.requirements or (case.query.text,)),
                 "budget": case.query.budget,
-                "components": case.query.required_components,
-                "mandatory_brands": case.query.brands,
+                "components": case.query.constraints.required_components,
+                "mandatory_brands": {k: v[0] for k, v in case.query.constraints.preferred_components.items()} if case.query.constraints.preferred_components else {},
                 "quantity": 1,
                 "clarification_count": case.clarification_count,
                 "force_select": case.force_select or bool(case.query.price_order),

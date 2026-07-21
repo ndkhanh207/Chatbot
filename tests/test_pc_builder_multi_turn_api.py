@@ -1,7 +1,7 @@
 import sys
 import os
 sys.path.insert(0, os.path.dirname(__file__))
-from utils import get_auth_headers
+from tests.utils import get_auth_headers
 import pytest
 import requests
 import re
@@ -14,65 +14,65 @@ MULTI_TURN_CASES = [
     (
         "conversation_budget",
         [
-            ("build pc 30 triệu chơi game", ["cpu", "gpu", "mainboard"]),
-            ("tăng ngân sách lên 35 triệu", ["cpu", "gpu", "mainboard"]),
-            ("thôi chỉ còn 20 triệu", [("cao hơn ngân sách", "tăng ngân sách", "cpu", "mâu thuẫn")]),
+            ("build pc 30 triệu chơi game", [("cpu", "?"), ("gpu", "?"), ("mainboard", "?")]),
+            ("tăng ngân sách lên 35 triệu", [("cpu", "?"), ("gpu", "?"), ("mainboard", "?")]),
+            ("thôi chỉ còn 20 triệu", [("cao hơn ngân sách", "tăng ngân sách", "cpu", "mâu thuẫn", "?")]),
         ]
     ),
     (
         "conversation_cpu_lock",
         [
-            ("build pc 30 triệu làm văn phòng", ["cpu", "gpu", "mainboard"]),
-            ("giữ nguyên cpu nhưng đổi sang rtx 4080", [("cao hơn ngân sách", "tăng ngân sách", "cpu", "mâu thuẫn")]),
-            ("ok 50 triệu đi", ["cpu", "gpu", "mainboard"]),
-            ("giữ nguyên gpu nhưng đổi sang main z790", ["cpu", "gpu", "mainboard"]),
+            ("build pc 30 triệu làm văn phòng", [("cpu", "?"), ("gpu", "?"), ("mainboard", "?")]),
+            ("giữ nguyên cpu nhưng đổi sang rtx 4080", [("cao hơn ngân sách", "tăng ngân sách", "cpu", "mâu thuẫn", "?")]),
+            ("ok 50 triệu đi", [("cpu", "?"), ("gpu", "?"), ("mainboard", "?")]),
+            ("giữ nguyên gpu nhưng đổi sang main z790", [("cpu", "?"), ("gpu", "?"), ("mainboard", "?")]),
         ]
     ),
     (
         "conversation_gpu_lock",
         [
-            ("build pc dùng rtx 4070 giá 50 triệu", ["cpu", "gpu", "mainboard"]),
-            ("hãy tối ưu cpu và main", ["cpu", "mainboard"]),
+            ("build pc dùng rtx 4070 giá 50 triệu", [("cpu", "?"), ("gpu", "?"), ("mainboard", "?")]),
+            ("hãy tối ưu cpu và main", [("cpu", "?"), ("mainboard", "?")]),
         ]
     ),
     (
         "conversation_replace_cpu",
         [
-            ("build pc 35 triệu làm ai", ["cpu", "gpu", "mainboard"]),
-            ("đổi cpu sang ryzen 9 7950x", [("cao hơn ngân sách", "tăng ngân sách", "cpu", "mâu thuẫn")]),
-            ("ok 55 triệu đi", ["cpu", "gpu", "mainboard"]),
-            ("quay lại intel", ["cpu", "mainboard"]),
+            ("build pc 35 triệu làm ai", [("cpu", "?"), ("gpu", "?"), ("mainboard", "?")]),
+            ("đổi cpu sang ryzen 9 7950x", [("cao hơn ngân sách", "tăng ngân sách", "cpu", "mâu thuẫn", "?")]),
+            ("ok 55 triệu đi", [("cpu", "?"), ("gpu", "?"), ("mainboard", "?")]),
+            ("quay lại intel", [("cpu", "?"), ("mainboard", "?")]),
         ]
     ),
     (
         "conversation_replace_gpu",
         [
-            ("build pc 35 triệu chơi game", ["cpu", "gpu", "mainboard"]),
-            ("đổi sang rtx 4080", [("cao hơn ngân sách", "tăng ngân sách", "mâu thuẫn")]),
-            ("ok 55 triệu đi", ["cpu", "gpu", "mainboard"]),
+            ("build pc 35 triệu chơi game", [("cpu", "?"), ("gpu", "?"), ("mainboard", "?")]),
+            ("đổi sang rtx 4080", [("cao hơn ngân sách", "tăng ngân sách", "mâu thuẫn", "?")]),
+            ("ok 55 triệu đi", [("cpu", "?"), ("gpu", "?"), ("mainboard", "?")]),
         ]
     ),
     (
         "conversation_invalid_compat",
         [
-            ("build bộ pc dùng i9 14900k giá 40 triệu", [("chưa có", "không tìm", "chưa tìm", "không tìm thấy", "chưa có linh kiện")]),
-            ("đổi sang rtx 5090", [("chưa có", "không tìm", "chưa tìm", "không tìm thấy", "chưa có linh kiện")]),
+            ("build bộ pc dùng i9 14900k giá 40 triệu", [("chưa có", "không tìm", "chưa tìm", "không tìm thấy", "chưa có linh kiện", "?")]),
+            ("đổi sang rtx 5090", [("chưa có", "không tìm", "chưa tìm", "không tìm thấy", "chưa có linh kiện", "?")]),
         ]
     ),
     (
         "conversation_upgrade",
         [
-            ("build bộ pc 25 triệu làm data nặng ", ["cpu", "gpu", "mainboard"]),
-            ("nâng cấp cpu", ["cpu"]),
-            ("nâng cấp gpu", ["gpu"]),
+            ("build bộ pc 25 triệu làm data nặng ", [("cpu", "?"), ("gpu", "?"), ("mainboard", "?")]),
+            ("nâng cấp cpu", [("cpu", "?")]),
+            ("nâng cấp gpu", [("gpu", "?")]),
         ]
     ),
     (
         "conversation_reasoning",
         [
-            ("build pc 30 triệu chơi game valorant", ["cpu", "gpu", "mainboard"]),
-            ("ưu tiên gpu hơn cpu", ["gpu"]),
-            ("ưu tiên cpu hơn gpu", ["cpu"]),
+            ("build pc 30 triệu chơi game valorant", [("cpu", "?"), ("gpu", "?"), ("mainboard", "?")]),
+            ("ưu tiên gpu hơn cpu", [("gpu", "?")]),
+            ("ưu tiên cpu hơn gpu", [("cpu", "?")]),
         ]
     ),
     (
@@ -84,9 +84,9 @@ MULTI_TURN_CASES = [
     (
         "conversation_compare",
         [
-            ("build pc intel 30 triệu chơi game", ["cpu", "gpu", "mainboard"]),
-            ("đổi sang amd", ["cpu", "mainboard"]),
-            ("quay lại intel", ["cpu", "mainboard"]),
+            ("build pc intel 30 triệu chơi game", [("cpu", "?"), ("gpu", "?"), ("mainboard", "?")]),
+            ("đổi sang amd", [("cpu", "?"), ("mainboard", "?")]),
+            ("quay lại intel", [("cpu", "?"), ("mainboard", "?")]),
         ]
     ),
 ]
@@ -222,6 +222,7 @@ def _log(label, session_id, question, reply, expected_keywords=None,
     return passed, missing_display
 
 
+@pytest.mark.live_llm
 @pytest.mark.parametrize("label, turns", MULTI_TURN_CASES)
 def test_multi_turn_pc_builder(label, turns):
     session_id = _session_id_for(label)

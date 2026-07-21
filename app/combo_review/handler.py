@@ -9,9 +9,10 @@ from app.compatibility.compat_logic import (
 from app.core.intent.history_context import build_intent_metadata
 from app.memory.context_manager import ConversationContext
 from app.pc_builder.formatter import format_approx_million
+from app.chat.models import DomainRequest, ChatResult
+from app.chat.contracts import DomainHandler
+from app.core.intent.master_intent import MasterIntentSchema as ParsedIntent
 from app.catalog import ShopCatalog
-
-
 def _build_models(user_message: str, catalog: ShopCatalog) -> tuple[str, str, str] | None:
     match = re.search(r'\bBUILD[-_]\d+\b', user_message, re.IGNORECASE)
     if not match:
@@ -65,28 +66,33 @@ def _format_review(cpu: dict, main: dict, gpu: dict) -> str:
     )
 
 
-def handle_combo_review(
-    parsed_intent,
-    user_message: str,
-    catalog: ShopCatalog,
-    user_uid: str,
-    session_id: str,
-) -> dict:
-    names = (parsed_intent.cpu, parsed_intent.mainboard, parsed_intent.gpu)
-    if any(not name or name.lower() == 'none' for name in names):
-        names = _build_models(user_message, catalog) or names
+class ComboReviewHandler(DomainHandler):
+    def __init__(self, *, catalog: ShopCatalog):
+        self._catalog = catalog
 
-    cpu = resolve_component(names[0], 'CPU', catalog)
-    main = resolve_component(names[1], 'MAINBOARD', catalog)
-    gpu = resolve_component(names[2], 'GPU', catalog)
-    if not all((cpu, main, gpu)):
-        reply = "Dạ, em chưa tìm thấy đủ CPU, GPU và mainboard trong dữ liệu shop để đánh giá chính xác combo này ạ."
-    else:
-        reply = _format_review(cpu, main, gpu)
+    async def handle(
+        self,
+        request: DomainRequest,
+        intent: ParsedIntent,
+    ) -> ChatResult:
+        user_message = request.user_message
+        catalog = self._catalog
 
-    ConversationContext(user_uid, session_id).commit(
-        user_message,
-        reply,
-        build_intent_metadata(parsed_intent),
-    )
-    return {'chatbot_reply': reply}
+        names = (intent.cpu, intent.mainboard, intent.gpu)
+        if any(not name or name.lower() == 'none' for name in names):
+            names = _build_models(user_message, catalog) or names
+
+        cpu = resolve_component(names[0], 'CPU', catalog)
+        main = resolve_component(names[1], 'MAINBOARD', catalog)
+        gpu = resolve_component(names[2], 'GPU', catalog)
+        
+        if not all((cpu, main, gpu)):
+            reply = "Dạ, em chưa tìm thấy đủ CPU, GPU và mainboard trong dữ liệu shop để đánh giá chính xác combo này ạ."
+        else:
+            reply = _format_review(cpu, main, gpu)
+
+        return ChatResult(
+            reply=reply,
+            contexts=[],
+            metadata={"intent": intent.intent}
+        )

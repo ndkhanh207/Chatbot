@@ -56,12 +56,12 @@ async def lifespan(app: FastAPI):
 
     try:
         semantic_index = None
-        # try:
-        #     embeddings = create_embeddings()
-        #     embeddings.embed_query("test")
-        #     semantic_index = ChromaSemanticIndex(Config.VECTOR_DB_DIR, embeddings)
-        # except Exception as index_error:
-        #     print(f"[CATALOG] Starting in keyword-only mode: {index_error}")
+        try:
+            embeddings = create_embeddings()
+            embeddings.embed_query("test")
+            semantic_index = ChromaSemanticIndex(Config.VECTOR_DB_DIR, embeddings)
+        except Exception as index_error:
+            print(f"[CATALOG] Starting in keyword-only mode: {index_error}")
 
         app.state.catalog = ShopCatalog.load(
             Config.PC_STORE_DATA,

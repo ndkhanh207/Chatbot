@@ -1,31 +1,35 @@
 {
     "files.watcherExclude": {
+        "**/.git/objects/**": true,
+        "**/.git/subtree-cache/**": true,
+        "**/.gradle/**": true,
+        "**/build/**": true,
+        "**/out/**": true,
+        "**/target/**": true,
+        "**/node_modules/**": true,
+        "**/.next/**": true,
+        "**/dist/**": true,
+        "**/coverage/**": true,
+        "**/.dart_tool/**": true,
         "**/.venv/**": true,
         "**/__pycache__/**": true,
-        "**/.pytest_cache/**": true,
-        "**/.git/**": true,
-        "**/chroma_db/**": true,
-        "**/data/**": true,
-        "**/archive/**": true,
-        "**/ragas_runs/**": true,
-        "**/plan/**": true
+        "**/.cache/**": true,
+        "**/logs/**": true
     },
     "search.exclude": {
+        "**/.gradle": true,
+        "**/build": true,
+        "**/out": true,
+        "**/target": true,
+        "**/node_modules": true,
+        "**/.next": true,
+        "**/dist": true,
+        "**/coverage": true,
+        "**/.dart_tool": true,
         "**/.venv": true,
         "**/__pycache__": true,
-        "**/.pytest_cache": true,
-        "**/.git": true,
-        "**/chroma_db": true,
-        "**/data": true,
-        "**/archive": true,
-        "**/ragas_runs": true,
-        "**/plan": true
+        "**/.cache": true,
+        "**/logs": true
     },
-    "python.testing.pytestArgs": [
-        "."
-    ],
-    "python.analysis.indexing": false,
-    "python.analysis.packageIndexDepths": [],
-    "python.testing.unittestEnabled": false,
-    "python.testing.pytestEnabled": true
+    "search.followSymlinks": false
 }

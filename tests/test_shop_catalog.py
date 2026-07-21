@@ -49,9 +49,9 @@ def product(product_id, category, name, price, **attributes):
 
 def build(build_id, price, cpu, mainboard, gpu, notes="", purpose=None):
     components = {
-        "cpu": BuildPart(category="CPU", model=cpu, brand=cpu.split()[0], tier=3),
-        "mainboard": BuildPart(category="MAINBOARD", model=mainboard, brand=mainboard.split()[0], tier=2),
-        "gpu": BuildPart(category="GPU", model=gpu, brand=gpu.split()[0], tier=4),
+        "cpu": BuildPart(category="CPU", model=cpu, brand=cpu.split()[0], tier="3"),
+        "mainboard": BuildPart(category="MAINBOARD", model=mainboard, brand=mainboard.split()[0], tier="2"),
+        "gpu": BuildPart(category="GPU", model=gpu, brand=gpu.split()[0], tier="4"),
     }
     return BuildRecord(
         build_id=build_id,

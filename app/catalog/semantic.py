@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol
 
 
 def create_embeddings():
@@ -11,7 +11,7 @@ def create_embeddings():
 
     from config.config import Config
 
-    model_kwargs = {
+    model_kwargs: dict[str, Any] = {
         "device": Config.EMBEDDING_DEVICE,
         "local_files_only": Config.EMBEDDING_LOCAL_FILES_ONLY,
     }
@@ -139,15 +139,15 @@ class ChromaSemanticIndex:
     ) -> list[SemanticHit]:
         if not text.strip() or allowed_ids == []:
             return []
-        where = {"record_id": {"$in": allowed_ids}} if allowed_ids is not None else None
+        where: Any = {"record_id": {"$in": allowed_ids}} if allowed_ids is not None else None
         result = self._client.get_collection(collection).query(
             query_embeddings=[self._embeddings.embed_query(text)],
             n_results=max(1, min(limit, len(allowed_ids) if allowed_ids is not None else limit)),
             where=where,
             include=["distances"],
         )
-        ids = result.get("ids", [[]])[0]
-        distances = result.get("distances", [[]])[0]
+        ids = (result.get("ids") or [[]])[0]
+        distances = (result.get("distances") or [[]])[0]
         return [
             SemanticHit(document_id, max(0.0, 1.0 - float(distance)))
             for document_id, distance in zip(ids, distances)

@@ -1,7 +1,7 @@
 import sys
 import os
 sys.path.insert(0, os.path.dirname(__file__))
-from utils import get_auth_headers
+from tests.utils import get_auth_headers
 import os
 import sys
 import pytest

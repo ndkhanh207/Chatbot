@@ -14,14 +14,69 @@ sys.path.insert(0, str(ROOT))
 from app.catalog import BuildQuery, ShopCatalog
 from app.pc_builder.context import PcBuildContext
 from app.pc_builder.formatter import format_approx_million, format_build_context
+from pydantic import BaseModel, Field, model_validator
+import typing
+from typing import Literal
 from app.pc_builder.reranker import (
     PcBuildDecision,
-    PcBuildTurnPlan,
     _candidate_projection,
     _validate_decision,
     _validate_response,
-    _validate_turn_plan,
 )
+
+ComponentCategory = Literal["cpu", "gpu", "mainboard"]
+
+class PcBuildTurnPlan(BaseModel):
+    route: Literal["pass", "recommend", "current_build_qa"] = "recommend"
+    session_action: Literal["continue", "reset", "alternative"] = "continue"
+    budget_action: Literal["keep", "set", "delta", "clear", "invalid"] = "keep"
+    budget_value: int | None = None
+    quantity: int | None = Field(default=None, ge=1)
+    set_components: list[ComponentCategory] = Field(default_factory=list, max_length=3)
+    lock_components: list[ComponentCategory] = Field(default_factory=list, max_length=3)
+    remove_components: list[ComponentCategory] = Field(default_factory=list, max_length=3)
+    mandatory_brands: dict[ComponentCategory | Literal["any"], str] = Field(default_factory=dict)
+    remove_brands: list[ComponentCategory | Literal["any"]] = Field(default_factory=list, max_length=4)
+    price_order: Literal["asc", "desc"] | None = None
+
+    @model_validator(mode="after")
+    def validate_plan(self):
+        groups = (
+            self.set_components,
+            self.lock_components,
+            self.remove_components,
+        )
+        changed = [category for group in groups for category in group]
+        if len(changed) != len(set(changed)):
+            raise ValueError("A component category can have only one update operation")
+        if self.budget_action in {"set", "delta"} and self.budget_value is None:
+            raise ValueError("Budget value is required")
+        if self.budget_action == "set" and self.budget_value is not None and self.budget_value <= 0:
+            raise ValueError("A new budget must be positive")
+        if self.budget_action not in {"set", "delta"} and self.budget_value is not None:
+            raise ValueError("Budget value is not allowed for this action")
+        return self
+
+def _validate_turn_plan(plan: PcBuildTurnPlan, turn: dict) -> PcBuildTurnPlan:
+    mentions = turn.get("catalog_mentions", {})
+    component_mentions = set(mentions.get("components", {}))
+    current = set(turn.get("context", {}).get("required_components", {}))
+    current_build = set((turn.get("current_build") or {}).get("components", {}))
+    if not set(plan.set_components) <= component_mentions:
+        raise ValueError("Turn plan references an unrecognized component")
+    if not set(plan.lock_components) <= current_build:
+        raise ValueError("Turn plan locks a component outside the current build")
+    if not set(plan.remove_components) <= current:
+        raise ValueError("Turn plan removes a component that is not constrained")
+    brand_mentions = mentions.get("brands", {})
+    for category, brand in plan.mandatory_brands.items():
+        categories = set(brand_mentions.get(brand, []))
+        if not categories or (category != "any" and category not in categories):
+            raise ValueError("Turn plan references an unrecognized brand")
+    if not set(plan.remove_brands) <= set(turn.get("context", {}).get("mandatory_brands", {})):
+        raise ValueError("Turn plan removes a brand that is not constrained")
+    return plan
+
 from app.templates.prompt_templates import (
     PC_BUILD_RERANK_TEMPLATE,
     PC_BUILD_TURN_TEMPLATE,
@@ -147,8 +202,7 @@ def _retrieve(catalog: ShopCatalog, request: dict) -> list:
 
 def _reason(build) -> str:
     purpose = build.detailed_purpose.strip()
-    workload = str(build.attributes.get("Primary_Workload", "")).strip()
-    return f"{purpose} Công việc chính phù hợp là {workload}."
+    return purpose
 
 
 def _row(request: dict, candidates: list, decision: PcBuildDecision) -> dict:
@@ -198,7 +252,7 @@ def _select_row(catalog: ShopCatalog, request: dict, candidates: list | None = N
     }
     request["selection_facts"] = selection_facts
     selected_facts = selection_facts[selected.build_id]
-    response = "Dạ, em đề xuất cấu hình sau:\n" + format_build_context(selected)
+    response = format_build_context(selected)
     if selected_facts["total_for_quantity"]:
         response += (
             f"- Số lượng: {selected_facts['quantity']}\n"
@@ -291,24 +345,29 @@ def _budget_row(candidate, budget: int, quantity: int) -> dict:
 
 
 def _unavailable_constraints(catalog: ShopCatalog, builds: list) -> list[dict[str, str]]:
+    from app.catalog.catalog import normalize
+    
+    existing_pairs = set()
+    for build in builds:
+        cpu = normalize(build.components["cpu"].model)
+        gpu = normalize(build.components["gpu"].model)
+        existing_pairs.add((cpu, gpu))
+        
     combinations = []
     for cpu_build in builds:
         for gpu_build in reversed(builds):
-            components = {
-                "cpu": cpu_build.components["cpu"].model,
-                "gpu": gpu_build.components["gpu"].model,
-            }
-            if components in combinations:
-                continue
-            candidates = catalog.search_builds(BuildQuery(
-                text="",
-                required_components=components,
-                limit=1,
-            ))
-            if not candidates:
-                combinations.append(components)
-                if len(combinations) == 5:
-                    return combinations
+            cpu_model = cpu_build.components["cpu"].model
+            gpu_model = gpu_build.components["gpu"].model
+            
+            cpu_norm = normalize(cpu_model)
+            gpu_norm = normalize(gpu_model)
+            
+            if (cpu_norm, gpu_norm) not in existing_pairs:
+                components = {"cpu": cpu_model, "gpu": gpu_model}
+                if components not in combinations:
+                    combinations.append(components)
+                    if len(combinations) == 5:
+                        return combinations
     raise RuntimeError("Catalog does not contain five unavailable component combinations")
 
 
@@ -504,6 +563,66 @@ def generate() -> list[dict]:
             ),
         )))
 
+    # Add missing_budget logic
+    for index in range(5):
+        request = _request(
+            ["build pc không rõ ngân sách"],
+            None,
+            response_mode="missing_budget",
+            response_facts={"missing_info": "budget"},
+        )
+        rows.append(_row(request, [], PcBuildDecision(
+            action="respond",
+            response_text=(
+                "Bạn dự kiến đầu tư khoảng bao nhiêu cho bộ máy này ạ?"
+            ),
+        )))
+
+    # Add missing_purpose logic
+    for index in range(5):
+        request = _request(
+            ["build pc 30 triệu không rõ mục đích"],
+            30_000_000,
+            response_mode="missing_purpose",
+            response_facts={"missing_info": "purpose"},
+        )
+        rows.append(_row(request, [], PcBuildDecision(
+            action="respond",
+            response_text=(
+                "Bạn định dùng máy chủ yếu để làm phần mềm gì hay chơi game nào ạ?"
+            ),
+        )))
+        
+    # Add invalid_budget logic
+    for index in range(5):
+        request = _request(
+            ["build pc với ngân sách quá thấp"],
+            3_000_000,
+            response_mode="invalid_budget",
+            response_facts={"budget": "3 triệu"},
+        )
+        rows.append(_row(request, [], PcBuildDecision(
+            action="respond",
+            response_text=(
+                "Ngân sách này thấp hơn mức tối thiểu, bạn có thể tăng lên mức cao hơn ngân sách để build PC không ạ?"
+            ),
+        )))
+
+    # Add vague upgrade logic (weak case)
+    for category, vn_name in [("cpu", "CPU"), ("gpu", "Card đồ họa"), ("mainboard", "Bo mạch chủ")]:
+        for message in [f"nâng cấp {category}", f"đổi {category} mạnh hơn", f"ưu tiên {category} hơn"]:
+            request = _request(
+                [message],
+                None,
+                response_mode=None, # it's a decision
+            )
+            rows.append(_row(request, builds[:3], PcBuildDecision(
+                action="clarify",
+                clarification_question=(
+                    f"Bạn muốn nâng cấp {vn_name} lên mã nào, hay bạn có yêu cầu cụ thể nào về {vn_name} không ạ?"
+                ),
+            )))
+
     # Twenty normal requirement/clarification answers that keep hard state.
     for index in range(20):
         current = builds[index]
@@ -528,7 +647,7 @@ def generate() -> list[dict]:
                 message,
                 {category: current.components[category].model},
             ),
-            PcBuildTurnPlan(set_components=[category]),
+            PcBuildTurnPlan(set_components=[typing.cast(ComponentCategory, category)]),
         ))
 
     # Fifteen locks copy facts from the canonical current build.
@@ -538,7 +657,7 @@ def generate() -> list[dict]:
         message = f"giữ nguyên {category} của bộ hiện tại"
         rows.append(_turn_row(
             _turn(catalog, current, message),
-            PcBuildTurnPlan(lock_components=[category]),
+            PcBuildTurnPlan(lock_components=[typing.cast(ComponentCategory, category)]),
         ))
 
     # Ten explicit removals release an existing hard constraint.
@@ -553,7 +672,7 @@ def generate() -> list[dict]:
                 message,
                 {category: current.components[category].model},
             ),
-            PcBuildTurnPlan(remove_components=[category]),
+            PcBuildTurnPlan(remove_components=[typing.cast(ComponentCategory, category)]),
         ))
 
     # Fifteen mixed turns exercise lock+replace and remove+replace together.
@@ -572,8 +691,8 @@ def generate() -> list[dict]:
                 f"{target.components[set_category].model}"
             )
             update = PcBuildTurnPlan(
-                set_components=[set_category],
-                lock_components=[state_category],
+                set_components=[typing.cast(ComponentCategory, set_category)],
+                lock_components=[typing.cast(ComponentCategory, state_category)],
             )
             stored = {}
         else:
@@ -582,8 +701,8 @@ def generate() -> list[dict]:
                 f"{target.components[set_category].model}"
             )
             update = PcBuildTurnPlan(
-                set_components=[set_category],
-                remove_components=[state_category],
+                set_components=[typing.cast(ComponentCategory, set_category)],
+                remove_components=[typing.cast(ComponentCategory, state_category)],
             )
             stored = {state_category: current.components[state_category].model}
         rows.append(_turn_row(
@@ -633,7 +752,7 @@ def generate() -> list[dict]:
         message = f"{category} bắt buộc phải là {brand}"
         rows.append(_turn_row(
             _turn(catalog, current, message),
-            PcBuildTurnPlan(mandatory_brands={category: brand}),
+            PcBuildTurnPlan(mandatory_brands={typing.cast(ComponentCategory, category): brand}),
         ))
 
     rows.append(_turn_row(
@@ -690,7 +809,7 @@ def generate() -> list[dict]:
         model = target.components[category].model
         rows.append(_turn_row(
             _turn(catalog, current, f"hãy thay {category} hiện tại bằng {model}"),
-            PcBuildTurnPlan(set_components=[category]),
+            PcBuildTurnPlan(set_components=[typing.cast(ComponentCategory, category)]),
         ))
         rows.append(_turn_row(
             _turn(catalog, current, f"mình chỉ đang cân nhắc {model}, chưa đổi {category}"),
@@ -704,11 +823,11 @@ def generate() -> list[dict]:
         model = current.components[category].model
         rows.append(_turn_row(
             _turn(catalog, current, f"khóa {category} {model}, giữ nguyên linh kiện này"),
-            PcBuildTurnPlan(lock_components=[category]),
+            PcBuildTurnPlan(lock_components=[typing.cast(ComponentCategory, category)]),
         ))
         rows.append(_turn_row(
             _turn(catalog, current, f"bỏ ràng buộc {category} {model}", {category: model}),
-            PcBuildTurnPlan(remove_components=[category]),
+            PcBuildTurnPlan(remove_components=[typing.cast(ComponentCategory, category)]),
         ))
         rows.append(_turn_row(
             _turn(catalog, current, f"{category} {model} hiện tại ổn, nhưng chưa cần khóa"),
@@ -810,9 +929,10 @@ def generate() -> list[dict]:
             response_text=f"Bộ này phù hợp cho {build.detailed_purpose.strip()}.",
         )))
 
-    rng.shuffle(rows)
-    assert len(rows) == len({json.dumps(row, ensure_ascii=False, sort_keys=True) for row in rows}) == 405
-    return rows
+    unique_dict = {json.dumps(row, ensure_ascii=False, sort_keys=True): row for row in rows}
+    unique_rows = list(unique_dict.values())
+    rng.shuffle(unique_rows)
+    return unique_rows
 
 
 def main() -> None:

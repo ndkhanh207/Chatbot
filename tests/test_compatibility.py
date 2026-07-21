@@ -1,7 +1,7 @@
 import sys
 import os
 sys.path.insert(0, os.path.dirname(__file__))
-from utils import get_auth_headers
+from tests.utils import get_auth_headers
 """
 Test riêng cho tính năng kiểm tra/gợi ý tương thích linh kiện
 (CPU-MAINBOARD, GPU-MAINBOARD, CPU-GPU).

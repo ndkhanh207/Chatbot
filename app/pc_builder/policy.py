@@ -27,4 +27,3 @@ class ResponseMode(str, Enum):
 class PcBuildPolicy:
     history_message_limit: int = 6
     retrieval_limit: int = 10
-    max_clarifications: int = 2

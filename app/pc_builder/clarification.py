@@ -19,15 +19,6 @@ def _has_workload_direction(
     )
 
 
-def _has_brand_constraints(
-    ctx: PcBuildContext,
-) -> bool:
-    """
-    Người dùng chỉ đưa ra yêu cầu về thương hiệu hoặc loại trừ,
-    chưa đủ tạo thành định hướng workload.
-    """
-    return bool(ctx.excluded_brands)
-
 
 def clear_satisfied_pending_question(
     ctx: PcBuildContext,
@@ -39,7 +30,7 @@ def clear_satisfied_pending_question(
     pending = ctx.pending_question
     has_workload_direction = _has_workload_direction(ctx)
 
-    if pending == PendingQuestion.BUDGET:
+    if pending in (PendingQuestion.BUDGET, PendingQuestion.BUDGET_SCOPE):
         if ctx.budget is not None:
             ctx.pending_question = None
 
@@ -65,6 +56,9 @@ def evaluate_request_completeness(
 
     Hàm này không đọc câu người dùng và không gọi LLM.
     """
+    if ctx.pending_question is not None:
+        return ctx.pending_question
+
     has_budget = ctx.budget is not None
     has_purpose = bool(
         ctx.purpose and ctx.purpose.strip()

@@ -7,7 +7,7 @@ Tìm kiếm bộ PC phù hợp nhất dựa trên ngân sách và mục đích s
 
 # Re-export các hằng số
 from .constants import (
-    BUILD_PC_TRIGGERS, PURPOSE_KEYWORD_MAP
+    BUILD_PC_TRIGGERS
 )
 
 # Re-export các hàm extraction
@@ -19,7 +19,7 @@ from .formatter import format_build_context
 
 __all__ = [
     # constants
-    "BUILD_PC_TRIGGERS", "PURPOSE_KEYWORD_MAP",
+    "BUILD_PC_TRIGGERS",
     # extractor
     "detect_build_pc_intent",
     # formatter

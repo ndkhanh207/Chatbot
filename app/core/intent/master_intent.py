@@ -25,9 +25,10 @@ from app.pc_builder.extractor import detect_build_pc_intent
 # ==============================================================================
 
 MAX_TOKENS_CLASSIFY = 100
-MAX_TOKENS_EXTRACT = 250
+MAX_TOKENS_EXTRACT = 512
 
-_async_client = ollama.AsyncClient(timeout=Config.OLLAMA_REQUEST_TIMEOUT)
+def _get_async_client():
+    return ollama.AsyncClient(timeout=Config.OLLAMA_REQUEST_TIMEOUT)
 
 COMPAT_TRIGGERS = [
     'lắp với', 'đi với', 'tương thích', 'lắp được', 'chạy được', 'hợp không',
@@ -379,7 +380,7 @@ async def _run_classification_pass(user_msg: str, history_context: str) -> str:
         + [{"role": "user", "content": f"{history_context}<user_input>{user_msg}</user_input>"}]
     )
     started = perf_counter()
-    response = await _async_client.chat(
+    response = await _get_async_client().chat(
         model=get_ollama_model(),
         messages=messages,
         options={"temperature": 0.0, "num_predict": MAX_TOKENS_CLASSIFY},
@@ -407,7 +408,7 @@ async def _run_extraction_pass(user_msg: str, intent: str) -> MasterIntentSchema
         + [{"role": "user", "content": prompt_msg}]
     )
     started = perf_counter()
-    response = await _async_client.chat(
+    response = await _get_async_client().chat(
         model=get_ollama_model(),
         messages=messages,
         options={"temperature": 0.0, "num_predict": MAX_TOKENS_EXTRACT},
@@ -420,11 +421,13 @@ async def _run_extraction_pass(user_msg: str, intent: str) -> MasterIntentSchema
     return MasterIntentSchema.model_validate_json(raw)
 
 
-async def parse_master_intent(user_msg: str, chat_history: list = None) -> MasterIntentSchema:
+async def parse_master_intent(user_msg: str, chat_history: list | None = None) -> MasterIntentSchema:
     """
     Bóc tách tên linh kiện + ý định bằng LLM 2-Stage Pipeline.
     Orchestrates Pass 1, Pre-Guards, Pass 2, Post-Guards, and Retry Logic.
     """
+    if chat_history is None:
+        chat_history = []
     history_context = build_history_context(chat_history)
     structured_state = extract_structured_state(chat_history)
 

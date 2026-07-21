@@ -1,9 +1,11 @@
 param(
     [int]$Port = 8000,
-    [string]$HostAddress = "127.0.0.1"
+    [string]$HostAddress = "127.0.0.1",
+    [switch]$Reload
 )
 
 $ErrorActionPreference = "Stop"
+$env:PYTHONIOENCODING = "utf-8"
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Python = Join-Path $Root ".venv\Scripts\python.exe"
 $ollamaParallel = $env:OLLAMA_NUM_PARALLEL
@@ -83,5 +85,10 @@ catch {
     Write-Warning "Could not scan port ${Port}: $($_.Exception.Message)"
 }
 
-Write-Host "Starting server: $Python -m uvicorn main:app --host $HostAddress --port $Port"
-& $Python -m uvicorn main:app --host $HostAddress --port $Port
+if ($Reload) {
+    Write-Host "Starting server: $Python -m uvicorn main:app --host $HostAddress --port $Port --reload"
+    & $Python -m uvicorn main:app --host $HostAddress --port $Port --reload
+} else {
+    Write-Host "Starting server: $Python -m uvicorn main:app --host $HostAddress --port $Port"
+    & $Python -m uvicorn main:app --host $HostAddress --port $Port
+}

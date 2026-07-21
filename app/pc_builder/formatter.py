@@ -149,7 +149,7 @@ def format_build_context(build: BuildRecord) -> str:
 
     lines = [
         f"- Mã bộ: {build.build_id}",
-        f"- CPU: {cpu.model} | Giá: {format_vnd(cpu.price)}",
+        f"- CPU: {cpu.model} | Giá: {format_approx_million(cpu.price)}",
     ]
 
     if _is_integrated_gpu(build):
@@ -161,79 +161,34 @@ def format_build_context(build: BuildRecord) -> str:
 
         lines.append(
             f"- GPU: {gpu_quantity} × {gpu.model}"
-            f" | Giá mỗi GPU: {format_vnd(gpu.price)}"
-            f" | Tổng GPU: {format_vnd(gpu_total)}"
+            f" | Giá mỗi GPU: {format_approx_million(gpu.price)}"
+            f" | Tổng GPU: {format_approx_million(gpu_total)}"
         )
     else:
         lines.append(
             f"- GPU: {gpu.model}"
-            f" | Giá: {format_vnd(gpu.price)}"
+            f" | Giá: {format_approx_million(gpu.price)}"
         )
 
     lines.extend(
         [
             (
                 f"- Mainboard: {mainboard.model}"
-                f" | Giá: {format_vnd(mainboard.price)}"
+                f" | Giá: {format_approx_million(mainboard.price)}"
             ),
             (
                 f"- Phí lắp ráp: "
-                f"{format_vnd(build.assembly_fee)}"
+                f"{format_approx_million(build.assembly_fee)}"
             ),
             (
                 f"- Tổng cộng: "
-                f"{format_vnd(build.total_price)}"
+                f"{format_approx_million(build.total_price)}"
             ),
         ]
     )
 
-    if build.detailed_purpose.strip():
-        lines.append(
-            f"- Phù hợp cho: "
-            f"{build.detailed_purpose.strip()}"
-        )
-
-    if build.notes.strip():
-        lines.append(
-            f"- Lưu ý: {build.notes.strip()}"
-        )
-
     return "\n".join(lines)
 
-
-def interpretation_failure_reply(
-    ctx: PcBuildContext,
-) -> str:
-    if ctx.pending_question == PendingQuestion.BUDGET:
-        return (
-            "Em chưa nhận diện được ngân sách. "
-            "Bạn nhập một mức cụ thể, ví dụ 20 triệu nhé?"
-        )
-    if ctx.pending_question == PendingQuestion.PURPOSE:
-        return (
-            "Em chưa nhận diện được mục đích sử dụng. "
-            "Bạn dùng máy chủ yếu để chơi game, làm việc "
-            "hay xử lý đồ họa?"
-        )
-    if ctx.pending_question == PendingQuestion.BUDGET_SCOPE:
-        return (
-            "Bạn xác nhận ngân sách vừa nói là tổng cho tất cả "
-            "các bộ hay ngân sách của mỗi bộ nhé?"
-        )
-    if ctx.pending_question == PendingQuestion.GENERAL:
-        return (
-            "Bạn cho em biết ngân sách và mục đích sử dụng "
-            "chính của bộ PC nhé?"
-        )
-    if ctx.build_id:
-        return (
-            "Em chưa xác định được phần bạn muốn thay đổi. "
-            "Bạn muốn đổi CPU, GPU, mainboard hay ngân sách?"
-        )
-    return (
-        "Em chưa hiểu rõ yêu cầu ráp PC. "
-        "Bạn mô tả lại ngân sách và nhu cầu chính nhé?"
-    )
 
 
 def render_selected_build_reply(
@@ -255,34 +210,13 @@ def render_selected_build_reply(
     parts: list[str] = []
 
     if explanation and explanation.strip():
-        parts.append(
-            "Lý do lựa chọn:\n"
-            + explanation.strip()
-        )
+        parts.append(explanation.strip())
 
-    parts.append(
-        "Thông tin cấu hình:\n"
-        + canonical_block
-    )
+    parts.append(canonical_block)
 
     return "\n\n".join(parts)
 
 
-def format_merge_conflict_error(
-    error_message: str,
-) -> str:
-    cleaned = error_message.strip().rstrip(".!?")
-
-    if not cleaned:
-        return (
-            "Yêu cầu hiện tại có thông tin mâu thuẫn. "
-            "Bạn nói rõ lại giúp em nhé?"
-        )
-
-    return (
-        f"Yêu cầu có mâu thuẫn: {cleaned}. "
-        "Bạn nói rõ lại giúp em nhé?"
-    )
 
 
 def _extract_message(

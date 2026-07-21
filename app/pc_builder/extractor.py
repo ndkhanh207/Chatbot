@@ -1,7 +1,7 @@
 import json
 import re
 import asyncio
-from typing import Literal, Dict, List
+from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 import ollama
 from app.utils.model_utils import get_ollama_model
@@ -9,9 +9,7 @@ from app.utils.model_utils import get_ollama_model
 class InterpretationError(Exception):
     pass
 
-CPU_PATTERN = re.compile(r'\b(i3|i5|i7|i9|ryzen\s?[3579]|xeon|pentium|celeron)\b', re.IGNORECASE)
-GPU_PATTERN = re.compile(r'\b(rtx|gtx|rx|radeon|geforce|arc)\b', re.IGNORECASE)
-MAIN_PATTERN = re.compile(r'\b(h310|h410|h510|h610|h81|h110|h370|h470|h570|h670|h770|b360|b365|b460|b560|b660|b760|z370|z390|z490|z590|z690|z790|a320|a520|b350|b450|b550|b650|x370|x470|x570|x670)\b', re.IGNORECASE)
+
 
 BUILD_KEYWORDS = [
     "build pc", "build máy", "build", "ráp pc", "lắp pc", "ráp máy", "lắp máy", "cấu hình", "dàn máy", "mua máy",
@@ -22,15 +20,17 @@ def detect_build_pc_intent(msg: str) -> bool:
     msg_l = msg.lower()
     return any(kw in msg_l for kw in BUILD_KEYWORDS)
 
-def extract_explicit_build_id(msg: str) -> str | None:
-    match = re.search(r'\b(BUILD[-_][A-Z0-9]+)\b', msg, flags=re.IGNORECASE)
-    return match.group(1).upper() if match else None
-
 def extract_budget_fallback(msg: str) -> int | None:
     match = re.search(r'(-|âm\s+)?(\d+)\s*(triệu|củ|tr|trieu|cu)\b', msg, flags=re.IGNORECASE)
     if match:
         sign = -1 if match.group(1) else 1
         return sign * int(match.group(2)) * 1000000
+    return None
+
+def extract_explicit_build_id(msg: str) -> str | None:
+    match = re.search(r'\bBUILD[-_]\d+\b', msg, re.IGNORECASE)
+    if match:
+        return match.group(0).upper()
     return None
 
 def extract_components_fallback(msg: str) -> dict[str, str]:
@@ -99,10 +99,10 @@ YÊU CẦU QUAN TRỌNG NHẤT:
 - budget: TÌM BẰNG ĐƯỢC số tiền khách yêu cầu (triệu, củ, k) và dịch ra số nguyên VND. KHÔNG ĐƯỢC TỰ Ý NHÂN CHIA, chỉ trích xuất đúng con số khách viết (kể cả khi mua nhiều bộ). Nếu khách nói "âm", "trừ" (VD: âm 30 triệu), BẮT BUỘC trả về số âm (VD: -30000000).
 - budget_scope: "total" (nếu budget là tổng cho nhiều máy), "per_unit" (mỗi máy), "unknown" (không rõ).
 - purpose: Trích xuất ĐÚNG NGUYÊN VĂN mục đích sử dụng khách viết (VD: "văn phòng", "esport", "render", "chơi game"). Không được tự ý tóm tắt.
-- keep_components: Chỉ điền các linh kiện (cpu, gpu, mainboard) khách BẢO GIỮ.
-- required_components: KHÔNG ĐƯỢC TỰ BỊA LINH KIỆN. Chỉ điền nếu khách chỉ đích danh tên linh kiện.
+- keep_components: Các linh kiện khách BẢO GIỮ LẠI (VD: giữ nguyên cpu -> ["cpu"]).
+- required_components: Các linh kiện khách YÊU CẦU MỚI hoặc ĐỔI SANG. BẮT BUỘC trích xuất nếu khách nhắc đến tên linh kiện (VD: đổi sang rtx 4080 -> {"gpu": "rtx 4080"}). KHÔNG ĐƯỢC để trống nếu khách có nhắc.
 - route: Chọn "pc_builder" nếu đang ráp máy, "current_build_qa" nếu hỏi về bộ hiện tại, "pass" nếu hỏi vớ vẩn ngoài lề.
-- action: "continue", "reset", "alternative".
+- action: "continue", "reset", "alternative". BẮT BUỘC trả về "continue" nếu khách yêu cầu đổi/giữ linh kiện.
 - BẮT BUỘC trả về JSON theo ĐÚNG định dạng sau:
 {
   "route": "pc_builder",
@@ -118,7 +118,8 @@ YÊU CẦU QUAN TRỌNG NHẤT:
 }
 """
 
-_async_client = ollama.AsyncClient()
+def _get_async_client():
+    return ollama.AsyncClient()
 
 async def interpret_build_turn(
     user_message: str,
@@ -148,48 +149,57 @@ async def interpret_build_turn(
         },
     ]
     
-    try:
-        response = await asyncio.wait_for(
-            _async_client.chat(
-                model=get_ollama_model(),
-                messages=messages,
-                options={"temperature": 0.0, "num_predict": 512},
-                format=Interpretation.model_json_schema(),
-            ),
-            timeout=15.0
-        )
-        raw = response["message"]["content"].strip()
-        print("====== EXTRACTOR RAW ======")
-        print(raw)
-        print("===========================")
-        interpretation = Interpretation.model_validate_json(response["message"]["content"])
-        fallback_budget = extract_budget_fallback(user_message)
-        if fallback_budget is not None and fallback_budget < 0:
-            interpretation.budget = fallback_budget
-        elif interpretation.budget is None and fallback_budget is not None:
-            interpretation.budget = fallback_budget
-            
-        if interpretation.budget is not None and interpretation.budget > 0 and fallback_budget is not None:
-            # Prevent LLM from multiplying budget by quantity
-            if interpretation.quantity and interpretation.quantity > 1 and interpretation.budget > fallback_budget:
-                print(f"DEBUG: Overriding LLM budget {interpretation.budget} with fallback {fallback_budget}")
-                interpretation.budget = fallback_budget
-                interpretation.budget_scope = "total"
-                
-        print(f"DEBUG: Final interpretation={interpretation.model_dump()}")
+    response = await _get_async_client().chat(
+        model=get_ollama_model(),
+        messages=messages,
+        options={"temperature": 0.0, "num_predict": 512},
+        format=Interpretation.model_json_schema(),
+    )
+    raw = response["message"]["content"].strip()
+    print("====== EXTRACTOR RAW ======")
+    print(raw)
+    print("===========================")
+    interpretation = Interpretation.model_validate_json(response["message"]["content"])
+    fallback_budget = extract_budget_fallback(user_message)
+    if fallback_budget is not None and fallback_budget < 0:
+        interpretation.budget = fallback_budget
+    elif interpretation.budget is None and fallback_budget is not None:
+        interpretation.budget = fallback_budget
         
-        if not interpretation.required_components:
-            fallback_comps = extract_components_fallback(user_message)
-            if fallback_comps:
-                interpretation.required_components = fallback_comps  # type: ignore
-                
-        return interpretation
-    except ValidationError as e:
-        print(f"Validation error interpreting build turn: {e}")
-        raise InterpretationError("Model output did not match Interpretation schema") from e
-    except asyncio.TimeoutError as e:
-        print(f"Timeout interpreting build turn: {e}")
-        raise InterpretationError("Model timeout") from e
-    except Exception as e:
-        print(f"Error interpreting build turn: {e}")
-        raise InterpretationError(f"Unexpected error: {e}") from e
+    if interpretation.budget is not None and interpretation.budget > 0 and fallback_budget is not None:
+        # Prevent LLM from multiplying budget by quantity
+        if interpretation.quantity and interpretation.quantity > 1 and interpretation.budget > fallback_budget:
+            print(f"DEBUG: Overriding LLM budget {interpretation.budget} with fallback {fallback_budget}")
+            interpretation.budget = fallback_budget
+            interpretation.budget_scope = "total"
+            
+    print(f"DEBUG: Final interpretation={interpretation.model_dump()}")
+    
+    if not interpretation.required_components:
+        fallback_comps = extract_components_fallback(user_message)
+        if fallback_comps:
+            interpretation.required_components = fallback_comps  # type: ignore
+            
+    return interpretation
+
+from app.llm.gateway import safe_llm_call
+from app.llm.result import LlmResult
+
+async def interpret_build_turn_safe(
+    *,
+    user_message: str,
+    chat_history: str,
+    trusted_snapshot: dict,
+    forced_route: str | None = None,
+) -> LlmResult[Interpretation]:
+    return await safe_llm_call(
+        lambda: interpret_build_turn(
+            user_message=user_message,
+            chat_history=chat_history,
+            trusted_snapshot=trusted_snapshot,
+            forced_route=forced_route,
+        ),
+        timeout_seconds=12,
+        max_attempts=2,
+        operation_name="pc_builder_interpretation",
+    )

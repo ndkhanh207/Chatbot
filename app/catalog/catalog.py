@@ -6,6 +6,7 @@ import logging
 import re
 import unicodedata
 from pathlib import Path
+from typing import Any, cast
 
 import pandas as pd
 
@@ -43,7 +44,7 @@ def normalize(value: object) -> str:
     return " ".join(re.sub(r"[^a-z0-9]+", " ", text).split())
 
 
-def _number(value: object) -> int:
+def _number(value: Any) -> int:
     try:
         if value is None or pd.isna(value):
             return 0
@@ -61,7 +62,7 @@ def _clean_value(value: object) -> object:
     if value is None or (not isinstance(value, (list, dict)) and pd.isna(value)):
         return ""
     if hasattr(value, "item"):
-        return value.item()
+        return getattr(value, "item")()
     return value
 
 
@@ -92,7 +93,7 @@ def _model_ngrams(models: set[str]) -> set[tuple[str, ...]]:
             for end in range(start + 1, min(len(tokens), start + 8) + 1):
                 phrase = tuple(tokens[start:end])
                 has_digit = any(char.isdigit() for token in phrase for char in token)
-                if has_digit and (len(phrase) > 1 or len(phrase[0]) >= 3):
+                if has_digit and phrase and (len(phrase) > 1 or len(phrase[0]) >= 3):
                     ngrams.add(phrase)
                     if len(phrase) > 1:
                         ngrams.add(("".join(phrase),))
@@ -193,7 +194,7 @@ class ShopCatalog:
     def _read_products(path: Path, category: str) -> list[ProductRecord]:
         records = []
         for row in pd.read_csv(path).to_dict(orient="records"):
-            attributes = {key: _clean_value(value) for key, value in row.items()}
+            attributes: dict[str, Any] = {str(key): _clean_value(value) for key, value in row.items()}
             name = str(attributes.get("tên") or attributes.get("name") or "").strip()
             if not name:
                 raise ValueError(f"Product without name in {path.name}")
@@ -216,7 +217,7 @@ class ShopCatalog:
     def _read_builds(path: Path) -> list[BuildRecord]:
         records = []
         for row in pd.read_csv(path).to_dict(orient="records"):
-            attributes = {key: _clean_value(value) for key, value in row.items()}
+            attributes: dict[str, Any] = {str(key): _clean_value(value) for key, value in row.items()}
             build_id = str(attributes.get("BuildID") or "").strip()
             if not build_id:
                 raise ValueError(f"Build without BuildID in {path.name}")
@@ -264,20 +265,20 @@ class ShopCatalog:
         for preset in PRESET_CONFIGS:
             components = {}
             if preset.get("cpu"):
-                components["cpu"] = BuildPart(category="CPU", model=preset["cpu"], brand=_brand(preset["cpu"]))
+                components["cpu"] = BuildPart(category="CPU", model=str(preset["cpu"]), brand=_brand(str(preset["cpu"])))
             if preset.get("gpu"):
-                components["gpu"] = BuildPart(category="GPU", model=preset["gpu"], brand=_brand(preset["gpu"]))
+                components["gpu"] = BuildPart(category="GPU", model=str(preset["gpu"]), brand=_brand(str(preset["gpu"])))
             if preset.get("mainboard"):
-                components["mainboard"] = BuildPart(category="MAINBOARD", model=preset["mainboard"], brand=_brand(preset["mainboard"]))
+                components["mainboard"] = BuildPart(category="MAINBOARD", model=str(preset["mainboard"]), brand=_brand(str(preset["mainboard"])))
             
             records.append(BuildRecord(
-                build_id=preset["id"],
+                build_id=str(preset["id"]),
                 components=components,
                 assembly_fee=0,
-                total_price=preset["budget"],
-                detailed_purpose=" ".join(preset.get("purposes", [])),
+                total_price=_number(preset["budget"]),
+                detailed_purpose=" ".join(cast(list[str], preset.get("purposes", []))),
                 source="preset",
-                attributes=preset,
+                attributes=dict(preset),
             ))
         return records
 

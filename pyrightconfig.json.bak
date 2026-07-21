@@ -1,0 +1,21 @@
+{
+    "exclude": [
+        ".venv",
+        "__pycache__",
+        "chroma_db",
+        "data",
+        "archive",
+        "ragas_runs",
+        "plan"
+    ],
+    "ignore": [
+        ".venv",
+        "__pycache__",
+        "chroma_db",
+        "data",
+        "archive",
+        "ragas_runs",
+        "plan"
+    ],
+    "useLibraryCodeForTypes": false
+}

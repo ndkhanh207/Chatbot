@@ -18,7 +18,7 @@ class StateMergeResult(BaseModel):
     has_errors: bool = False
     clarification_question: str | None = None
 
-def apply_interpretation_delta(
+async def apply_interpretation_delta(
     current: PcBuildContext,
     delta: Interpretation,
     catalog: ShopCatalog,
@@ -30,9 +30,9 @@ def apply_interpretation_delta(
         next_state.budget = None
         next_state.purpose = None
         next_state.quantity = 1
-        next_state.required_components.clear()
-        next_state.preferred_components.clear()
-        next_state.excluded_brands.clear()
+        next_state.required_components = {}
+        next_state.preferred_components = {}
+        next_state.excluded_brands = []
         next_state.build_id = None
         next_state.pending_question = None
     
@@ -59,14 +59,68 @@ def apply_interpretation_delta(
     if delta.purpose is not None:
         next_state.purpose = delta.purpose
         
-    next_state.required_components.update(delta.required_components)
-    next_state.preferred_components.update(delta.preferred_components)
+    # -------------------------------------------------------------
+    # RAG / RESOLUTION
+    # Convert raw LLM strings into canonical catalog names so that
+    # strict retrieval (search_builds) doesn't fail on "i9 14900k" vs "Core i9-14900K".
+    # -------------------------------------------------------------
+    from app.catalog.lookup import resolve_component
     
-    for brand in delta.excluded_brands:
-        if brand not in next_state.excluded_brands:
-            next_state.excluded_brands.append(brand)
+    resolved_required = {}
+    for cat, name in delta.required_components.items():
+        comp = resolve_component(name, cat, catalog)
+        if not comp:
+            from app.pc_builder.reranker import write_build_response
+            msg = await write_build_response(
+                mode="unavailable",
+                facts={"components": {cat: name}}
+            )
+            return StateMergeResult(
+                next_state=current,
+                has_errors=True,
+                clarification_question=msg
+            )
+        resolved_required[cat] = comp["name"]
+
+    # Immutable updates following coding standards
+    next_state.required_components = {**next_state.required_components, **resolved_required}
+    next_state.preferred_components = {**next_state.preferred_components, **delta.preferred_components}
+    
+    new_excluded = [b for b in delta.excluded_brands if b not in next_state.excluded_brands]
+    next_state.excluded_brands = next_state.excluded_brands + new_excluded
 
     # Note: keep_components is collected by extractor but deliberately ignored in this simple merge strategy. 
     # Component retention is implicit (we don't delete keys unless explicit action="reset").
+    
+    # -------------------------------------------------------------
+    # VALIDATION (The missing piece the user wanted)
+    # Check if the requested required_components are physically possible 
+    # by querying the catalog. If catalog returns 0 builds, they are either
+    # incompatible (e.g. Intel CPU + AMD Main) or we don't sell them.
+    # -------------------------------------------------------------
+    if next_state.required_components:
+        from app.catalog.models import BuildQuery, BuildConstraints
+        
+        query = BuildQuery(
+            # Omit budget to only test if components can physically coexist
+            constraints=BuildConstraints(
+                required_components=next_state.required_components,
+            ),
+            limit=1
+        )
+        candidates = catalog.search_builds(query)
+        if not candidates:
+            from app.pc_builder.reranker import write_build_response
+            
+            comps = {k: v for k, v in next_state.required_components.items()}
+            msg = await write_build_response(
+                mode="unavailable",
+                facts={"components": comps}
+            )
+            return StateMergeResult(
+                next_state=current,
+                has_errors=True,
+                clarification_question=msg
+            )
             
     return StateMergeResult(next_state=next_state)
