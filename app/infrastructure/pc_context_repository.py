@@ -14,47 +14,28 @@ class PcContextVersionConflict(Exception):
         self.expected = expected
         self.actual = actual
 
-
-def migrate_pc_context(raw: dict) -> dict | None:
-    """Migrate old state schemas to the current one."""
-    state = raw.get("state")
-    if state is None or not isinstance(state, dict):
-        return None
-        
-    nested = state.get("intent_state")
-    if isinstance(nested, dict):
-        state = {**{k: v for k, v in state.items() if k != "intent_state"}, **nested}
-        
-    return state
-
-
 class SqlPcContextRepository(PcContextRepository):
     
     def _load_latest(self, session, user_uid: str, session_id: str) -> VersionedPcContext:
-        messages = session.query(ChatMessage).filter(
+        msg = session.query(ChatMessage).filter(
             ChatMessage.user_uid == user_uid,
-            ChatMessage.session_id == session_id
-        ).order_by(ChatMessage.id.desc()).limit(20).all()
+            ChatMessage.session_id == session_id,
+            ChatMessage.role == "system",
+            ChatMessage.content == "[PC State Save]"
+        ).order_by(ChatMessage.id.desc()).first()
         
-        for msg in messages:
-            metadata = msg.metadata_json
-            if not isinstance(metadata, dict):
-                continue
-                
-            migrated = migrate_pc_context(metadata)
-            if migrated is None:
-                continue
-                
-            version = metadata.get("version", msg.id)
+        if msg and isinstance(msg.metadata_json, dict):
+            state = msg.metadata_json.get("state")
+            version = msg.metadata_json.get("version")
             if version is None:
                 version = msg.id if msg.id is not None else 0
-
-            try:
-                context = PcBuildContext.model_validate(migrated)
-                return VersionedPcContext(context=context, version=int(version))
-            except ValidationError as exc:
-                logger.warning(f"[REPO] Skipped invalid state: {exc}")
-                
+            if isinstance(state, dict):
+                try:
+                    context = PcBuildContext.model_validate(state)
+                    return VersionedPcContext(context=context, version=int(version))
+                except ValidationError as exc:
+                    logger.warning(f"[REPO] Skipped invalid state: {exc}")
+                    
         return VersionedPcContext(context=PcBuildContext(), version=0)
         
     async def load(self, user_uid: str, session_id: str) -> VersionedPcContext:

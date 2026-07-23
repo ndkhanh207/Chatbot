@@ -1,8 +1,6 @@
-from typing import Any
-from app.chat.contracts import DomainHandler
 from app.chat.models import DomainRequest, ChatResult
-from app.core.intent.master_intent import MasterIntentSchema as ParsedIntent
-from app.catalog import ShopCatalog, ProductQuery, ProductRecord
+from app.core.extraction.extractor import ExtractedEntities
+from app.catalog import ShopCatalog, ProductQuery
 from app.rag.models import EvidencePackage, EvidenceItem, GroundedAnswerRequest
 from app.rag.generator import generate_grounded_answer
 from app.utils.format import format_currency_vietnam
@@ -12,17 +10,29 @@ class PriceHandler:
     def __init__(self, catalog: ShopCatalog):
         self._catalog = catalog
 
-    async def handle(self, request: DomainRequest, intent: ParsedIntent, route_decision=None) -> ChatResult:
-        if intent.intent == "price_calculation":
-            return await self._handle_price_calculation(request, intent)
-        else:
-            return await self._handle_price_check(request, intent)
+    async def handle(self, request: DomainRequest, entities: ExtractedEntities, route_decision=None) -> ChatResult:
+        if len(self._price_targets(entities)) > 1:
+            return await self._handle_price_calculation(request, entities)
+        return await self._handle_price_check(request, entities)
 
-    async def _handle_price_check(self, request: DomainRequest, intent: ParsedIntent) -> ChatResult:
+    @staticmethod
+    def _price_targets(entities: ExtractedEntities) -> list[str]:
+        targets = []
+        seen = set()
+        for term in (entities.cpu, entities.gpu, entities.mainboard, entities.target_product):
+            if not term:
+                continue
+            key = " ".join(term.casefold().replace("-", " ").split())
+            if key not in seen:
+                seen.add(key)
+                targets.append(term)
+        return targets
+
+    async def _handle_price_check(self, request: DomainRequest, entities: ExtractedEntities) -> ChatResult:
         # Resolve target
-        lookup_term = intent.target_product or ""
+        lookup_term = entities.target_product or ""
         if not lookup_term or lookup_term.strip().lower() == "none":
-            for fallback in [intent.cpu, intent.gpu, intent.mainboard]:
+            for fallback in [entities.cpu, entities.gpu, entities.mainboard]:
                 if fallback and fallback.strip().lower() != "none":
                     lookup_term = fallback
                     break
@@ -32,12 +42,12 @@ class PriceHandler:
         # Retrieve product
         matches = self._catalog.search_products(ProductQuery(
             text=lookup_term,
-            category=intent.category or "",
+            category=entities.category or "",
             limit=1
         ))
 
         if not matches:
-            return self._not_found_result(intent)
+            return self._not_found_result(entities)
 
         product = matches[0]
 
@@ -54,7 +64,7 @@ class PriceHandler:
 
         evidence = EvidencePackage(
             query=request.user_message,
-            intent=intent.intent,
+            intent=entities.intent,
             items=[
                 EvidenceItem(
                     source_id=product.product_id,
@@ -64,14 +74,11 @@ class PriceHandler:
             ]
         )
 
-        return await self._generate_and_fallback(request, intent, evidence)
+        return await self._generate_and_fallback(request, entities, evidence)
 
-    async def _handle_price_calculation(self, request: DomainRequest, intent: ParsedIntent) -> ChatResult:
+    async def _handle_price_calculation(self, request: DomainRequest, entities: ExtractedEntities) -> ChatResult:
         # Collect products to lookup
-        targets = []
-        for term in [intent.cpu, intent.gpu, intent.mainboard, intent.target_product]:
-            if term and term.strip().lower() != "none":
-                targets.append(term)
+        targets = self._price_targets(entities)
                 
         if not targets:
             targets = [request.user_message]
@@ -106,7 +113,7 @@ class PriceHandler:
             )
             return ChatResult(
                 reply=reply,
-                metadata={"intent": intent.intent}
+                metadata={"intent": entities.intent}
             )
             
         items.append(
@@ -119,17 +126,17 @@ class PriceHandler:
 
         evidence = EvidencePackage(
             query=request.user_message,
-            intent=intent.intent,
+            intent=entities.intent,
             items=items
         )
 
-        return await self._generate_and_fallback(request, intent, evidence)
+        return await self._generate_and_fallback(request, entities, evidence)
 
-    async def _generate_and_fallback(self, request: DomainRequest, intent: ParsedIntent, evidence: EvidencePackage) -> ChatResult:
+    async def _generate_and_fallback(self, request: DomainRequest, entities: ExtractedEntities, evidence: EvidencePackage) -> ChatResult:
         generation = await generate_grounded_answer(
             GroundedAnswerRequest(
                 user_message=request.user_message,
-                intent=intent.intent,
+                intent=entities.intent,
                 evidence=evidence
             )
         )
@@ -139,42 +146,45 @@ class PriceHandler:
                 reply=generation.value.answer,
                 contexts=[item.source_id for item in evidence.items],
                 metadata={
-                    "intent": intent.intent,
+                    "intent": entities.intent,
                     "source_ids": generation.value.used_source_ids,
-                    "target_product": intent.target_product,
-                    "category": intent.category,
-                    "cpu": intent.cpu,
-                    "gpu": intent.gpu,
-                    "mainboard": intent.mainboard,
-                    "spec_detail": intent.spec_detail,
+                    "target_product": entities.target_product,
+                    "category": entities.category,
+                    "cpu": entities.cpu,
+                    "gpu": entities.gpu,
+                    "mainboard": entities.mainboard,
+                    "spec_detail": entities.spec_detail,
                 },
             )
 
         return self._format_fallback(evidence)
 
-    def _not_found_result(self, intent: ParsedIntent) -> ChatResult:
+    def _not_found_result(self, entities: ExtractedEntities) -> ChatResult:
         reply = response_renderer.render(ResponseCode.PRODUCT_NOT_FOUND)
         return ChatResult(
             reply=reply,
-            metadata={"intent": intent.intent}
+            metadata={"intent": entities.intent}
         )
 
     def _format_fallback(self, evidence: EvidencePackage) -> ChatResult:
         # Deterministic fallback when generation fails
-        if evidence.intent == "price_check":
+        calc_item = next(
+            (item for item in evidence.items if item.source_type == "calculation"),
+            None,
+        )
+        if calc_item is None:
             product = evidence.items[0]
             price = product.facts.get("price", 0)
             name = product.facts.get("name", "sản phẩm")
             reply = response_renderer.render(
                 ResponseCode.PRICE_CHECK_FALLBACK,
-                facts={"name": name, "price_formatted": format_currency_vietnam(price)}
+                facts={"name": name, "price_formatted": price}
             )
         else:
-            calc_item = next((item for item in evidence.items if item.source_type == "calculation"), None)
-            total = calc_item.facts.get("calculated_total", 0) if calc_item else 0
+            total = calc_item.facts.get("calculated_total", 0)
             reply = response_renderer.render(
                 ResponseCode.PRICE_CALCULATION_FALLBACK,
-                facts={"total_formatted": format_currency_vietnam(total)}
+                facts={"total_formatted": total}
             )
             
         return ChatResult(

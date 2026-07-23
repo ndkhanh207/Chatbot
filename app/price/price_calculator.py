@@ -5,7 +5,7 @@ LLM bóc tách tên linh kiện → Python tra DB lấy giá → cộng tổng c
 """
 
 from app.catalog import ShopCatalog, resolve_component
-from app.core.intent.master_intent import MasterIntentSchema
+from app.core.extraction.extractor import ExtractedEntities
 from app.utils.format import get_field, format_currency_vietnam
 
 # Trigger từ khóa mồi để gọi luồng tính giá
@@ -19,12 +19,12 @@ def is_price_calculation_query(message: str) -> bool:
     return any(t in message for t in PRICE_CALCULATION_TRIGGERS)
 
 
-def build_price_calculation_context(intent: MasterIntentSchema, catalog: ShopCatalog) -> str:
+def build_price_calculation_context(entities: ExtractedEntities, catalog: ShopCatalog) -> str:
     """Xây dựng context tính tổng giá cho các linh kiện đã được LLM bóc tách.
     Giá được lấy từ DB và cộng bằng Python — KHÔNG để LLM tự tính."""
-    cpu  = resolve_component(intent.cpu,       "CPU",       catalog)
-    main = resolve_component(intent.mainboard, "MAINBOARD", catalog)
-    gpu  = resolve_component(intent.gpu,       "GPU",       catalog)
+    cpu  = resolve_component(entities.cpu,       "CPU",       catalog)
+    main = resolve_component(entities.mainboard, "MAINBOARD", catalog)
+    gpu  = resolve_component(entities.gpu,       "GPU",       catalog)
 
     lines         = ["Dạ, chi tiết giá các linh kiện anh/chị cần tính đây ạ:\n"]
     total_price   = 0
@@ -32,9 +32,9 @@ def build_price_calculation_context(intent: MasterIntentSchema, catalog: ShopCat
     missing_items = []
 
     for item_name, item, category in [
-        (intent.cpu,       cpu,  "CPU"),
-        (intent.mainboard, main, "MAINBOARD"),
-        (intent.gpu,       gpu,  "GPU"),
+        (entities.cpu,       cpu,  "CPU"),
+        (entities.mainboard, main, "MAINBOARD"),
+        (entities.gpu,       gpu,  "GPU"),
     ]:
         if not item_name or item_name.strip().lower() == "none":
             continue

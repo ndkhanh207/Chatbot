@@ -93,14 +93,37 @@ Bạn nhận được ngữ cảnh hiện tại của bộ PC, lịch sử hội
 Hãy trích xuất thông tin sang JSON chính xác nhất cho lớp PcBuildCommand.
 
 YÊU CẦU QUAN TRỌNG NHẤT:
-- action: Hành động khách muốn thực hiện (create, update, alternative, reset, question_current_build). 
-  - Chọn 'update' nếu khách yêu cầu đổi/giữ linh kiện, tăng/giảm ngân sách, thay đổi mục đích.
-  - Chọn 'alternative' nếu khách yêu cầu cấu hình khác.
-  - Chọn 'create' nếu đây là yêu cầu build mới.
-  - Chọn 'question_current_build' nếu khách hỏi về cấu hình hiện tại đang chọn (không thay đổi gì).
+- action: Hành động người dùng muốn thực hiện:
+    + create: Khi người dùng muốn tư vấn một bộ máy TỪ ĐẦU (kể cả khi đã có ngân sách, yêu cầu, hoặc chỉ là câu hỏi chung chung như "tư vấn pc").
+    + update: Khi người dùng muốn thêm/bớt/đổi linh kiện, đổi nhu cầu, ngân sách HOẶC trả lời câu hỏi làm rõ từ bot.
+    + alternative: Khi người dùng muốn ĐỔI SANG bộ khác (không muốn lấy bộ hiện tại). VD: "có bộ nào rẻ hơn không", "đổi bộ khác".
+    + question_current_build: Khi người dùng hỏi thêm thông tin về bộ máy (VD: "bộ này chơi mượt không", "RAM hãng gì").
 - budget: TÌM BẰNG ĐƯỢC số tiền khách yêu cầu (triệu, củ, k) và dịch ra số nguyên VND. KHÔNG ĐƯỢC TỰ Ý NHÂN CHIA, chỉ trích xuất đúng con số khách viết (kể cả khi mua nhiều bộ). Nếu khách nói "âm", "trừ" (VD: âm 30 triệu), BẮT BUỘC trả về số âm (VD: -30000000).
 - budget_scope: "total" (nếu budget là tổng cho nhiều máy), "per_unit" (mỗi máy), "unknown" (không rõ).
-- purpose: Trích xuất ĐÚNG NGUYÊN VĂN mục đích sử dụng khách viết. Không được tự ý tóm tắt.
+- purpose: Trích xuất ĐÚNG NGUYÊN VĂN mục đích sử dụng khách viết. Không được tự ý tóm tắt. Nếu khách chỉ nói ngân sách hoặc linh kiện mà không đề cập mục đích, đặt purpose=null.
+- purpose_status: "ready" nếu ĐỦ CỤ THỂ (có tên phần mềm, game cụ thể như LOL, Dota, Photoshop, Excel, v.v.); "clarify" nếu MƠ HỒ.
+LƯU Ý ĐẶC BIỆT (QUAN TRỌNG): Những từ khóa như "chơi game", "làm việc", "văn phòng", "học tập", "cơ bản", "phổ thông", "nhẹ" mà KHÔNG KÈM THEO tên phần mềm/game cụ thể thì BẮT BUỘC purpose_status="clarify". Nếu bạn trả về "ready" cho "làm văn phòng", đó là LỖI NGHIÊM TRỌNG.
+
+### VÍ DỤ:
+User: "build pc 30 triệu chơi game"
+Context: budget=null, purpose=null
+=> action="create", budget=30000000, purpose="chơi game", purpose_status="clarify"
+
+User: "build pc 30 triệu để làm việc"
+Context: budget=null, purpose=null
+=> action="create", budget=30000000, purpose="để làm việc", purpose_status="clarify"
+
+User: "cho tôi con i9"
+Context: budget=null, purpose="chơi game", purpose_status="clarify"
+=> action="update", required_components={"CPU": "Intel Core i9"}, purpose=null, purpose_status=null
+
+User: "chơi game valorant"
+Context: budget=30M, purpose="chơi game", purpose_status="clarify"
+=> action="update", budget=null, purpose="chơi game valorant", purpose_status="ready"
+
+User: "cho tôi hỏi máy này có chơi được valorant ko"
+Context: budget=30M, purpose="chơi game valorant nhẹ", purpose_status="ready"
+=> action="question_current_build" (vì đang hỏi về bộ hiện tại)
 - keep_components: Các linh kiện khách BẢO GIỮ LẠI (VD: giữ nguyên cpu -> ["cpu"]).
 - required_components: Các linh kiện khách YÊU CẦU MỚI hoặc ĐỔI SANG. BẮT BUỘC trích xuất nếu khách nhắc đến tên linh kiện (VD: đổi sang rtx 4080 -> {"gpu": "rtx 4080"}). KHÔNG ĐƯỢC để trống nếu khách có nhắc.
 
@@ -129,7 +152,7 @@ async def _extract_command(
                 "Quyết định định tuyến (cho biết hướng xử lý chung):\n"
                 f"{route_decision.model_dump_json(indent=2)}\n\n"
                 "Lịch sử gần đây:\n"
-                f"{chr(10).join(recent_history)}\n\n"
+                f"{chr(10).join(msg.content if hasattr(msg, 'content') else str(msg) for msg in recent_history)}\n\n"
                 "Câu nói mới nhất:\n"
                 f"{user_message}"
             ),

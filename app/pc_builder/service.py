@@ -20,7 +20,7 @@ from app.pc_builder.selector import PcBuildSelector, PcBuildSelectionRequest
 from app.pc_builder.formatter import format_build_context, render_selected_build_reply
 from app.responses import response_renderer, ResponseCode
 from app.rag.generator import generate_grounded_answer
-from app.rag.models import GroundedAnswerRequest
+from app.rag.models import GroundedAnswerRequest, EvidencePackage, EvidenceItem
 
 logger = logging.getLogger(__name__)
 
@@ -41,20 +41,6 @@ def _clear_satisfied_pending_question(ctx: PcBuildContext) -> None:
     elif pending == PendingQuestion.GENERAL:
         if ctx.budget is not None and (ctx.purpose or has_workload_direction):
             ctx.pending_question = None
-
-def _evaluate_completeness(ctx: PcBuildContext) -> PendingQuestion | None:
-    if ctx.pending_question is not None:
-        return ctx.pending_question
-    has_budget = ctx.budget is not None
-    has_purpose = bool(ctx.purpose and ctx.purpose.strip())
-    has_workload_direction = _has_workload_direction(ctx)
-    if not has_budget and not has_purpose and not has_workload_direction:
-        return PendingQuestion.GENERAL
-    if not has_budget:
-        return PendingQuestion.BUDGET
-    if not has_purpose and not has_workload_direction:
-        return PendingQuestion.PURPOSE
-    return None
 
 def _contexts_equal(a: PcBuildContext, b: PcBuildContext) -> bool:
     return a.model_dump(mode="json") == b.model_dump(mode="json")
@@ -120,6 +106,8 @@ async def _merge_command(
 
     if command.purpose is not None:
         next_state.purpose = command.purpose
+        if command.purpose_status is not None:
+            next_state.purpose_status = command.purpose_status
                 
     if command.required_components:
         for cat, val in command.required_components.items():
@@ -167,18 +155,15 @@ async def _merge_command(
     return StateMergeResult(next_state=next_state)
 
 def _build_pc_evidence(build: BuildRecord, purpose: str | None) -> str:
-    parts = []
-    if purpose:
-        parts.append(f"Mục đích sử dụng: {purpose}")
-    parts.append(f"Mã bộ: {build.build_id}")
-    if build.detailed_purpose:
-        parts.append(f"Mục đích được thiết kế: {build.detailed_purpose}")
-    if build.attributes.get("Primary_Workload"):
-        parts.append(f"Workload chính: {build.attributes['Primary_Workload']}")
-    if build.notes:
-        parts.append(f"Ghi chú: {build.notes}")
-    parts.append(f"Cấu hình: " + ", ".join([f"{cat}: {c.model}" for cat, c in build.components.items()]))
-    return " | ".join(parts)
+    fields = [
+        ("Mục đích sử dụng", purpose),
+        ("Mã bộ", build.build_id),
+        ("Mục đích được thiết kế", build.detailed_purpose),
+        ("Workload chính", build.attributes.get("Primary_Workload")),
+        ("Ghi chú", build.notes),
+        ("Cấu hình", ", ".join(f"{cat}: {c.model}" for cat, c in build.components.items())),
+    ]
+    return " | ".join(f"{k}: {v}" for k, v in fields if v)
 
 # --- Service ---
 
@@ -235,7 +220,12 @@ class PcBuildService:
             reply = response_renderer.render(ResponseCode.BUILD_NOT_FOUND)
             return self._outcome(reply, ctx, original_ctx, contexts=[])
 
-        evidence = _build_pc_evidence(build, ctx.purpose)
+        evidence_str = _build_pc_evidence(build, ctx.purpose)
+        evidence = EvidencePackage(
+            query=user_message,
+            intent="build_pc",
+            items=[EvidenceItem(source_id=build.build_id, source_type="build", facts={"details": evidence_str})]
+        )
         generation = await generate_grounded_answer(GroundedAnswerRequest(
             user_message=user_message,
             intent="build_pc",
@@ -249,7 +239,12 @@ class PcBuildService:
         ctx.build_id = build.build_id
         _clear_satisfied_pending_question(ctx)
 
-        evidence = _build_pc_evidence(build, ctx.purpose)
+        evidence_str = _build_pc_evidence(build, ctx.purpose)
+        evidence = EvidencePackage(
+            query=user_message,
+            intent="build_pc",
+            items=[EvidenceItem(source_id=build.build_id, source_type="build", facts={"details": evidence_str})]
+        )
         generation = await generate_grounded_answer(GroundedAnswerRequest(
             user_message=user_message,
             intent="build_pc",
@@ -294,22 +289,19 @@ class PcBuildService:
         ctx = merge_result.next_state
         _clear_satisfied_pending_question(ctx)
 
-        clarification = _evaluate_completeness(ctx)
+        has_direction = bool(
+            (ctx.purpose and ctx.purpose.strip()) or
+            ctx.required_components or
+            ctx.preferred_components
+        )
+        needs_purpose = ctx.purpose_status == "clarify" or not has_direction
 
-        if clarification is not None:
-            if clarification == PendingQuestion.PURPOSE and ctx.budget is not None:
-                ctx.purpose = ctx.purpose or "nhu cầu sử dụng phổ thông"
-            else:
-                ctx.pending_question = clarification
-                if clarification == PendingQuestion.BUDGET:
-                    code = ResponseCode.MISSING_BUDGET
-                elif clarification == PendingQuestion.PURPOSE:
-                    code = ResponseCode.MISSING_PURPOSE
-                else:
-                    code = ResponseCode.MISSING_BUDGET
-
-                reply = response_renderer.render(code)
-                return self._outcome(reply, ctx, original_ctx, contexts=[reply])
+        if needs_purpose:
+            ctx.pending_question = PendingQuestion.PURPOSE
+            code = ResponseCode.MISSING_PURPOSE
+                
+            reply = response_renderer.render(code)
+            return self._outcome(reply, ctx, original_ctx, contexts=[reply])
 
         constraints = BuildConstraints(
             required_components=ctx.required_components,
@@ -318,6 +310,9 @@ class PcBuildService:
         )
 
         unit_budget = get_unit_budget(ctx)
+        if unit_budget is not None and unit_budget < 0:
+            reply = "Xin lỗi, ngân sách không thể là số âm. Bạn có thể cung cấp mức ngân sách hợp lệ không ạ?"
+            return self._outcome(reply, ctx, original_ctx, contexts=[reply])
 
         excluded_ids = set()
         if command.action == PcBuildAction.ALTERNATIVE and ctx.build_id:

@@ -12,7 +12,7 @@ from app.compatibility.compat_logic import (
     check_cpu_main_compat, check_gpu_main_compat,
     find_compatible_build,
 )
-from app.core.intent.master_intent import MasterIntentSchema
+from app.core.extraction.extractor import ExtractedEntities
 from app.utils.format import get_field, format_currency_vietnam
 
 __all__ = [
@@ -26,11 +26,11 @@ __all__ = [
 # ──────────────────────────────────────────────
 # Tích hợp với chat_handler
 # ──────────────────────────────────────────────
-def build_compatibility_context(intent: MasterIntentSchema, catalog: ShopCatalog) -> str:
+def build_compatibility_context(entities: ExtractedEntities, catalog: ShopCatalog) -> str:
     """Return catalog facts and exact comparisons; the model owns the wording."""
-    cpu  = resolve_component(intent.cpu,       "CPU",       catalog) if intent.cpu else None
-    main = resolve_component(intent.mainboard, "MAINBOARD", catalog) if intent.mainboard else None
-    gpu  = resolve_component(intent.gpu,       "GPU",       catalog) if intent.gpu else None
+    cpu  = resolve_component(entities.cpu,       "CPU",       catalog) if entities.cpu else None
+    main = resolve_component(entities.mainboard, "MAINBOARD", catalog) if entities.mainboard else None
+    gpu  = resolve_component(entities.gpu,       "GPU",       catalog) if entities.gpu else None
 
     cpu_main = check_cpu_main_compat(cpu, main) if cpu and main else None
     gpu_main = check_gpu_main_compat(gpu, main) if gpu and main else None
@@ -67,13 +67,13 @@ def build_compatibility_context(intent: MasterIntentSchema, catalog: ShopCatalog
 
 
 def build_suggestion_context(
-    intent: MasterIntentSchema,
+    entities: ExtractedEntities,
     catalog: ShopCatalog,
     query_text: str = "",
     top_k: int = 5,
 ) -> str:
-    """Gợi ý build dựa trên ĐÚNG 1 linh kiện đã có (intent.intent == 'suggestion')."""
-    candidates = [("cpu", intent.cpu), ("mainboard", intent.mainboard), ("gpu", intent.gpu)]
+    """Gợi ý build dựa trên ĐÚNG 1 linh kiện đã có (entities.intent == 'suggestion')."""
+    candidates = [("cpu", entities.cpu), ("mainboard", entities.mainboard), ("gpu", entities.gpu)]
     owned = [(t, n) for t, n in candidates if n and n.strip().lower() != "none"]
     if len(owned) != 1:
         return ""  # LLM trả nhiều/không linh kiện nào — không đủ rõ để gợi ý
@@ -81,7 +81,7 @@ def build_suggestion_context(
     have_type, have_name = owned[0]
     
     # Bắt lỗi logic: Không thể ghép 2 linh kiện cùng loại (VD: Mainboard + Mainboard)
-    if intent.category and intent.category.strip().lower() == have_type:
+    if entities.category and entities.category.strip().lower() == have_type:
         type_display = {"cpu": "CPU", "mainboard": "Mainboard", "gpu": "Card màn hình"}.get(have_type, have_type.capitalize())
         return (
             f"[LỖI LOGIC TỪ NGƯỜI DÙNG]\n"
@@ -92,8 +92,8 @@ def build_suggestion_context(
 
     # Bắt lỗi Out of Scope: Yêu cầu tìm linh kiện ngoài danh mục hỗ trợ (RAM, SSD, Nguồn...)
     supported_categories = ["cpu", "mainboard", "gpu", "vga", "none"]
-    if intent.category and intent.category.strip().lower() not in supported_categories:
-        cat_name = intent.category.strip()
+    if entities.category and entities.category.strip().lower() not in supported_categories:
+        cat_name = entities.category.strip()
         return (
             f"[THÔNG BÁO TỪ HỆ THỐNG]\n"
             f"Khách hàng đang yêu cầu tìm linh kiện loại '{cat_name}'.\n"

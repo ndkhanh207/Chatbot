@@ -60,10 +60,10 @@ def _get_session():
             Base.metadata.create_all(_engine)
             _SessionLocal = sessionmaker(bind=_engine)
             _db_available = True
-            print("=== [MEMORY] MySQL kết nối thành công! ===")
+            print("=== [MEMORY] MySQL ket noi thanh cong! ===")
         except Exception as e:
-            print(f"⚠️ [MEMORY] Không thể kết nối MySQL: {e}")
-            print("⚠️ [MEMORY] Chat history sẽ không được lưu trong phiên này.")
+            print(f"[MEMORY] MySQL init error: {e}")
+            print("[MEMORY] Chat history se khong duoc luu trong phien nay.")
             _db_available = False
             return None
 
@@ -112,7 +112,7 @@ def _load_messages(user_uid: str, session_id: str) -> list[BaseMessage]:
         )
         messages = []
         for row in reversed(rows):
-            kwargs = normalize_context_metadata(row.metadata_json)
+            kwargs = normalize_context_metadata(row.metadata_json)  # type: ignore
             # ponytail: filter out noise from LLM context window to save tokens and
             # prevent hallucination, but keep them in DB for UI continuity.
             
@@ -199,7 +199,7 @@ def _summarize_for_history(ai_msg: str) -> str:
     return truncated.strip()
 
 
-def save_message(user_uid: str, session_id: str, user_msg: str, ai_msg: str, metadata: dict = None) -> None:
+def save_message(user_uid: str, session_id: str, user_msg: str, ai_msg: str, metadata: dict | None = None) -> None:
     """Lưu một lượt hội thoại vào MySQL.
     AI reply được rút gọn để tránh ngộ độc history cho reformulate.
     metadata được lưu dưới dạng JSON cho AI message để duy trì state.

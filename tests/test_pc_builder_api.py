@@ -59,27 +59,31 @@ MULTI_TURN_CASES = [
         "multi_inherit_budget",
         [
             ("tư vấn bộ pc chơi game", [("ngân sách", "tầm giá", "bao nhiêu tiền")]),
-            ("tầm 35 triệu", [("giá", "vnđ", "triệu", "₫")]),
+            ("tầm 35 triệu", [("nhu cầu", "game cụ thể", "thể loại")]),
+            ("chơi Valorant 1080p 240 FPS", ["- mã bộ:", ("giá", "vnđ", "triệu", "₫")]),
         ]
     ),
     (
         "multi_qty_purpose_followup",
         [
             ("mua 3 bộ pc 15 triệu", [("ngân sách", "5", "15")]),
-            ("thôi build 1 bộ pc theo nhu cầu chơi game đi", [("không tìm được", "không có", "không phù hợp", "ngân sách", "bao nhiêu", "rất tiếc")]),
+            ("thôi build 1 bộ pc theo nhu cầu chơi game đi", [("nhu cầu", "game cụ thể", "thể loại")]),
+            ("chơi Valorant 1080p 144 FPS", [("- mã bộ:", "không tìm được", "không có", "không phù hợp")]),
         ]
     ),
     (
         "multi_adjust_higher",
         [
-            ("build pc chơi game 30 triệu", ["30"]),
+            ("build pc chơi game 30 triệu", [("nhu cầu", "game cụ thể", "thể loại")]),
+            ("chơi Valorant 1080p 240 FPS", ["- mã bộ:", "30"]),
             ("cho mình xem bộ đắt hơn", ["- mã bộ:", ("triệu", "tr", "₫")]),
         ]
     ),
     (
         "multi_adjust_lower",
         [
-            ("build pc chơi game 30 triệu", ["30"]),
+            ("build pc chơi game 30 triệu", [("nhu cầu", "game cụ thể", "thể loại")]),
+            ("chơi Valorant 1080p 240 FPS", ["- mã bộ:", "30"]),
             ("bộ rẻ hơn chút được không", [("rẻ hơn", "thấp hơn", "tham khảo", "asus", "- mã bộ:")]),
         ]
     ),
@@ -87,7 +91,7 @@ MULTI_TURN_CASES = [
         "multi_inherit_component_basic",
         [
             ("CPU i5 13600K có mạnh không?", [("mạnh", "i5", "13600k", "có")]),
-            ("build cho tôi bộ 30 triệu chơi game", ["- mã bộ:", ("i5-13600k", "13600k")]),
+            ("build cho tôi bộ 30 triệu chơi Valorant 1080p 240 FPS", ["- mã bộ:", ("i5-13600k", "13600k")]),
         ]
     ),
     (
@@ -95,21 +99,21 @@ MULTI_TURN_CASES = [
         [
             ("rtx 3060 ti chơi pubg mượt không?", [("mượt", "rtx", "3060 ti", "chưa tìm thấy", "không tìm thấy")]),
             ("vậy rtx 4070 thì sao?", [("4070", "rtx", "hơn", "chưa tìm thấy", "không tìm thấy", "kho")]),
-            ("build cho tôi bộ 50 triệu chơi game đi", ["- mã bộ:", "4070"]),
+            ("build cho tôi bộ 50 triệu chơi PUBG 2K 144 FPS đi", ["- mã bộ:", "4070"]),
         ]
     ),
     (
         "multi_reset_intent",
         [
-            ("build pc có rtx 3060 ti tầm 30 triệu", ["- mã bộ:", "3060 ti"]),
+            ("build pc có rtx 3060 ti tầm 30 triệu để chơi PUBG 1080p 144 FPS", ["- mã bộ:", "3060 ti"]),
             ("thôi build cho tôi bộ mới hoàn toàn tầm 60 triệu đi", [("làm gì", "mục đích", "nhu cầu")]),
-            ("để chơi game aaa", ["- mã bộ:", "60"]),
+            ("để chơi game AAA 4K ray tracing", ["- mã bộ:", "60"]),
         ]
     ),
     (
         "multi_question_current_build",
         [
-            ("build pc 30 triệu chơi game", ["- mã bộ:", "30"]),
+            ("build pc 30 triệu chơi GTA 5 1080p 144 FPS", ["- mã bộ:", "30"]),
             ("cấu hình này chơi mượt gta 5 không shop?", [("mượt", "chơi được", "tốt", "thoải mái", "chiến", "khá", "ổn")]),
         ]
     ),

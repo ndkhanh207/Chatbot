@@ -4,7 +4,7 @@ from app.routing.models import RouteDecision
 from app.pc_builder.service import PcBuildService
 from app.pc_builder.models import PcBuildOutcome, PcContextRepository
 from app.pc_builder.extractor import extract_pc_build_command
-from app.core.intent.master_intent import MasterIntentSchema
+from app.core.extraction.extractor import ExtractedEntities
 from app.catalog import ShopCatalog
 
 logger = logging.getLogger(__name__)
@@ -31,7 +31,7 @@ class PCBuilderHandler:
     async def handle(
         self,
         request: DomainRequest,
-        intent: MasterIntentSchema,
+        entities: ExtractedEntities,
         route_decision: RouteDecision | None = None,
         **kwargs
     ) -> ChatResult:

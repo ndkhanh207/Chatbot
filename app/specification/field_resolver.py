@@ -37,3 +37,26 @@ def resolve_explicit_spec_detail(message: str) -> str | None:
             return fields[0] if len(fields) == 1 else alias
 
     return None
+
+
+def has_requested_spec_fact(facts: dict, spec_detail: str | None) -> bool:
+    """Whether catalog facts contain a field matching the requested detail."""
+    if not spec_detail:
+        return True
+
+    requested = spec_detail.casefold()
+    candidate_fields = {
+        field.casefold()
+        for field, aliases in FIELD_KEYWORD_ALIASES.items()
+        if field.casefold() in requested
+        or any(alias.casefold() in requested for alias in aliases)
+    }
+    if not candidate_fields:
+        return False
+
+    normalized_facts = {str(key).casefold(): value for key, value in facts.items()}
+    return any(
+        field in normalized_facts
+        and normalized_facts[field] not in (None, "", "none")
+        for field in candidate_fields
+    )

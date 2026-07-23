@@ -7,14 +7,14 @@ from app.catalog.lookup import lookup_and_rerank
 from app.utils.format import get_field, format_currency_vietnam
 
 
-def build_price_check_context(parsed_intent, category, catalog: ShopCatalog, search_query) -> tuple[str, str]:
+def build_price_check_context(parsed_entities, category, catalog: ShopCatalog, search_query) -> tuple[str, str]:
     """
     Container xử lý riêng cho luồng kiểm tra giá bán của 1 linh kiện cụ thể (price check).
     Trả về: (context, format_hint)
     """
-    lookup_term = parsed_intent.target_product
+    lookup_term = parsed_entities.target_product
     if not lookup_term or lookup_term.strip().lower() == "none":
-        for fallback in [parsed_intent.cpu, parsed_intent.gpu, parsed_intent.mainboard]:
+        for fallback in [parsed_entities.cpu, parsed_entities.gpu, parsed_entities.mainboard]:
             if fallback and fallback.strip().lower() != "none":
                 lookup_term = fallback
                 break
@@ -46,7 +46,7 @@ def build_price_check_context(parsed_intent, category, catalog: ShopCatalog, sea
     return context, format_hint
 
 
-def build_budget_search_context(parsed_intent, msg_lower, category, catalog: ShopCatalog, user_message, search_query) -> tuple[str, str]:
+def build_budget_search_context(parsed_entities, msg_lower, category, catalog: ShopCatalog, user_message, search_query) -> tuple[str, str]:
     """
     Container xử lý riêng cho luồng tìm kiếm linh kiện theo tầm giá / ngân sách tối đa,
     kèm phân tích Regex động cho khoảng giá (từ X đến Y), top rẻ nhất (asc), đắt nhất (desc).
@@ -55,7 +55,7 @@ def build_budget_search_context(parsed_intent, msg_lower, category, catalog: Sho
     brand = detect_brand(msg_lower)
     
     lo = 0.0
-    hi = float(parsed_intent.budget_amount) if getattr(parsed_intent, 'budget_amount', 0) > 0 else 999999999.0
+    hi = float(parsed_entities.budget_amount) if getattr(parsed_entities, 'budget_amount', 0) > 0 else 999999999.0
     top_k = 5
     sort_order = "none"
     

@@ -1,7 +1,11 @@
 import traceback
 import logging
 from app.guard.input_guard import run_input_guards
-from app.memory.context_manager import ConversationContext
+from app.memory.context_manager import (
+    ConversationContext,
+    latest_routing_handler,
+    recent_routing_turns,
+)
 from app.chat.models import DomainRequest
 from app.chat.registry import create_handler_registry
 from app.infrastructure.pc_context_repository import SqlPcContextRepository
@@ -57,11 +61,9 @@ async def handle_chat(user_message: str, catalog, user_uid: str, session_id: str
 
         routing_request = RoutingRequest(
             user_message=msg_clean,
-            recent_history=tuple(
-                str(msg.content) if hasattr(msg, "content") else str(msg)
-                for msg in chat_history[-6:]
-            ),
+            recent_history=tuple(recent_routing_turns(chat_history)),
             active_tasks=active_tasks,
+            previous_handler=latest_routing_handler(chat_history),
         )
 
         candidates = await capability_index.retrieve(routing_request)
@@ -88,17 +90,17 @@ async def handle_chat(user_message: str, catalog, user_uid: str, session_id: str
 
         route_decision = planner_result.value
 
-        # --- TEMPORARY SHIM FOR LEGACY HANDLERS ---
-        from app.core.intent.service import IntentService
-        from app.core.intent.master_intent import MasterIntentSchema as ParsedIntent
+        from app.core.extraction.service import EntityExtractor
+        from app.core.extraction.extractor import ExtractedEntities
 
-        if route_decision.handler_name != "build_pc":
-            intent_service = IntentService()
-            intent_result = await intent_service.parse(message=msg_clean, history=chat_history)
-            parsed_intent = intent_result.value or ParsedIntent(intent="none")
-        else:
-            parsed_intent = ParsedIntent(intent="build_pc")
-        # -------------------------------------------
+        # Bước 2: Extract Entities (Stateless, based solely on rewritten query)
+        extractor = EntityExtractor()
+        entities_result = await extractor.extract_entities(
+            message=route_decision.rewritten_query, 
+            handler_name=route_decision.handler_name
+        )
+        
+        parsed_entities = entities_result.value if entities_result.value else ExtractedEntities(intent=route_decision.handler_name)
 
         # 5. Dispatch
         domain_handler = handler_registry.get_handler(route_decision.handler_name)
@@ -112,7 +114,7 @@ async def handle_chat(user_message: str, catalog, user_uid: str, session_id: str
         
         chat_result = await domain_handler.handle(
             request=domain_req,
-            intent=parsed_intent,
+            entities=parsed_entities,
             route_decision=route_decision,
         )
 
@@ -121,7 +123,7 @@ async def handle_chat(user_message: str, catalog, user_uid: str, session_id: str
             general_handler = handler_registry.get_handler("general_chat")
             chat_result = await general_handler.handle(
                 request=domain_req,
-                intent=ParsedIntent(intent="none"),
+                entities=ExtractedEntities(intent="general_chat"),
                 route_decision=route_decision,
             )
 

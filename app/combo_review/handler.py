@@ -6,13 +6,12 @@ from app.compatibility.compat_logic import (
     check_cpu_main_compat,
     check_gpu_main_compat,
 )
-from app.core.intent.history_context import build_intent_metadata
 from app.memory.context_manager import ConversationContext
 from app.pc_builder.formatter import format_approx_million
 from app.chat.models import DomainRequest, ChatResult
 from app.chat.contracts import DomainHandler
 from app.routing.models import RouteDecision
-from app.core.intent.master_intent import MasterIntentSchema as ParsedIntent
+from app.core.extraction.extractor import ExtractedEntities
 from app.catalog import ShopCatalog
 def _build_models(user_message: str, catalog: ShopCatalog) -> tuple[str, str, str] | None:
     match = re.search(r'\bBUILD[-_]\d+\b', user_message, re.IGNORECASE)
@@ -74,13 +73,13 @@ class ComboReviewHandler(DomainHandler):
     async def handle(
         self,
         request: DomainRequest,
-        intent: ParsedIntent,
+        entities: ExtractedEntities,
         route_decision: RouteDecision | None = None,
     ) -> ChatResult:
         user_message = request.user_message
         catalog = self._catalog
 
-        names = (intent.cpu, intent.mainboard, intent.gpu)
+        names = (entities.cpu, entities.mainboard, entities.gpu)
         if any(not name or name.lower() == 'none' for name in names):
             names = _build_models(user_message, catalog) or names
 
@@ -97,12 +96,12 @@ class ComboReviewHandler(DomainHandler):
             reply=reply,
             contexts=[],
             metadata={
-                "intent": intent.intent,
-                "target_product": intent.target_product,
-                "category": intent.category,
-                "cpu": intent.cpu,
-                "gpu": intent.gpu,
-                "mainboard": intent.mainboard,
-                "spec_detail": intent.spec_detail,
+                "intent": entities.intent,
+                "target_product": entities.target_product,
+                "category": entities.category,
+                "cpu": entities.cpu,
+                "gpu": entities.gpu,
+                "mainboard": entities.mainboard,
+                "spec_detail": entities.spec_detail,
             }
         )

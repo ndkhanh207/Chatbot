@@ -1,7 +1,7 @@
 from typing import Any
 from app.chat.contracts import DomainHandler
 from app.chat.models import DomainRequest, ChatResult
-from app.core.intent.master_intent import MasterIntentSchema as ParsedIntent
+from app.core.extraction.extractor import ExtractedEntities
 from app.catalog import ShopCatalog, ProductQuery
 from app.catalog.lookup import resolve_component
 from app.rag.models import EvidencePackage, EvidenceItem, GroundedAnswerRequest
@@ -15,21 +15,21 @@ class SuggestionHandler:
     def __init__(self, catalog: ShopCatalog):
         self._catalog = catalog
 
-    async def handle(self, request: DomainRequest, intent: ParsedIntent, route_decision=None) -> ChatResult:
-        candidates = [("cpu", intent.cpu), ("mainboard", intent.mainboard), ("gpu", intent.gpu)]
+    async def handle(self, request: DomainRequest, entities: ExtractedEntities, route_decision=None) -> ChatResult:
+        candidates = [("cpu", entities.cpu), ("mainboard", entities.mainboard), ("gpu", entities.gpu)]
         owned = [(t, n) for t, n in candidates if n and n.strip().lower() != "none"]
         
         if len(owned) != 1:
             reply = response_renderer.render(ResponseCode.MISSING_ORIGIN_COMPONENT)
             return ChatResult(
                 reply=reply,
-                metadata={"intent": intent.intent}
+                metadata={"intent": entities.intent}
             )
 
         have_type, have_name = owned[0]
         
         # Validate logic
-        if intent.category and intent.category.strip().lower() == have_type:
+        if entities.category and entities.category.strip().lower() == have_type:
             type_display = {"cpu": "CPU", "mainboard": "Mainboard", "gpu": "Card màn hình"}.get(have_type, have_type.capitalize())
             reply = response_renderer.render(
                 ResponseCode.NO_COMPATIBLE_SUGGESTIONS, # using fallback since we can't do this
@@ -43,18 +43,18 @@ class SuggestionHandler:
             )
             return ChatResult(
                 reply=reply,
-                metadata={"intent": intent.intent}
+                metadata={"intent": entities.intent}
             )
 
         supported_categories = ["cpu", "mainboard", "gpu", "vga", "none"]
-        if intent.category and intent.category.strip().lower() not in supported_categories:
+        if entities.category and entities.category.strip().lower() not in supported_categories:
             reply = response_renderer.render(
                 ResponseCode.SUGGESTION_NOT_SUPPORTED,
-                facts={"category": intent.category}
+                facts={"category": entities.category}
             )
             return ChatResult(
                 reply=reply,
-                metadata={"intent": intent.intent}
+                metadata={"intent": entities.intent}
             )
 
         have_item = resolve_component(have_name, CATEGORY_MAP.get(have_type, have_type.upper()), self._catalog)
@@ -65,7 +65,7 @@ class SuggestionHandler:
             )
             return ChatResult(
                 reply=reply,
-                metadata={"intent": intent.intent}
+                metadata={"intent": entities.intent}
             )
 
         # Retrieve inventory to match against
@@ -98,14 +98,14 @@ class SuggestionHandler:
 
         evidence = EvidencePackage(
             query=request.user_message,
-            intent=intent.intent,
+            intent=entities.intent,
             items=items
         )
 
         generation = await generate_grounded_answer(
             GroundedAnswerRequest(
                 user_message=request.user_message,
-                intent=intent.intent,
+                intent=entities.intent,
                 evidence=evidence
             )
         )
@@ -115,14 +115,14 @@ class SuggestionHandler:
                 reply=generation.value.answer,
                 contexts=[item.source_id for item in evidence.items],
                 metadata={
-                    "intent": intent.intent,
+                    "intent": entities.intent,
                     "source_ids": generation.value.used_source_ids,
-                    "target_product": intent.target_product,
-                    "category": intent.category,
-                    "cpu": intent.cpu,
-                    "gpu": intent.gpu,
-                    "mainboard": intent.mainboard,
-                    "spec_detail": intent.spec_detail,
+                    "target_product": entities.target_product,
+                    "category": entities.category,
+                    "cpu": entities.cpu,
+                    "gpu": entities.gpu,
+                    "mainboard": entities.mainboard,
+                    "spec_detail": entities.spec_detail,
                 },
             )
 

@@ -12,6 +12,46 @@ SnapshotT = TypeVar("SnapshotT", bound=BaseModel)
 CONTEXT_VERSION = 1
 
 
+def recent_user_messages(
+    messages: list[BaseMessage],
+    limit: int = 3,
+) -> list[BaseMessage]:
+    """Return user-authored context only; generated replies are not model input."""
+    if limit <= 0:
+        return []
+    return [message for message in messages if message.type == "human"][-limit:]
+
+
+def recent_routing_turns(
+    messages: list[BaseMessage],
+    limit: int = 3,
+) -> list[str]:
+    """Prior user text plus the planner-selected handler; never assistant prose."""
+    turns = []
+    pending_user = None
+    for message in messages:
+        if message.type == "human":
+            pending_user = message.content
+            continue
+        if message.type != "ai" or pending_user is None:
+            continue
+        handler = message.additional_kwargs.get("intent")
+        suffix = f" [previous_handler={handler}]" if handler else ""
+        turns.append(f"user{suffix}: {pending_user}")
+        pending_user = None
+
+    if pending_user is not None:
+        turns.append(f"user: {pending_user}")
+    return turns[-limit:] if limit > 0 else []
+
+
+def latest_routing_handler(messages: list[BaseMessage]) -> str | None:
+    for message in reversed(messages):
+        if message.type == "ai" and message.additional_kwargs.get("intent"):
+            return str(message.additional_kwargs["intent"])
+    return None
+
+
 class ConversationContext:
     """Own one user's session history, snapshots, and lifecycle."""
 

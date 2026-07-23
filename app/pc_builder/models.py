@@ -25,16 +25,6 @@ class PendingQuestion(str, Enum):
     DROP_CONSTRAINT = "drop_constraint"
 
 
-class ResponseMode(str, Enum):
-    BUDGET_GAP = "budget_gap"
-    UNAVAILABLE = "unavailable"
-    MISSING_BUILD = "missing_build"
-    INVALID_BUDGET = "invalid_budget"
-    MISSING_BUDGET = "missing_budget"
-    MISSING_PURPOSE = "missing_purpose"
-    BUILD_QA = "build_qa"
-
-
 class PcBuildAction(str, Enum):
     CREATE = "create"
     UPDATE = "update"
@@ -56,6 +46,7 @@ class PcBuildContext(BaseModel):
     budget: int | None = None
     quantity: int = Field(default=1, ge=1)
     purpose: str | None = None
+    purpose_status: Literal["ready", "clarify"] | None = None
 
     required_components: dict[str, str] = Field(default_factory=dict)
     preferred_components: dict[str, list[str]] = Field(default_factory=dict)
@@ -70,6 +61,7 @@ class PcBuildCommand(BaseModel):
     budget: int | None = None
     budget_scope: BudgetScope = "unknown"
     purpose: str | None = None
+    purpose_status: Literal["ready", "clarify"] | None = None
     quantity: int | None = Field(default=None, ge=1, le=100)
 
     required_components: dict[str, str] = Field(default_factory=dict)

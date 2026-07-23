@@ -1,7 +1,5 @@
-from typing import Any
-from app.chat.contracts import DomainHandler
 from app.chat.models import DomainRequest, ChatResult
-from app.core.intent.master_intent import MasterIntentSchema as ParsedIntent
+from app.core.extraction.extractor import ExtractedEntities
 from app.catalog import ShopCatalog, ProductQuery
 from app.rag.models import EvidencePackage, EvidenceItem, GroundedAnswerRequest
 from app.rag.generator import generate_grounded_answer
@@ -12,7 +10,7 @@ class ProductSearchHandler:
     def __init__(self, catalog: ShopCatalog):
         self._catalog = catalog
 
-    async def handle(self, request: DomainRequest, intent: ParsedIntent, route_decision=None) -> ChatResult:
+    async def handle(self, request: DomainRequest, entities: ExtractedEntities, route_decision=None) -> ChatResult:
         query = self._build_product_query(request.user_message, intent)
         
         matches = self._catalog.search_products(query)
@@ -24,7 +22,7 @@ class ProductSearchHandler:
             )
             return ChatResult(
                 reply=reply,
-                metadata={"intent": intent.intent}
+                metadata={"intent": entities.intent}
             )
 
         items = []
@@ -50,14 +48,14 @@ class ProductSearchHandler:
 
         evidence = EvidencePackage(
             query=request.user_message,
-            intent=intent.intent,
+            intent=entities.intent,
             items=items
         )
 
         generation = await generate_grounded_answer(
             GroundedAnswerRequest(
                 user_message=request.user_message,
-                intent=intent.intent,
+                intent=entities.intent,
                 evidence=evidence
             )
         )
@@ -67,26 +65,26 @@ class ProductSearchHandler:
                 reply=generation.value.answer,
                 contexts=[item.source_id for item in evidence.items],
                 metadata={
-                    "intent": intent.intent,
+                    "intent": entities.intent,
                     "source_ids": generation.value.used_source_ids,
-                    "target_product": intent.target_product,
-                    "category": intent.category,
-                    "cpu": intent.cpu,
-                    "gpu": intent.gpu,
-                    "mainboard": intent.mainboard,
-                    "spec_detail": intent.spec_detail,
+                    "target_product": entities.target_product,
+                    "category": entities.category,
+                    "cpu": entities.cpu,
+                    "gpu": entities.gpu,
+                    "mainboard": entities.mainboard,
+                    "spec_detail": entities.spec_detail,
                 },
             )
 
         return self._format_fallback(evidence)
 
-    def _build_product_query(self, message: str, intent: ParsedIntent) -> ProductQuery:
+    def _build_product_query(self, message: str, entities: ExtractedEntities) -> ProductQuery:
         return ProductQuery(
             text=message,
-            category=intent.category or "",
+            category=entities.category or "",
             price_max=(
-                int(intent.budget_amount)
-                if intent.intent == "budget_search" and getattr(intent, 'budget_amount', 0) > 0
+                int(entities.budget_amount)
+                if getattr(intent, "budget_amount", 0) > 0
                 else None
             ),
             limit=5,

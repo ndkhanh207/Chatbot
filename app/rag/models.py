@@ -11,6 +11,7 @@ class EvidenceItem(BaseModel):
         "build",
         "compatibility_report",
         "calculation",
+        "pc_builder_state",
     ]
     facts: dict[str, Any] = Field(default_factory=dict)
 
@@ -32,3 +33,9 @@ class GroundedAnswerRequest(BaseModel):
 class GroundedAnswer(BaseModel):
     answer: str
     used_source_ids: list[str] = Field(default_factory=list)
+    grounded_status: Literal[
+        "compatible",
+        "incompatible",
+        "not_directly_checkable",
+        "unknown",
+    ] | None = None

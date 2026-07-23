@@ -1,947 +1,606 @@
-"""Generate exact production PC Builder decision and state-update examples."""
+"""Generate PC Builder command-extraction SFT data from the production prompt."""
 
 from __future__ import annotations
 
 import json
 import random
 import sys
-from collections import Counter
 from pathlib import Path
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT))
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
-from app.catalog import BuildQuery, ShopCatalog
-from app.pc_builder.context import PcBuildContext
-from app.pc_builder.formatter import format_approx_million, format_build_context
-from pydantic import BaseModel, Field, model_validator
-import typing
-from typing import Literal
-from app.pc_builder.reranker import (
-    PcBuildDecision,
-    _candidate_projection,
-    _validate_decision,
-    _validate_response,
+from app.pc_builder.extractor import build_extraction_messages
+from app.pc_builder.models import (
+    PcBuildAction,
+    PcBuildCommand,
+    PcBuildContext,
+    PcBuildStatus,
+    PendingQuestion,
 )
+from app.routing.models import RouteDecision, TaskRelation
 
-ComponentCategory = Literal["cpu", "gpu", "mainboard"]
 
-class PcBuildTurnPlan(BaseModel):
-    route: Literal["pass", "recommend", "current_build_qa"] = "recommend"
-    session_action: Literal["continue", "reset", "alternative"] = "continue"
-    budget_action: Literal["keep", "set", "delta", "clear", "invalid"] = "keep"
-    budget_value: int | None = None
-    quantity: int | None = Field(default=None, ge=1)
-    set_components: list[ComponentCategory] = Field(default_factory=list, max_length=3)
-    lock_components: list[ComponentCategory] = Field(default_factory=list, max_length=3)
-    remove_components: list[ComponentCategory] = Field(default_factory=list, max_length=3)
-    mandatory_brands: dict[ComponentCategory | Literal["any"], str] = Field(default_factory=dict)
-    remove_brands: list[ComponentCategory | Literal["any"]] = Field(default_factory=list, max_length=4)
-    price_order: Literal["asc", "desc"] | None = None
-
-    @model_validator(mode="after")
-    def validate_plan(self):
-        groups = (
-            self.set_components,
-            self.lock_components,
-            self.remove_components,
-        )
-        changed = [category for group in groups for category in group]
-        if len(changed) != len(set(changed)):
-            raise ValueError("A component category can have only one update operation")
-        if self.budget_action in {"set", "delta"} and self.budget_value is None:
-            raise ValueError("Budget value is required")
-        if self.budget_action == "set" and self.budget_value is not None and self.budget_value <= 0:
-            raise ValueError("A new budget must be positive")
-        if self.budget_action not in {"set", "delta"} and self.budget_value is not None:
-            raise ValueError("Budget value is not allowed for this action")
-        return self
-
-def _validate_turn_plan(plan: PcBuildTurnPlan, turn: dict) -> PcBuildTurnPlan:
-    mentions = turn.get("catalog_mentions", {})
-    component_mentions = set(mentions.get("components", {}))
-    current = set(turn.get("context", {}).get("required_components", {}))
-    current_build = set((turn.get("current_build") or {}).get("components", {}))
-    if not set(plan.set_components) <= component_mentions:
-        raise ValueError("Turn plan references an unrecognized component")
-    if not set(plan.lock_components) <= current_build:
-        raise ValueError("Turn plan locks a component outside the current build")
-    if not set(plan.remove_components) <= current:
-        raise ValueError("Turn plan removes a component that is not constrained")
-    brand_mentions = mentions.get("brands", {})
-    for category, brand in plan.mandatory_brands.items():
-        categories = set(brand_mentions.get(brand, []))
-        if not categories or (category != "any" and category not in categories):
-            raise ValueError("Turn plan references an unrecognized brand")
-    if not set(plan.remove_brands) <= set(turn.get("context", {}).get("mandatory_brands", {})):
-        raise ValueError("Turn plan removes a brand that is not constrained")
-    return plan
-
-from app.templates.prompt_templates import (
-    PC_BUILD_RERANK_TEMPLATE,
-    PC_BUILD_TURN_TEMPLATE,
-)
-
-CATALOG_DIR = ROOT / "data" / "dataset"
 OUTPUT = Path(__file__).with_name("pc_builder_adaptive.jsonl")
 SEED = 3407
+LEGACY_ROW_COUNT = 417
 
-VAGUE_REQUIREMENTS = (
-    "build pc cho mình",
-    "mình cần một bộ máy mạnh",
-    "tư vấn máy tính để bàn",
-    "chọn giúp mình một cấu hình",
-    "mình muốn mua máy mới",
-    "cần một bộ PC ổn",
-    "tư vấn dàn máy phù hợp",
-    "mình cần máy để dùng lâu dài",
-    "chọn một bộ PC tốt",
-    "mình muốn ráp máy",
+PURPOSES = (
+    "chơi Valorant 1080p 240 FPS",
+    "chơi game AAA 2K 60 FPS ở thiết lập cao",
+    "chơi lẫn eSports và game AAA",
+    "stream trong lúc chơi game 2K",
+    "dựng video Premiere 4K hằng ngày",
+    "render Blender cảnh 3D lớn",
+    "huấn luyện mô hình AI cục bộ",
+    "chạy nhiều máy ảo và Docker",
+    "xử lý dữ liệu doanh nghiệp nặng",
+    "lập trình và biên dịch dự án lớn",
+    "làm AutoCAD và Revit chuyên nghiệp",
+    "chỉnh ảnh Photoshop số lượng lớn",
+    "văn phòng nhẹ với Word và trình duyệt",
+    "Excel lớn và Power BI",
+    "phát triển game bằng Unreal Engine",
+    "sản xuất nhạc với nhiều plugin",
+    "thiết kế đồ họa Illustrator",
+    "mô phỏng kỹ thuật và tính toán khoa học",
+    "máy trạm cho đội phân tích dữ liệu",
+    "máy doanh nghiệp chạy tác vụ liên tục",
+    "soạn Word, email, phần mềm kế toán và dưới 15 tab trình duyệt",
+    "nhập liệu, in hóa đơn và họp trực tuyến hằng ngày",
+    "quản lý bán hàng, trình duyệt và bộ Office cơ bản",
+    "làm lễ tân với web, email và phần mềm đặt lịch",
+    "học trực tuyến, soạn tài liệu và xem video",
+    "máy thu ngân chạy phần mềm POS và trình duyệt",
+    "Excel hàng triệu dòng, Power Query và Power BI hằng ngày",
+    "xử lý ETL, truy vấn SQL lớn và nhiều bảng dữ liệu",
+    "chạy mô hình tài chính lớn và nhiều file Excel đồng thời",
+    "phân tích dữ liệu Python, Jupyter và cơ sở dữ liệu cục bộ",
+    "chạy nhiều máy ảo, Docker và biên dịch song song",
+    "vận hành dashboard doanh nghiệp trên nhiều màn hình liên tục",
+    "chơi Valorant và CS2 1080p 360 FPS để thi đấu",
+    "chơi CS2 1080p 240 FPS và ưu tiên độ trễ thấp",
+    "chơi Liên Minh 1440p 165 FPS và stream",
+    "chơi nhiều game eSports ở 1080p tần số quét cao",
+    "chơi game AAA 1080p mức cao 60 FPS",
+    "chơi game AAA 1440p ultra 90 FPS",
+    "chơi game AAA 4K mức cao có ray tracing",
+    "chơi Cyberpunk, Alan Wake 2 và Black Myth Wukong ở 2K",
+    "chơi xen kẽ Valorant 240 FPS và game AAA 2K 60 FPS",
+    "stream eSports 1080p đồng thời ghi hình",
+    "chơi game mô phỏng nặng CPU và game AAA 1440p",
+    "chơi game VR độ phân giải cao và game AAA",
 )
 
-VAGUE_GAMING_REQUIREMENTS = (
-    "tư vấn bộ pc chơi game",
-    "build pc gaming cho mình",
-    "mình cần máy để chơi game",
-    "chọn giúp mình một bộ pc gaming",
-    "ráp máy chơi game",
-    "cần cấu hình gaming tốt",
-    "mình muốn mua máy gaming",
-    "tư vấn dàn máy để chơi game",
-    "build bộ máy chuyên gaming",
-    "chọn pc chơi game giúp mình",
+VAGUE_PURPOSES = (
+    "chơi game",
+    "làm văn phòng",
+    "làm AI",
+    "làm đồ họa",
+    "dựng phim",
+    "lập trình",
+    "render",
+    "stream",
+    "học tập",
+    "làm việc",
+    "dùng lâu dài",
+    "cần máy mạnh",
+    "dùng cho văn phòng",
+    "chơi eSports",
+    "chơi game AAA",
+    "xử lý dữ liệu",
 )
 
-GAMING_CLARIFICATION_QUESTIONS = (
-    "Bạn chủ yếu chơi eSports, game AAA hay kết hợp cả hai?",
-    "Bạn ưu tiên tốc độ khung hình cao hay chất lượng hình ảnh?",
-    "Những trò chơi bạn sử dụng thường xuyên nhất là gì?",
-    "Bạn muốn tối ưu cho thi đấu eSports hay trải nghiệm game nặng?",
-    "Bạn ưu tiên chơi game ở độ phân giải hay độ mượt như thế nào?",
-    "Bạn thường chơi thể loại game nào và mong muốn chất lượng hình ảnh ra sao?",
-    "Nhu cầu gaming chính của bạn là eSports, AAA hay phát trực tiếp khi chơi?",
-    "Bạn cần máy tập trung vào game cạnh tranh hay game có đồ họa nặng?",
-    "Mục tiêu gaming quan trọng nhất của bạn là độ mượt hay chất lượng hình ảnh?",
-    "Bạn dự định chơi game nào nhiều nhất trên bộ máy này?",
-)
-
-CLARIFICATION_QUESTIONS = (
-    "Bạn sẽ dùng máy chủ yếu cho công việc hoặc hình thức giải trí cụ thể nào?",
-    "Phần mềm hoặc trò chơi chính bạn dự định sử dụng là gì?",
-    "Khối lượng công việc thường ngày của bạn nặng đến mức nào?",
-    "Bạn cần ưu tiên tốc độ xử lý, hình ảnh hay chạy nhiều tác vụ?",
-    "Mục tiêu sử dụng quan trọng nhất của bộ máy là gì?",
-    "Bạn thường chạy công việc nào lâu hoặc thường xuyên nhất?",
-    "Bạn cần máy đáp ứng phần mềm hay loại tác vụ cụ thể nào?",
-    "Mức tải thực tế bạn dự định chạy trên máy là nhẹ, vừa hay nặng?",
-    "Bạn muốn tối ưu bộ máy cho nhu cầu cụ thể nào nhất?",
-    "Công việc chính quyết định hiệu năng của bộ máy là gì?",
-)
-
-DETAIL_PREFIXES = (
-    "Cần máy chuyên cho",
-    "Mình dùng máy hằng ngày để",
-    "Cấu hình phải xử lý tốt",
-    "Tư vấn máy phục vụ",
-    "Công việc chính của mình là",
-)
-
-KEEP_MESSAGES = (
-    "ưu tiên GPU hơn CPU",
-    "mình chủ yếu chơi game AAA ở 2K 60 FPS",
-    "công việc là dựng video Premiere hằng ngày",
-    "mình chạy nhiều máy ảo và Docker",
-    "ưu tiên máy ổn định để xử lý dữ liệu nặng",
-    "mình chơi eSports ở tần số quét cao",
-    "cần stream đồng thời khi chơi game",
-    "mình dùng Blender để render cảnh lớn",
-    "cần chạy mô hình AI và xử lý dữ liệu",
-    "công việc văn phòng gồm bảng tính lớn và nhiều tab",
-)
+COMPONENTS = {
+    "cpu": (
+        "Intel Core i5-13600K",
+        "Intel Core i7-14700K",
+        "Intel Core i9-14900K",
+        "AMD Ryzen 5 7600X",
+        "AMD Ryzen 7 7800X3D",
+        "AMD Ryzen 9 7950X",
+        "Intel Core i5-12400F",
+        "AMD Ryzen 9 9950X",
+    ),
+    "gpu": (
+        "NVIDIA GeForce RTX 4060",
+        "NVIDIA GeForce RTX 4070 SUPER",
+        "NVIDIA GeForce RTX 4080 SUPER",
+        "NVIDIA GeForce RTX 4090",
+        "AMD Radeon RX 7600",
+        "AMD Radeon RX 7800 XT",
+        "AMD Radeon RX 7900 XTX",
+        "Intel Arc A770",
+    ),
+    "mainboard": (
+        "MSI PRO B650M-A WIFI",
+        "Gigabyte B760 DS3H AX DDR5",
+        "ASUS TUF GAMING Z790-PLUS WIFI",
+        "ASRock B650E Steel Legend WiFi",
+        "MSI MAG B850 TOMAHAWK WIFI",
+        "Gigabyte X670 AORUS ELITE AX",
+        "ASUS PRIME H610M-K D4",
+        "ASRock Z890 Pro RS WiFi",
+    ),
+}
 
 
-def _request(
-    requirements: list[str],
-    budget: int | None,
+def _command(**values: Any) -> PcBuildCommand:
+    return PcBuildCommand(**values)
+
+
+def _context(**values: Any) -> PcBuildContext:
+    defaults = {
+        "status": PcBuildStatus.SELECTED,
+        "build_id": "BUILD-01234",
+        "budget": 30_000_000,
+        "purpose": "chơi game AAA 2K",
+    }
+    defaults.update(values)
+    return PcBuildContext(**defaults)
+
+
+def _route(
+    message: str,
+    relation: TaskRelation,
+) -> RouteDecision:
+    return RouteDecision(
+        handler_name="build_pc",
+        rewritten_query=message,
+        task_relation=relation,
+        active_task_id=None if relation == TaskRelation.NEW_REQUEST else "pc-build",
+    )
+
+
+def _row(
+    message: str,
+    command: PcBuildCommand,
     *,
-    components: dict[str, str] | None = None,
-    brands: dict[str, str] | None = None,
-    quantity: int = 1,
-    clarification_count: int = 0,
-    force_select: bool = False,
-    response_mode: str | None = None,
-    response_facts: dict | None = None,
-    selection_facts: dict | None = None,
-) -> dict:
-    return {
-        "requirements": requirements,
-        "budget": budget,
-        "components": components or {},
-        "mandatory_brands": brands or {},
-        "quantity": quantity,
-        "clarification_count": clarification_count,
-        "force_select": force_select,
-        "response_mode": response_mode,
-        "response_facts": response_facts or {},
-        "selection_facts": selection_facts or {},
-    }
-
-
-def _retrieve(catalog: ShopCatalog, request: dict) -> list:
-    candidates = catalog.search_builds(BuildQuery(
-        text=" ".join(request["requirements"]),
-        budget=request["budget"],
-        required_components=request["components"],
-        brands=request["mandatory_brands"],
-        limit=5,
-    ))
-    if len(candidates) < 3:
-        raise ValueError(f"Production retrieval returned only {len(candidates)} candidates")
-    return candidates
-
-
-def _reason(build) -> str:
-    purpose = build.detailed_purpose.strip()
-    return purpose
-
-
-def _row(request: dict, candidates: list, decision: PcBuildDecision) -> dict:
-    if request["response_mode"]:
-        decision = _validate_response(
-            decision,
-            candidates,
-            request["response_mode"],
-            request["response_facts"],
-        )
-    else:
-        decision = _validate_decision(
-            decision,
-            candidates,
-            bool(request["force_select"]),
-            request["selection_facts"],
-        )
-    request_json = json.dumps(request, ensure_ascii=False, separators=(",", ":"))
-    candidate_json = json.dumps(
-        [_candidate_projection(candidate) for candidate in candidates],
-        ensure_ascii=False,
-        separators=(",", ":"),
+    context: PcBuildContext | None = None,
+    relation: TaskRelation = TaskRelation.NEW_REQUEST,
+    history: list[dict[str, str]] | None = None,
+) -> dict[str, list[dict[str, str]]]:
+    messages = build_extraction_messages(
+        user_message=message,
+        recent_history=history or [],
+        current_context=context or PcBuildContext(),
+        route_decision=_route(message, relation),
     )
-    messages = PC_BUILD_RERANK_TEMPLATE.format_messages(
-        request_json=request_json,
-        candidate_json=candidate_json,
-    )
-    return {"messages": [
-        {"role": "system", "content": messages[0].content},
-        {"role": "user", "content": messages[1].content},
-        {"role": "assistant", "content": decision.model_dump_json()},
-    ]}
+    messages.append({
+        "role": "assistant",
+        "content": command.model_dump_json(),
+    })
+    return {"messages": messages}
 
 
-def _select_row(catalog: ShopCatalog, request: dict, candidates: list | None = None) -> dict:
-    candidates = candidates or _retrieve(catalog, request)
-    selected = candidates[0]
-    selection_facts = {
-        candidate.build_id: {
-            "quantity": f"{request['quantity']} bộ" if request["quantity"] > 1 else None,
-            "total_for_quantity": (
-                format_approx_million(candidate.total_price * request["quantity"])
-                if request["quantity"] > 1 else None
+def _create_rows() -> list[dict]:
+    rows: list[dict] = []
+
+    for index, purpose in enumerate(VAGUE_PURPOSES):
+        millions = 20 + index * 3
+        detailed_purpose = PURPOSES[index]
+        rows.append(_row(
+            f"build PC {millions} triệu để {purpose}",
+            _command(
+                action=PcBuildAction.CREATE,
+                budget=millions * 1_000_000,
+                budget_scope="total",
+                purpose=purpose,
+                purpose_status="clarify",
             ),
-        }
-        for candidate in candidates
-    }
-    request["selection_facts"] = selection_facts
-    selected_facts = selection_facts[selected.build_id]
-    response = format_build_context(selected)
-    if selected_facts["total_for_quantity"]:
-        response += (
-            f"- Số lượng: {selected_facts['quantity']}\n"
-            f"- Tổng cho số lượng này: {selected_facts['total_for_quantity']}\n"
-        )
-    return _row(request, candidates, PcBuildDecision(
-        action="select",
-        selected_build_id=selected.build_id,
-        recommendation_reason=_reason(selected),
-        response_text=response,
-    ))
+        ))
+        rows.append(_row(
+            f"tư vấn một bộ PC để {purpose}",
+            _command(
+                action=PcBuildAction.CREATE,
+                purpose=purpose,
+                purpose_status="clarify",
+            ),
+        ))
+        rows.append(_row(
+            f"build PC {millions} triệu để {purpose}, đừng hỏi thêm và tự chọn phương án phù hợp nhất",
+            _command(
+                action=PcBuildAction.CREATE,
+                budget=millions * 1_000_000,
+                budget_scope="total",
+                purpose=purpose,
+                purpose_status="ready",
+            ),
+        ))
+        rows.append(_row(
+            f"tư vấn một bộ PC để {purpose}, chọn luôn giúp mình không cần hỏi lại",
+            _command(
+                action=PcBuildAction.CREATE,
+                purpose=purpose,
+                purpose_status="ready",
+            ),
+        ))
+        rows.append(_row(
+            f"build PC {millions} triệu để {detailed_purpose}",
+            _command(
+                action=PcBuildAction.CREATE,
+                budget=millions * 1_000_000,
+                budget_scope="total",
+                purpose=detailed_purpose,
+            ),
+        ))
+        rows.append(_row(
+            f"tư vấn một bộ PC để {detailed_purpose}",
+            _command(
+                action=PcBuildAction.CREATE,
+                purpose=detailed_purpose,
+            ),
+        ))
+
+    for index, purpose in enumerate(PURPOSES):
+        for millions in (18 + index, 38 + index):
+            message = f"build PC ngân sách {millions} triệu để {purpose}"
+            rows.append(_row(message, _command(
+                action=PcBuildAction.CREATE,
+                budget=millions * 1_000_000,
+                budget_scope="total",
+                purpose=purpose,
+            )))
+
+        message = f"mình cần một bộ PC để {purpose}"
+        rows.append(_row(message, _command(
+            action=PcBuildAction.CREATE,
+            purpose=purpose,
+        )))
+
+    for millions in (10, 15, 20, 25, 30, 35, 40, 50, 70, 100):
+        message = f"tư vấn PC trong khoảng {millions} triệu"
+        rows.append(_row(message, _command(
+            action=PcBuildAction.CREATE,
+            budget=millions * 1_000_000,
+            budget_scope="total",
+        )))
+
+    for category, models in COMPONENTS.items():
+        for index, model in enumerate(models):
+            millions = 25 + index * 5
+            message = f"build PC {millions} triệu bắt buộc dùng {model}"
+            rows.append(_row(message, _command(
+                action=PcBuildAction.CREATE,
+                budget=millions * 1_000_000,
+                budget_scope="total",
+                required_components={category: model},
+            )))
+
+    workloads = PURPOSES[:10]
+    for index, quantity in enumerate(range(2, 12)):
+        millions = quantity * (18 + index)
+        purpose = workloads[index]
+        message = f"cần {quantity} bộ PC để {purpose}, tổng ngân sách {millions} triệu"
+        rows.append(_row(message, _command(
+            action=PcBuildAction.CREATE,
+            budget=millions * 1_000_000,
+            budget_scope="total",
+            purpose=purpose,
+            quantity=quantity,
+        )))
+
+        unit = 20 + index
+        message = f"mua {quantity} máy cho {purpose}, mỗi máy {unit} triệu"
+        rows.append(_row(message, _command(
+            action=PcBuildAction.CREATE,
+            budget=unit * 1_000_000,
+            budget_scope="per_unit",
+            purpose=purpose,
+            quantity=quantity,
+        )))
+
+    return rows
 
 
-def _turn(
-    catalog: ShopCatalog,
-    current_build,
-    latest_message: str,
-    current_components: dict[str, str] | None = None,
-) -> dict:
-    mentions = catalog.match_build_entities(latest_message)
-    context = PcBuildContext(
-        build_id=current_build.build_id if current_build else None,
-        requirements=["build pc theo nhu cầu"],
-        required_components=current_components or {},
-    )
-    return {
-        "latest_message": latest_message,
-        "pending_question": None,
-        "context": context.model_dump(exclude_none=True),
-        "catalog_mentions": {
-            "components": mentions.components,
-            "brands": {
-                brand: sorted(categories)
-                for brand, categories in mentions.brands.items()
-            },
-        },
-        "current_build": None if current_build is None else {
-            "build_id": current_build.build_id,
-            "components": {
-                category: part.model
-                for category, part in current_build.components.items()
-            },
-        },
-    }
+def _update_rows() -> list[dict]:
+    rows: list[dict] = []
+    current = _context()
+
+    for category, models in COMPONENTS.items():
+        for model in models:
+            message = f"đổi {category} của bộ hiện tại sang {model}"
+            rows.append(_row(
+                message,
+                _command(
+                    action=PcBuildAction.UPDATE,
+                    required_components={category: model},
+                ),
+                context=current,
+                relation=TaskRelation.MODIFY_TASK,
+            ))
+
+    preferences = ("mạnh hơn", "mát hơn", "ổn định hơn", "phù hợp công việc hơn")
+    for index, category in enumerate(("cpu", "gpu", "mainboard") * 4):
+        other = ("gpu", "mainboard", "cpu")[index % 3]
+        preference = preferences[index // 3]
+        message = f"giữ nguyên {category}, còn {other} thì ưu tiên loại {preference}"
+        rows.append(_row(
+            message,
+            _command(
+                action=PcBuildAction.UPDATE,
+                preferred_components={other: [preference]},
+                keep_components=[category],
+            ),
+            context=current,
+            relation=TaskRelation.MODIFY_TASK,
+        ))
+
+    for index, purpose in enumerate(PURPOSES):
+        message = f"đổi nhu cầu của bộ này sang {purpose}"
+        rows.append(_row(
+            message,
+            _command(action=PcBuildAction.UPDATE, purpose=purpose),
+            context=current,
+            relation=TaskRelation.MODIFY_TASK,
+            history=[
+                {"role": "user", "content": "tư vấn cho mình một bộ PC"},
+                {"role": "assistant", "content": "Bạn sẽ dùng máy chủ yếu cho công việc nào?"},
+            ],
+        ))
+
+    for millions in (12, 18, 24, 30, 36, 42, 50, 60, 80, 120):
+        message = f"đặt lại ngân sách của bộ hiện tại thành {millions} triệu"
+        rows.append(_row(
+            message,
+            _command(
+                action=PcBuildAction.UPDATE,
+                budget=millions * 1_000_000,
+                budget_scope="total",
+            ),
+            context=current,
+            relation=TaskRelation.MODIFY_TASK,
+        ))
+
+    for brand in ("NVIDIA", "AMD", "Intel", "ASUS", "MSI", "Gigabyte", "ASRock", "Zotac"):
+        message = f"bộ tiếp theo không dùng linh kiện hãng {brand}"
+        rows.append(_row(
+            message,
+            _command(action=PcBuildAction.UPDATE, excluded_brands=[brand]),
+            context=current,
+            relation=TaskRelation.MODIFY_TASK,
+        ))
+
+    return rows
 
 
-def _turn_row(turn: dict, plan: PcBuildTurnPlan) -> dict:
-    plan = _validate_turn_plan(plan, turn)
-    turn_json = json.dumps(turn, ensure_ascii=False, separators=(",", ":"))
-    messages = PC_BUILD_TURN_TEMPLATE.format_messages(turn_json=turn_json)
-    return {"messages": [
-        {"role": "system", "content": messages[0].content},
-        {"role": "user", "content": messages[1].content},
-        {"role": "assistant", "content": plan.model_dump_json()},
-    ]}
+def _context_rows() -> list[dict]:
+    rows: list[dict] = []
+
+    for millions in (8, 12, 16, 20, 25, 30, 40, 50, 75, 100):
+        message = f"{millions} triệu"
+        rows.append(_row(
+            message,
+            _command(
+                action=PcBuildAction.UPDATE,
+                budget=millions * 1_000_000,
+                budget_scope="total",
+            ),
+            context=_context(
+                status=PcBuildStatus.COLLECTING,
+                build_id=None,
+                budget=None,
+                purpose="chơi game AAA",
+                pending_question=PendingQuestion.BUDGET,
+            ),
+            relation=TaskRelation.CONTINUE_TASK,
+            history=[
+                {"role": "user", "content": "mình muốn build PC chơi game AAA"},
+                {"role": "assistant", "content": "Bạn dự trù ngân sách khoảng bao nhiêu?"},
+            ],
+        ))
+
+    budget_answers = (("500k", 500_000), ("750k", 750_000), ("2 củ", 2_000_000))
+    for message, budget in budget_answers:
+        rows.append(_row(
+            message,
+            _command(
+                action=PcBuildAction.UPDATE,
+                budget=budget,
+                budget_scope="total",
+            ),
+            context=_context(
+                status=PcBuildStatus.COLLECTING,
+                build_id=None,
+                budget=None,
+                purpose="máy văn phòng",
+                pending_question=PendingQuestion.BUDGET,
+            ),
+            relation=TaskRelation.CONTINUE_TASK,
+        ))
+
+    for purpose in PURPOSES[:10]:
+        rows.append(_row(
+            purpose,
+            _command(action=PcBuildAction.UPDATE, purpose=purpose),
+            context=_context(
+                status=PcBuildStatus.COLLECTING,
+                build_id=None,
+                budget=30_000_000,
+                purpose=None,
+                pending_question=PendingQuestion.PURPOSE,
+            ),
+            relation=TaskRelation.CONTINUE_TASK,
+            history=[
+                {"role": "user", "content": "mình có 30 triệu để build PC"},
+                {"role": "assistant", "content": "Bạn dùng máy chủ yếu cho nhu cầu nào?"},
+            ],
+        ))
+
+    for index, quantity in enumerate(range(2, 7)):
+        total = 50 + index * 20
+        message = f"{total} triệu là tổng cho cả {quantity} bộ"
+        rows.append(_row(
+            message,
+            _command(
+                action=PcBuildAction.UPDATE,
+                budget=total * 1_000_000,
+                budget_scope="total",
+            ),
+            context=_context(
+                status=PcBuildStatus.COLLECTING,
+                build_id=None,
+                budget=None,
+                quantity=quantity,
+                pending_question=PendingQuestion.BUDGET_SCOPE,
+            ),
+            relation=TaskRelation.CONTINUE_TASK,
+        ))
+
+        unit = 20 + index * 5
+        message = f"ngân sách {unit} triệu là cho mỗi máy"
+        rows.append(_row(
+            message,
+            _command(
+                action=PcBuildAction.UPDATE,
+                budget=unit * 1_000_000,
+                budget_scope="per_unit",
+            ),
+            context=_context(
+                status=PcBuildStatus.COLLECTING,
+                build_id=None,
+                budget=None,
+                quantity=quantity,
+                pending_question=PendingQuestion.BUDGET_SCOPE,
+            ),
+            relation=TaskRelation.CONTINUE_TASK,
+        ))
+
+    return rows
 
 
-def _budget_row(candidate, budget: int, quantity: int) -> dict:
-    facts = {
-        "minimum_per_unit": format_approx_million(candidate.total_price),
-        "minimum_total": (
-            format_approx_million(candidate.total_price * quantity)
-            if quantity > 1 else None
-        ),
-        "budget_per_unit": format_approx_million(budget),
-        "quantity": f"{quantity} bộ" if quantity > 1 else None,
-    }
-    if quantity > 1:
-        message = (
-            f"Với {facts['quantity']}, cấu hình hợp lệ rẻ nhất có giá {facts['minimum_per_unit']} mỗi bộ, "
-            f"tổng cộng {facts['minimum_total']}, trong khi ngân sách hiện tại là "
-            f"{facts['budget_per_unit']} mỗi bộ. Bạn muốn tăng ngân sách mỗi bộ hay thay đổi yêu cầu?"
-        )
-    else:
-        message = (
-            f"Giá mỗi bộ thấp nhất đáp ứng đầy đủ yêu cầu là {facts['minimum_per_unit']}, "
-            f"cao hơn ngân sách {facts['budget_per_unit']}. Bạn muốn tăng ngân sách hay điều chỉnh yêu cầu?"
-        )
-    request = _request(
-        ["build pc"],
-        budget,
-        quantity=quantity,
-        response_mode="budget_gap",
-        response_facts=facts,
-    )
-    return _row(request, [candidate], PcBuildDecision(
-        action="respond",
-        response_text=message,
-    ))
+def _control_and_edge_rows() -> list[dict]:
+    rows: list[dict] = []
+    current = _context()
 
+    for message in (
+        "cho mình một cấu hình khác",
+        "đề xuất bộ khác nhưng giữ nguyên nhu cầu",
+        "mình muốn xem phương án thay thế",
+        "còn lựa chọn nào khác không",
+        "đổi sang bộ khác cùng ngân sách",
+        "tìm một cấu hình khác cho mình",
+        "không chọn bộ này, xem bộ kế tiếp",
+        "giữ yêu cầu cũ và chọn máy khác",
+    ):
+        rows.append(_row(
+            message,
+            _command(action=PcBuildAction.ALTERNATIVE),
+            context=current,
+            relation=TaskRelation.MODIFY_TASK,
+        ))
 
-def _unavailable_constraints(catalog: ShopCatalog, builds: list) -> list[dict[str, str]]:
-    from app.catalog.catalog import normalize
-    
-    existing_pairs = set()
-    for build in builds:
-        cpu = normalize(build.components["cpu"].model)
-        gpu = normalize(build.components["gpu"].model)
-        existing_pairs.add((cpu, gpu))
-        
-    combinations = []
-    for cpu_build in builds:
-        for gpu_build in reversed(builds):
-            cpu_model = cpu_build.components["cpu"].model
-            gpu_model = gpu_build.components["gpu"].model
-            
-            cpu_norm = normalize(cpu_model)
-            gpu_norm = normalize(gpu_model)
-            
-            if (cpu_norm, gpu_norm) not in existing_pairs:
-                components = {"cpu": cpu_model, "gpu": gpu_model}
-                if components not in combinations:
-                    combinations.append(components)
-                    if len(combinations) == 5:
-                        return combinations
-    raise RuntimeError("Catalog does not contain five unavailable component combinations")
+    for message in (
+        "làm lại yêu cầu build PC từ đầu",
+        "xóa cấu hình hiện tại và bắt đầu lại",
+        "bỏ hết yêu cầu cũ",
+        "reset bộ PC đang tư vấn",
+        "quên cấu hình này đi, mình làm lại",
+        "hủy trạng thái build PC hiện tại",
+    ):
+        rows.append(_row(
+            message,
+            _command(action=PcBuildAction.RESET),
+            context=current,
+            relation=TaskRelation.MODIFY_TASK,
+        ))
 
+    for message in (
+        "bộ hiện tại dùng CPU gì",
+        "GPU của cấu hình này là model nào",
+        "mainboard trong bộ này có WiFi không",
+        "tổng giá cấu hình hiện tại bao nhiêu",
+        "bộ này chơi Cyberpunk 2K ổn không",
+        "cấu hình đang chọn phù hợp công việc gì",
+        "bộ hiện tại có điểm gì cần lưu ý",
+        "CPU và GPU của máy này có cân bằng không",
+        "mã BuildID của bộ đang chọn là gì",
+        "cấu hình này dùng card hãng nào",
+    ):
+        rows.append(_row(
+            message,
+            _command(action=PcBuildAction.QUESTION_CURRENT_BUILD),
+            context=current,
+            relation=TaskRelation.TASK_QUESTION,
+        ))
 
-def _different_build(builds: list, current, category: str, offset: int):
-    for candidate in builds[offset:] + builds[:offset]:
-        if candidate.components[category].model != current.components[category].model:
-            return candidate
-    raise RuntimeError(f"Catalog has no alternative {category} model")
+    for message, purpose in (
+        ("build PC chơi game 2K 60 FPS", "chơi game 2K 60 FPS"),
+        ("cần máy chơi game 4K 120 FPS", "chơi game 4K 120 FPS"),
+        ("máy dựng video 4K mỗi ngày", "dựng video 4K mỗi ngày"),
+        ("PC eSports 1080p 240 FPS", "eSports 1080p 240 FPS"),
+        ("máy render cảnh 8K", "render cảnh 8K"),
+        ("PC stream 1440p 60 FPS", "stream 1440p 60 FPS"),
+        ("máy AI chạy mô hình 7B", "AI chạy mô hình 7B"),
+        ("workstation dùng bốn màn hình", "dùng bốn màn hình"),
+    ):
+        rows.append(_row(message, _command(
+            action=PcBuildAction.CREATE,
+            purpose=purpose,
+        )))
 
+    for millions in (5, 10, 20, 30, 50):
+        message = f"build PC âm {millions} triệu"
+        rows.append(_row(message, _command(
+            action=PcBuildAction.CREATE,
+            budget=-millions * 1_000_000,
+            budget_scope="total",
+        )))
 
-def _workload_records(builds: list) -> list:
-    unique = {}
-    for build in builds:
-        workload = str(build.attributes.get("Primary_Workload", "")).strip()
-        purpose_code = str(build.attributes.get("Purpose_Code", "")).strip()
-        if workload and purpose_code:
-            unique.setdefault((purpose_code, workload), build)
-    return [unique[key] for key in sorted(unique)]
-
-
-def _common_components(builds: list) -> list[tuple[str, str]]:
-    counts = Counter(
-        (category, part.model)
-        for build in builds
-        for category, part in build.components.items()
-    )
-    return [key for key, count in counts.most_common() if count >= 5]
-
-
-def _common_brands(builds: list) -> list[tuple[str, str]]:
-    counts = Counter(
-        (category, part.brand)
-        for build in builds
-        for category, part in build.components.items()
-        if part.brand
-    )
-    return [key for key, count in counts.most_common() if count >= 5]
+    return rows
 
 
 def generate() -> list[dict]:
-    rng = random.Random(SEED)
-    catalog = ShopCatalog.load(CATALOG_DIR)
-    builds = list(catalog._builds.values())
-    workloads = _workload_records(builds)
-    if len(workloads) < 20:
-        raise RuntimeError("V3 catalog does not contain enough distinct workload labels")
+    rows = _create_rows() + _update_rows() + _context_rows() + _control_and_edge_rows()
+    unique = {json.dumps(row, ensure_ascii=False, sort_keys=True): row for row in rows}
+    if len(unique) != len(rows):
+        raise ValueError("Duplicate training rows generated")
 
-    rows = []
-
-    # 40 detailed single-turn selects.
-    for index in range(40):
-        source = workloads[index % len(workloads)]
-        workload = str(source.attributes["Primary_Workload"]).strip()
-        request = _request(
-            [f"{DETAIL_PREFIXES[index % len(DETAIL_PREFIXES)]} {workload}"],
-            max(source.total_price + 5_000_000, 15_000_000),
-        )
-        rows.append(_select_row(catalog, request))
-
-    # 20 accumulated clarification-answer selects.
-    for index in range(20):
-        source = workloads[(index + 9) % len(workloads)]
-        workload = str(source.attributes["Primary_Workload"]).strip()
-        request = _request(
-            ["mình cần build một bộ PC", f"Nhu cầu cụ thể là {workload}"],
-            max(source.total_price + 5_000_000, 15_000_000),
-            clarification_count=1,
-        )
-        rows.append(_select_row(catalog, request))
-
-    # Four exact-component, three mandatory-brand, two quantity, and one
-    # no-budget enterprise select.
-    for index, (category, model) in enumerate(_common_components(builds)[:4]):
-        source = workloads[index]
-        workload = str(source.attributes["Primary_Workload"]).strip()
-        request = _request(
-            [f"Cần máy cho {workload}, bắt buộc dùng {model}"],
-            300_000_000,
-            components={category: model},
-        )
-        rows.append(_select_row(catalog, request))
-
-    for index, (category, brand) in enumerate(_common_brands(builds)[:3]):
-        source = workloads[index + 4]
-        workload = str(source.attributes["Primary_Workload"]).strip()
-        request = _request(
-            [f"Cần máy cho {workload}, {category} phải là {brand}"],
-            300_000_000,
-            brands={category: brand},
-        )
-        rows.append(_select_row(catalog, request))
-
-    for index, quantity in enumerate((3, 10)):
-        request = _request(
-            [f"Mua {quantity} bộ máy cho văn phòng xử lý bảng tính và nhiều tab trình duyệt"],
-            30_000_000,
-            quantity=quantity,
-        )
-        rows.append(_select_row(catalog, request))
-
-    rows.append(_select_row(catalog, _request([
-        "Doanh nghiệp cần workstation chạy mô phỏng, máy ảo và xử lý dữ liệu nặng; chi phí không phải ưu tiên"
-    ], None)))
-
-    # Ten forced selections after the two-question limit.
-    for index in range(10):
-        request = _request(
-            ["mình cần build pc", "chưa có ưu tiên cụ thể", f"hãy chọn phương án phù hợp số {index + 1}"],
-            None,
-            clarification_count=2,
-            force_select=True,
-        )
-        rows.append(_select_row(catalog, request))
-
-    # Ten budget-only, ten generally vague, and ten gaming-only clarifications.
-    for index, millions in enumerate((8, 10, 12, 14, 16, 18, 22, 24, 26, 28)):
-        budget = millions * 1_000_000
-        request = _request([f"build pc ngân sách {budget // 1_000_000} triệu"], budget)
-        rows.append(_row(request, _retrieve(catalog, request), PcBuildDecision(
-            action="clarify",
-            clarification_question=CLARIFICATION_QUESTIONS[index],
-        )))
-
-    for index, requirement in enumerate(VAGUE_REQUIREMENTS):
-        request = _request([requirement], None)
-        rows.append(_row(request, _retrieve(catalog, request), PcBuildDecision(
-            action="clarify",
-            clarification_question=CLARIFICATION_QUESTIONS[index],
-        )))
-
-    for requirement, question in zip(
-        VAGUE_GAMING_REQUIREMENTS,
-        GAMING_CLARIFICATION_QUESTIONS,
-    ):
-        request = _request([requirement], None)
-        rows.append(_row(request, _retrieve(catalog, request), PcBuildDecision(
-            action="clarify",
-            clarification_question=question,
-        )))
-
-    # Ten catalog-derived budget-gap responses use the same production decision
-    # payload and the exact cheapest candidate.
-    cheapest = catalog.search_builds(BuildQuery(
-        text="build pc",
-        price_order="asc",
-        limit=1,
-    ))[0]
-    for index, quantity in enumerate((1, 2, 3, 5, 10, 1, 2, 3, 5, 10)):
-        rows.append(_budget_row(
-            cheapest,
-            max(1_000_000, cheapest.total_price - (index + 1) * 500_000),
-            quantity,
-        ))
-
-    # Five impossible canonical component combinations and five missing IDs
-    # teach factual responses without formatter-authored prose.
-    for components in _unavailable_constraints(catalog, builds):
-        facts = {"components": components, "mandatory_brands": {}}
-        request = _request(
-            ["build pc với linh kiện bắt buộc"],
-            None,
-            components=components,
-            response_mode="unavailable",
-            response_facts=facts,
-        )
-        models = " và ".join(components.values())
-        rows.append(_row(request, [], PcBuildDecision(
-            action="respond",
-            response_text=(
-                f"Hiện không có cấu hình nào đáp ứng đồng thời {models}. "
-                "Bạn muốn bỏ bớt ràng buộc nào hoặc bắt đầu lại?"
-            ),
-        )))
-
-    for index in range(5):
-        build_id = None if index == 0 else f"BUILD-KHONG-CO-{index}"
-        facts = {"build_id": build_id}
-        request = _request(
-            ["hỏi về bộ PC đã chọn"],
-            None,
-            response_mode="missing_build",
-            response_facts=facts,
-        )
-        subject = (
-            f"bộ PC mã {build_id}"
-            if build_id else "dữ liệu bộ PC hiện tại"
-        )
-        rows.append(_row(request, [], PcBuildDecision(
-            action="respond",
-            response_text=(
-                f"Em không tìm thấy {subject} trong catalog. "
-                "Bạn muốn cung cấp lại yêu cầu hay kiểm tra một mã khác?"
-            ),
-        )))
-
-    # Add missing_budget logic
-    for index in range(5):
-        request = _request(
-            ["build pc không rõ ngân sách"],
-            None,
-            response_mode="missing_budget",
-            response_facts={"missing_info": "budget"},
-        )
-        rows.append(_row(request, [], PcBuildDecision(
-            action="respond",
-            response_text=(
-                "Bạn dự kiến đầu tư khoảng bao nhiêu cho bộ máy này ạ?"
-            ),
-        )))
-
-    # Add missing_purpose logic
-    for index in range(5):
-        request = _request(
-            ["build pc 30 triệu không rõ mục đích"],
-            30_000_000,
-            response_mode="missing_purpose",
-            response_facts={"missing_info": "purpose"},
-        )
-        rows.append(_row(request, [], PcBuildDecision(
-            action="respond",
-            response_text=(
-                "Bạn định dùng máy chủ yếu để làm phần mềm gì hay chơi game nào ạ?"
-            ),
-        )))
-        
-    # Add invalid_budget logic
-    for index in range(5):
-        request = _request(
-            ["build pc với ngân sách quá thấp"],
-            3_000_000,
-            response_mode="invalid_budget",
-            response_facts={"budget": "3 triệu"},
-        )
-        rows.append(_row(request, [], PcBuildDecision(
-            action="respond",
-            response_text=(
-                "Ngân sách này thấp hơn mức tối thiểu, bạn có thể tăng lên mức cao hơn ngân sách để build PC không ạ?"
-            ),
-        )))
-
-    # Add vague upgrade logic (weak case)
-    for category, vn_name in [("cpu", "CPU"), ("gpu", "Card đồ họa"), ("mainboard", "Bo mạch chủ")]:
-        for message in [f"nâng cấp {category}", f"đổi {category} mạnh hơn", f"ưu tiên {category} hơn"]:
-            request = _request(
-                [message],
-                None,
-                response_mode=None, # it's a decision
-            )
-            rows.append(_row(request, builds[:3], PcBuildDecision(
-                action="clarify",
-                clarification_question=(
-                    f"Bạn muốn nâng cấp {vn_name} lên mã nào, hay bạn có yêu cầu cụ thể nào về {vn_name} không ạ?"
-                ),
-            )))
-
-    # Twenty normal requirement/clarification answers that keep hard state.
-    for index in range(20):
-        current = builds[index]
-        message = KEEP_MESSAGES[index % len(KEEP_MESSAGES)]
-        if index >= len(KEEP_MESSAGES):
-            message += " trong phiên làm việc chính"
-        rows.append(_turn_row(
-            _turn(catalog, current, message),
-            PcBuildTurnPlan(),
-        ))
-
-    # Twenty exact component replacements recognized by the catalog.
-    for index in range(20):
-        category = ("cpu", "gpu", "mainboard")[index % 3]
-        current = builds[index + 20]
-        target = _different_build(builds, current, category, index + 1)
-        message = f"đổi {category} sang {target.components[category].model}"
-        rows.append(_turn_row(
-            _turn(
-                catalog,
-                current,
-                message,
-                {category: current.components[category].model},
-            ),
-            PcBuildTurnPlan(set_components=[typing.cast(ComponentCategory, category)]),
-        ))
-
-    # Fifteen locks copy facts from the canonical current build.
-    for index in range(15):
-        category = ("cpu", "gpu", "mainboard")[index % 3]
-        current = builds[index + 40]
-        message = f"giữ nguyên {category} của bộ hiện tại"
-        rows.append(_turn_row(
-            _turn(catalog, current, message),
-            PcBuildTurnPlan(lock_components=[typing.cast(ComponentCategory, category)]),
-        ))
-
-    # Ten explicit removals release an existing hard constraint.
-    for index in range(10):
-        category = ("cpu", "gpu", "mainboard")[index % 3]
-        current = builds[index + 55]
-        message = f"không cần cố định {category} nữa"
-        rows.append(_turn_row(
-            _turn(
-                catalog,
-                current,
-                message,
-                {category: current.components[category].model},
-            ),
-            PcBuildTurnPlan(remove_components=[typing.cast(ComponentCategory, category)]),
-        ))
-
-    # Fifteen mixed turns exercise lock+replace and remove+replace together.
-    for index in range(15):
-        set_category = ("gpu", "mainboard", "cpu")[index % 3]
-        other_categories = [
-            category for category in ("cpu", "gpu", "mainboard")
-            if category != set_category
-        ]
-        state_category = other_categories[index % 2]
-        current = builds[index + 65]
-        target = _different_build(builds, current, set_category, index + 10)
-        if index % 2 == 0:
-            message = (
-                f"giữ nguyên {state_category} nhưng đổi {set_category} sang "
-                f"{target.components[set_category].model}"
-            )
-            update = PcBuildTurnPlan(
-                set_components=[typing.cast(ComponentCategory, set_category)],
-                lock_components=[typing.cast(ComponentCategory, state_category)],
-            )
-            stored = {}
-        else:
-            message = (
-                f"bỏ cố định {state_category} và đổi {set_category} sang "
-                f"{target.components[set_category].model}"
-            )
-            update = PcBuildTurnPlan(
-                set_components=[typing.cast(ComponentCategory, set_category)],
-                remove_components=[typing.cast(ComponentCategory, state_category)],
-            )
-            stored = {state_category: current.components[state_category].model}
-        rows.append(_turn_row(
-            _turn(catalog, current, message, stored),
-            update,
-        ))
-
-    # Twenty planner examples replace runtime case tables for money, quantity,
-    # session control, Q&A routing, mandatory brands, and exact price order.
-    current = builds[0]
-    budget_cases = (
-        ("đặt ngân sách 30 triệu", PcBuildTurnPlan(budget_action="set", budget_value=30_000_000)),
-        ("tăng thêm 5 triệu", PcBuildTurnPlan(budget_action="delta", budget_value=5_000_000)),
-        ("giảm 3 triệu", PcBuildTurnPlan(budget_action="delta", budget_value=-3_000_000)),
-        ("không giới hạn ngân sách", PcBuildTurnPlan(budget_action="clear")),
-        ("ngân sách âm 10 triệu", PcBuildTurnPlan(budget_action="invalid")),
-    )
-    for message, plan in budget_cases:
-        turn = _turn(catalog, current, message)
-        turn["context"]["budget"] = 30_000_000
-        rows.append(_turn_row(turn, plan))
-
-    for quantity in (2, 5, 20):
-        rows.append(_turn_row(
-            _turn(catalog, current, f"mình cần {quantity} bộ"),
-            PcBuildTurnPlan(quantity=quantity),
-        ))
-
-    for message, action in (
-        ("làm lại từ đầu", "reset"),
-        ("quên toàn bộ yêu cầu cũ", "reset"),
-        ("cho mình bộ khác", "alternative"),
-        ("đề xuất cấu hình khác nhưng giữ nhu cầu", "alternative"),
-    ):
-        rows.append(_turn_row(
-            _turn(catalog, current, message),
-            PcBuildTurnPlan(session_action=action),
-        ))
-
-    for message in ("bộ hiện tại dùng CPU gì", "giá bộ này bao nhiêu", "bộ này phù hợp việc gì"):
-        rows.append(_turn_row(
-            _turn(catalog, current, message),
-            PcBuildTurnPlan(route="current_build_qa"),
-        ))
-
-    for category, brand in _common_brands(builds)[:3]:
-        message = f"{category} bắt buộc phải là {brand}"
-        rows.append(_turn_row(
-            _turn(catalog, current, message),
-            PcBuildTurnPlan(mandatory_brands={typing.cast(ComponentCategory, category): brand}),
-        ))
-
-    rows.append(_turn_row(
-        _turn(catalog, current, "chọn bộ rẻ nhất"),
-        PcBuildTurnPlan(price_order="asc"),
-    ))
-    rows.append(_turn_row(
-        _turn(catalog, current, "chọn bộ đắt nhất"),
-        PcBuildTurnPlan(price_order="desc"),
-    ))
-
-    for message in (
-        "thời tiết hôm nay thế nào",
-        "cảm ơn bạn",
-        "cho mình hỏi giờ hiện tại",
-        "xin chào",
-        "mình muốn hỏi chuyện khác",
-    ):
-        rows.append(_turn_row(
-            _turn(catalog, current, message),
-            PcBuildTurnPlan(route="pass"),
-        ))
-
-    initial_messages = (
-        "build pc chơi game AAA 2K 60 FPS",
-        "cần máy render Blender cảnh lớn 4K",
-        "workstation chạy nhiều máy ảo và Docker",
-        "máy văn phòng xử lý bảng tính lớn",
-        "máy AI huấn luyện mô hình hằng ngày",
-        "build pc eSports tần số quét cao",
-        "máy dựng Premiere footage 4K",
-        "máy stream đồng thời khi chơi game",
-        "workstation xử lý dữ liệu doanh nghiệp nặng",
-        "build pc gaming hỗn hợp eSports và AAA",
-    )
-    for message in initial_messages:
-        rows.append(_turn_row(_turn(catalog, None, message), PcBuildTurnPlan()))
-
-    for millions in (10, 15, 20, 30, 50):
-        rows.append(_turn_row(
-            _turn(catalog, None, f"build pc ngân sách {millions} triệu"),
-            PcBuildTurnPlan(budget_action="set", budget_value=millions * 1_000_000),
-        ))
-
-    for message in VAGUE_REQUIREMENTS[:5]:
-        rows.append(_turn_row(_turn(catalog, None, message), PcBuildTurnPlan()))
-
-    # Paired planner contrasts: mentioning a catalog model is not an update
-    # unless the user explicitly asks to use or replace it.
-    for index in range(20):
-        category = ("cpu", "gpu", "mainboard")[index % 3]
-        current = builds[index + 100]
-        target = _different_build(builds, current, category, index + 20)
-        model = target.components[category].model
-        rows.append(_turn_row(
-            _turn(catalog, current, f"hãy thay {category} hiện tại bằng {model}"),
-            PcBuildTurnPlan(set_components=[typing.cast(ComponentCategory, category)]),
-        ))
-        rows.append(_turn_row(
-            _turn(catalog, current, f"mình chỉ đang cân nhắc {model}, chưa đổi {category}"),
-            PcBuildTurnPlan(),
-        ))
-
-    # The same current component can be locked, released, or merely discussed.
-    for index in range(10):
-        category = ("cpu", "gpu", "mainboard")[index % 3]
-        current = builds[index + 130]
-        model = current.components[category].model
-        rows.append(_turn_row(
-            _turn(catalog, current, f"khóa {category} {model}, giữ nguyên linh kiện này"),
-            PcBuildTurnPlan(lock_components=[typing.cast(ComponentCategory, category)]),
-        ))
-        rows.append(_turn_row(
-            _turn(catalog, current, f"bỏ ràng buộc {category} {model}", {category: model}),
-            PcBuildTurnPlan(remove_components=[typing.cast(ComponentCategory, category)]),
-        ))
-        rows.append(_turn_row(
-            _turn(catalog, current, f"{category} {model} hiện tại ổn, nhưng chưa cần khóa"),
-            PcBuildTurnPlan(),
-        ))
-
-    # Resolution and frame-rate numbers are not money; explicit currency is.
-    non_budget_messages = (
-        "chơi game 2K 60 FPS",
-        "chơi game 4K 120 FPS",
-        "dựng video 4K hàng ngày",
-        "xuất hình 8K cho màn hình lớn",
-        "eSports 1080p 240 FPS",
-        "render 3D cảnh 4K",
-        "stream 1440p 60 FPS",
-        "chạy 2 máy ảo và Docker",
-        "làm việc trên 4 màn hình",
-        "huấn luyện mô hình 7B",
-    )
-    for index, millions in enumerate((12, 15, 20, 25, 30, 35, 40, 45, 50, 60)):
-        rows.append(_turn_row(
-            _turn(catalog, current, f"đặt ngân sách mỗi bộ là {millions} triệu"),
-            PcBuildTurnPlan(budget_action="set", budget_value=millions * 1_000_000),
-        ))
-        rows.append(_turn_row(
-            _turn(catalog, current, non_budget_messages[index]),
-            PcBuildTurnPlan(),
-        ))
-
-    for message in (
-        "ưu tiên GPU hơn CPU nhưng chưa đổi linh kiện",
-        "ưu tiên CPU cho biên dịch, giữ ràng buộc hiện tại",
-        "muốn máy ổn định hơn, chưa chỉ định model",
-        "thích NVIDIA nhưng không bắt buộc hãng",
-        "thích AMD nhưng vẫn chấp nhận phương án khác",
-        "cần nhiều hiệu năng GPU hơn cho workload đã nói",
-        "cần nhiều nhân CPU hơn cho workload đã nói",
-        "ưu tiên ít ồn và tiết kiệm điện",
-        "muốn cân bằng CPU và GPU",
-        "giữ nhu cầu cũ, chỉ bổ sung ưu tiên độ bền",
-    ):
-        rows.append(_turn_row(_turn(catalog, current, message), PcBuildTurnPlan()))
-
-    # Paired decision contrasts use identical valid candidates. Vague and
-    # budget-only requests clarify; the same requests must select when forced.
-    for index, requirement in enumerate(VAGUE_REQUIREMENTS):
-        requirement = f"{requirement}, chưa xác định công việc chính"
-        clarify_request = _request([requirement], None)
-        candidates = _retrieve(catalog, clarify_request)
-        rows.append(_row(clarify_request, candidates, PcBuildDecision(
-            action="clarify",
-            clarification_question=CLARIFICATION_QUESTIONS[index],
-        )))
-        rows.append(_select_row(catalog, _request(
-            [requirement],
-            None,
-            clarification_count=2,
-            force_select=True,
-        ), candidates))
-
-    for index, millions in enumerate((9, 11, 13, 15, 17, 19, 21, 23, 25, 27)):
-        requirement = f"mình chỉ có ngân sách {millions} triệu, chưa nói nhu cầu"
-        clarify_request = _request([requirement], millions * 1_000_000)
-        candidates = _retrieve(catalog, clarify_request)
-        rows.append(_row(clarify_request, candidates, PcBuildDecision(
-            action="clarify",
-            clarification_question=CLARIFICATION_QUESTIONS[index],
-        )))
-        rows.append(_select_row(catalog, _request(
-            [requirement],
-            millions * 1_000_000,
-            clarification_count=2,
-            force_select=True,
-        ), candidates))
-
-    # Response modes share the same production decision prompt.
-    for index in range(5):
-        facts = {"valid_budget": "lớn hơn 0"}
-        request = _request(
-            [f"ngân sách không hợp lệ trường hợp {index + 1}"],
-            None,
-            response_mode="invalid_budget",
-            response_facts=facts,
-        )
-        rows.append(_row(request, [], PcBuildDecision(
-            action="respond",
-            response_text="Ngân sách cần lớn hơn 0. Bạn muốn cung cấp lại mức hợp lệ nào?",
-        )))
-
-    for build in builds[:5]:
-        request = _request(
-            ["hỏi về bộ PC hiện tại"],
-            None,
-            response_mode="build_qa",
-            response_facts={"question": "Bộ này phù hợp việc gì?"},
-        )
-        rows.append(_row(request, [build], PcBuildDecision(
-            action="respond",
-            response_text=f"Bộ này phù hợp cho {build.detailed_purpose.strip()}.",
-        )))
-
-    unique_dict = {json.dumps(row, ensure_ascii=False, sort_keys=True): row for row in rows}
-    unique_rows = list(unique_dict.values())
-    rng.shuffle(unique_rows)
-    return unique_rows
+    rows = list(unique.values())
+    random.Random(SEED).shuffle(rows)
+    for row in rows:
+        messages = row["messages"]
+        if [message["role"] for message in messages] != ["system", "user", "assistant"]:
+            raise ValueError("Training rows must use the production system/user payload")
+        PcBuildCommand.model_validate_json(messages[-1]["content"])
+        if "PcBuildTurnPlan" in messages[0]["content"] or "PcBuildDecision" in messages[0]["content"]:
+            raise ValueError("Obsolete PC Builder schema leaked into training data")
+    return rows
 
 
 def main() -> None:
-    rows = generate()
+    if not OUTPUT.exists():
+        raise FileNotFoundError(
+            f"{OUTPUT} is required because it contains the preserved legacy training rows"
+        )
+
+    existing = [
+        json.loads(line)
+        for line in OUTPUT.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    legacy_rows = [
+        row
+        for row in existing
+        if "PcBuildCommand" not in row["messages"][0]["content"]
+    ]
+    if len(legacy_rows) != LEGACY_ROW_COUNT:
+        raise ValueError(
+            f"Expected {LEGACY_ROW_COUNT} preserved legacy rows, got {len(legacy_rows)}"
+        )
+
+    extractor_rows = generate()
+    rows = legacy_rows + extractor_rows
     OUTPUT.write_text(
         "\n".join(json.dumps(row, ensure_ascii=False) for row in rows) + "\n",
         encoding="utf-8",
     )
-    print(f"Generated {len(rows)} rows into {OUTPUT}")
+    print(
+        f"Preserved {len(legacy_rows)} legacy rows and generated "
+        f"{len(extractor_rows)} extractor rows into {OUTPUT}"
+    )
 
 
 if __name__ == "__main__":

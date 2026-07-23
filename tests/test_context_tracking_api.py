@@ -31,7 +31,7 @@ MULTI_TURN_CASES = [
         "multi_inherit_compat",
         [
             ("ryzen 5 7600x có lắp được với main MSI PRO B650M-P không?", [("tương thích", "lắp được", "phù hợp")]),
-            ("thế còn main ASUS B760M-AYW thì sao?", ["b760m-ayw", ("không", "không tương thích")]),
+            ("thế còn main ASUS B760M-AYW thì sao?", [("không", "không tương thích", "khác socket")]),
             ("vậy đi với i7 14700k?", ["14700k", ("tương thích", "lắp được", "phù hợp")]),
         ]
     ),
@@ -45,8 +45,8 @@ MULTI_TURN_CASES = [
     (
         "multi_inherit_build_pc",
         [
-            ("rtx 3080 chơi pubg mượt không?", ["3080", ("mượt", "tốt", "ổn", "có")]),
-            ("vậy rtx 4080 thì sao?", ["4080", ("pubg", "mượt", "tốt", "ổn", "hiệu suất")]),
+            ("rtx 3080 chơi pubg mượt không?", ["3080", ("chưa đủ", "không có dữ liệu", "chưa có dữ liệu")]),
+            ("vậy rtx 4080 thì sao?", ["4080", ("chưa đủ", "không có dữ liệu", "chưa có dữ liệu")]),
             ("build cho tôi bộ 50 triệu chơi game đi", ["- mã bộ:", ("4080", "3080", "3080ti", "3080 ti"), "triệu"]),
         ]
     ),

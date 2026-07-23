@@ -78,14 +78,14 @@ def _build_clock_hint(item: dict) -> str:
     )
 
 
-def build_specification_context(parsed_intent, category, catalog: ShopCatalog, search_query) -> tuple[str, str]:
+def build_specification_context(parsed_entities, category, catalog: ShopCatalog, search_query) -> tuple[str, str]:
     """
     Container xử lý riêng cho luồng hỏi thông số kỹ thuật.
     Trả về: (context, format_hint)
     """
-    lookup_term = parsed_intent.target_product
+    lookup_term = parsed_entities.target_product
     if not lookup_term or lookup_term.strip().lower() == "none":
-        for fallback in [parsed_intent.cpu, parsed_intent.gpu, parsed_intent.mainboard]:
+        for fallback in [parsed_entities.cpu, parsed_entities.gpu, parsed_entities.mainboard]:
             if fallback and fallback.strip().lower() != "none":
                 lookup_term = fallback
                 break
@@ -112,15 +112,15 @@ def build_specification_context(parsed_intent, category, catalog: ShopCatalog, s
 
         detected_field_key, detected_field_val, spec_detail = _find_spec_field(
             query_lower=query_lower,
-            spec_detail_llm=parsed_intent.spec_detail,
+            spec_detail_llm=parsed_entities.spec_detail,
             item=item
         )
-        has_open_spec_detail = parsed_intent.spec_detail and parsed_intent.spec_detail.strip().lower() != "none"
+        has_open_spec_detail = parsed_entities.spec_detail and parsed_entities.spec_detail.strip().lower() != "none"
         if not detected_field_key:
-            spec_detail = parsed_intent.spec_detail if has_open_spec_detail else "tất cả thông số"
+            spec_detail = parsed_entities.spec_detail if has_open_spec_detail else "tất cả thông số"
 
         format_hint = f"THÔNG TIN HỆ THỐNG: Khách đang hỏi thông số '{spec_detail}' của '{actual_name}'."
-        clock_hint = _build_clock_hint(item) if _is_generic_clock_question(query_lower, parsed_intent.spec_detail) else ""
+        clock_hint = _build_clock_hint(item) if _is_generic_clock_question(query_lower, parsed_entities.spec_detail) else ""
         
         if clock_hint:
             format_hint += f"\n{clock_hint}"
@@ -142,7 +142,7 @@ def build_specification_context(parsed_intent, category, catalog: ShopCatalog, s
         
     return context, format_hint
 
-def build_general_search_context(parsed_intent, msg_lower, category, catalog: ShopCatalog, search_query) -> tuple[str, str]:
+def build_general_search_context(parsed_entities, msg_lower, category, catalog: ShopCatalog, search_query) -> tuple[str, str]:
     """
     Container xử lý riêng cho luồng tìm kiếm chung chung (general_search).
     Hỗ trợ Regex lấy số lượng (ví dụ: "top 5").

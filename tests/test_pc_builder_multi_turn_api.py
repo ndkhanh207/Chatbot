@@ -1,5 +1,6 @@
 import sys
 import os
+import time
 sys.path.insert(0, os.path.dirname(__file__))
 from tests.utils import get_auth_headers
 import pytest
@@ -15,6 +16,7 @@ MULTI_TURN_CASES = [
         "conversation_budget",
         [
             ("build pc 30 triệu chơi game", [("cpu", "?"), ("gpu", "?"), ("mainboard", "?")]),
+            ("chơi Valorant 1080p 240 FPS", [("cpu", "?"), ("gpu", "?"), ("mainboard", "?")]),
             ("tăng ngân sách lên 35 triệu", [("cpu", "?"), ("gpu", "?"), ("mainboard", "?")]),
             ("thôi chỉ còn 20 triệu", [("cao hơn ngân sách", "tăng ngân sách", "cpu", "mâu thuẫn", "?")]),
         ]
@@ -23,6 +25,7 @@ MULTI_TURN_CASES = [
         "conversation_cpu_lock",
         [
             ("build pc 30 triệu làm văn phòng", [("cpu", "?"), ("gpu", "?"), ("mainboard", "?")]),
+            ("xử lý Excel lớn, Power Query và Power BI", [("cpu", "?"), ("gpu", "?"), ("mainboard", "?")]),
             ("giữ nguyên cpu nhưng đổi sang rtx 4080", [("cao hơn ngân sách", "tăng ngân sách", "cpu", "mâu thuẫn", "?")]),
             ("ok 50 triệu đi", [("cpu", "?"), ("gpu", "?"), ("mainboard", "?")]),
             ("giữ nguyên gpu nhưng đổi sang main z790", [("cpu", "?"), ("gpu", "?"), ("mainboard", "?")]),
@@ -31,7 +34,7 @@ MULTI_TURN_CASES = [
     (
         "conversation_gpu_lock",
         [
-            ("build pc dùng rtx 4070 giá 50 triệu", [("cpu", "?"), ("gpu", "?"), ("mainboard", "?")]),
+            ("build pc dùng rtx 4070 giá 50 triệu để chơi AAA 2K ray tracing", [("cpu", "?"), ("gpu", "?"), ("mainboard", "?")]),
             ("hãy tối ưu cpu và main", [("cpu", "?"), ("mainboard", "?")]),
         ]
     ),
@@ -39,6 +42,7 @@ MULTI_TURN_CASES = [
         "conversation_replace_cpu",
         [
             ("build pc 35 triệu làm ai", [("cpu", "?"), ("gpu", "?"), ("mainboard", "?")]),
+            ("fine-tune mô hình nhỏ và chạy Stable Diffusion", [("cpu", "?"), ("gpu", "?"), ("mainboard", "?")]),
             ("đổi cpu sang ryzen 9 7950x", [("cao hơn ngân sách", "tăng ngân sách", "cpu", "mâu thuẫn", "?")]),
             ("ok 55 triệu đi", [("cpu", "?"), ("gpu", "?"), ("mainboard", "?")]),
             ("quay lại intel", [("cpu", "?"), ("mainboard", "?")]),
@@ -48,6 +52,7 @@ MULTI_TURN_CASES = [
         "conversation_replace_gpu",
         [
             ("build pc 35 triệu chơi game", [("cpu", "?"), ("gpu", "?"), ("mainboard", "?")]),
+            ("chơi AAA 2K 144 FPS", [("cpu", "?"), ("gpu", "?"), ("mainboard", "?")]),
             ("đổi sang rtx 4080", [("cao hơn ngân sách", "tăng ngân sách", "mâu thuẫn", "?")]),
             ("ok 55 triệu đi", [("cpu", "?"), ("gpu", "?"), ("mainboard", "?")]),
         ]
@@ -62,7 +67,7 @@ MULTI_TURN_CASES = [
     (
         "conversation_upgrade",
         [
-            ("build bộ pc 25 triệu làm data nặng ", [("cpu", "?"), ("gpu", "?"), ("mainboard", "?")]),
+            ("build bộ pc 25 triệu chạy Power BI, SQL ETL và Python trên dữ liệu lớn", [("cpu", "?"), ("gpu", "?"), ("mainboard", "?")]),
             ("nâng cấp cpu", [("cpu", "?")]),
             ("nâng cấp gpu", [("gpu", "?")]),
         ]
@@ -78,13 +83,14 @@ MULTI_TURN_CASES = [
     (
         "conversation_missing_context",
         [
-            ("build pc", [("?", "- mã bộ:")]),
+            ("build pc", [("ngân sách", "nhu cầu", "- mã bộ:")]),
         ]
     ),
     (
         "conversation_compare",
         [
             ("build pc intel 30 triệu chơi game", [("cpu", "?"), ("gpu", "?"), ("mainboard", "?")]),
+            ("chơi Valorant 1080p 240 FPS", [("cpu", "?"), ("gpu", "?"), ("mainboard", "?")]),
             ("đổi sang amd", [("cpu", "?"), ("mainboard", "?")]),
             ("quay lại intel", [("cpu", "?"), ("mainboard", "?")]),
         ]
@@ -230,6 +236,7 @@ def test_multi_turn_pc_builder(label, turns):
 
     for turn_idx, (question, expected_keywords) in enumerate(turns, 1):
         print(f"\n▶ [Turn {turn_idx}] Gửi: {question}")
+        time.sleep(5)
         reply = _send(session_id, question)
 
         passed, missing_display = _log(

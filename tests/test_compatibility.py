@@ -14,7 +14,10 @@ import re
 import pytest
 from fastapi.testclient import TestClient
 from main import app
+from app.catalog import ShopCatalog
+from config.config import Config
 
+app.state.catalog = ShopCatalog.load(Config.PC_STORE_DATA)
 client = TestClient(app)
 
 

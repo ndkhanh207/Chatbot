@@ -3,7 +3,7 @@ import asyncio
 from unittest.mock import AsyncMock, patch, MagicMock
 from app.catalog import ShopCatalog, ProductRecord, ProductQuery
 from app.chat.models import DomainRequest
-from app.core.intent.master_intent import MasterIntentSchema as ParsedIntent
+from app.core.extraction.extractor import ExtractedEntities
 from app.price.handler import PriceHandler
 from app.rag.models import GroundedAnswer, GroundedAnswerRequest
 from app.llm.result import LlmResult, LlmErrorKind
@@ -25,21 +25,21 @@ def domain_request():
 
 def test_price_handler_not_found(mock_catalog, domain_request):
     async def run_test():
-        intent = ParsedIntent(intent="price_check", target_product="Unknown Product")
+        intent = ExtractedEntities(intent="price", target_product="Unknown Product")
         handler = PriceHandler(mock_catalog)
         
         result = await handler.handle(domain_request, intent)
         
         assert "chưa tìm thấy" in result.reply
-        assert result.metadata["intent"] == "price_check"
+        assert result.metadata["intent"] == "price"
     asyncio.run(run_test())
 
 
 @patch("app.price.handler.generate_grounded_answer")
 def test_price_handler_calculation_success(mock_generate, mock_catalog, domain_request):
     async def run_test():
-        intent = ParsedIntent(
-            intent="price_calculation", 
+        intent = ExtractedEntities(
+            intent="price",
             cpu="Intel i5", 
             mainboard="Asus B660"
         )
@@ -73,7 +73,7 @@ def test_price_handler_calculation_success(mock_generate, mock_catalog, domain_r
 @patch("app.price.handler.generate_grounded_answer")
 def test_price_handler_fallback(mock_generate, mock_catalog, domain_request):
     async def run_test():
-        intent = ParsedIntent(intent="price_check", target_product="Intel i5")
+        intent = ExtractedEntities(intent="price", target_product="Intel i5")
         
         mock_catalog.search_products.return_value = [
             ProductRecord(product_id="cpu_1", name="Intel i5", price=5000000, category="CPU", brand="Intel", url="")

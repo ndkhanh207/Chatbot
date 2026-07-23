@@ -3,14 +3,14 @@ from typing import Protocol
 
 from app.chat.models import DomainRequest, ChatResult
 from app.routing.models import RouteDecision
-from app.core.intent.master_intent import MasterIntentSchema as ParsedIntent
+from app.core.extraction.extractor import ExtractedEntities
 
 
 class DomainHandler(Protocol):
     async def handle(
         self,
         request: DomainRequest,
-        intent: ParsedIntent,
+        entities: ExtractedEntities,
         route_decision: RouteDecision | None = None,
     ) -> ChatResult:
         ...

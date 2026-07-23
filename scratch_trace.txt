@@ -1,0 +1,2 @@
+REWRITTEN: Kiểm tra AMD Ryzen 7 9800X3D, MSI B850 PRO và GIGABYTE GeForce RTX 5070 Ti GAMING 16G có tương thích với nhau không
+ENTITIES: {'intent': 'compatibility', 'target_product': None, 'spec_detail': None, 'cpu': 'AMD Ryzen 7 9800X3D', 'mainboard': 'MSI B850 PRO', 'gpu': 'GIGABYTE GeForce RTX 5070 Ti GAMING 16G', 'budget_amount': 0, 'category': None}

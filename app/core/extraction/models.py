@@ -1,6 +1,6 @@
 from typing import Literal
 from pydantic import BaseModel
-from app.core.intent.master_intent import MasterIntentSchema
+from app.core.extraction.extractor import ExtractedEntities
 
 LlmErrorKind = Literal[
     "timeout",
@@ -9,11 +9,10 @@ LlmErrorKind = Literal[
     "unknown"
 ]
 
-class IntentResult(BaseModel):
-    value: MasterIntentSchema | None = None
+class ExtractionResult(BaseModel):
+    value: ExtractedEntities | None = None
     error: LlmErrorKind | None = None
     source: Literal[
-        "fast_path",
         "llm",
         "fallback",
     ]

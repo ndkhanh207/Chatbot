@@ -16,6 +16,14 @@ class RoutingRequest(BaseModel):
     user_message: str
     recent_history: tuple[str, ...]
     active_tasks: tuple[ActiveTaskSummary, ...]
+    previous_handler: str | None = None
+
+
+class ContextRewrite(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    rewritten_query: str = Field(min_length=1, max_length=1000)
+    operation_changed: bool
 
 
 class TaskRelation(str, Enum):

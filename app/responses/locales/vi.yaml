@@ -11,6 +11,9 @@ search_header: >
 specification_fallback: >
   Dạ đây là thông tin kỹ thuật của {name}. Do lỗi kết nối, em chỉ có thể cung cấp nguyên mẫu hệ thống: {facts}
 
+specification_detail_unavailable: >
+  Dạ, catalog hiện chưa đủ dữ liệu về {detail} của {name} để trả lời chính xác ạ.
+
 
 # Suggestion
 missing_origin_component: >
@@ -35,42 +38,33 @@ price_check_fallback: >
 price_calculation_fallback: >
   Dạ, tổng giá tiền của các sản phẩm là {total_formatted} VNĐ ạ.
 
-# PC Builder
+# PC Builder Clarification
 missing_budget: >
-  Bạn vui lòng cho mình biết ngân sách dự kiến để mình cấu hình cho phù hợp nhé.
-
-invalid_budget: >
-  Ngân sách bạn nhập chưa hợp lệ. Bạn vui lòng nhập số tiền cụ thể nhé.
+  Dạ để tư vấn cấu hình phù hợp nhất, bạn có thể cho mình biết ngân sách dự kiến của bạn khoảng bao nhiêu được không ạ?
 
 missing_purpose: >
-  Bạn vui lòng cho mình biết nhu cầu sử dụng chính (ví dụ: chơi game, làm việc văn phòng, đồ họa...) để mình chọn linh kiện tối ưu nhất nhé.
-
-budget_gap: >
-  Ngân sách của bạn hơi thấp so với yêu cầu cấu hình. Bạn có thể tăng thêm ngân sách hoặc giảm bớt yêu cầu được không?
-
-no_candidate_build: >
-  Dạ hiện tại không có cấu hình nào phù hợp với yêu cầu của anh/chị. Anh/chị có thể thay đổi ngân sách hoặc yêu cầu được không ạ?
-
-missing_selected_build: >
-  Bạn chưa chọn cấu hình nào cả. Bạn có thể cho mình biết nhu cầu và ngân sách để mình đề xuất nhé.
-
-build_not_found: >
-  Cấu hình bạn đang chọn hiện không còn khả dụng trong kho.
-
-merge_error: >
-  Yêu cầu chưa rõ, bạn nói lại giúp em nhé?
-
-build_qa: >
-  Dạ em đã ghi nhận thông tin.
+  Dạ để tối ưu cấu hình nhất, bạn có thể chia sẻ thêm chi tiết mục đích sử dụng chính của máy (ví dụ: chơi game cụ thể nào, phần mềm làm việc nào) không ạ?
 
 budget_scope_ambiguous: >
-  Ngân sách {budget} đồng là tổng cho {qty} bộ hay là ngân sách cho mỗi bộ?
+  Dạ bạn muốn ngân sách {budget} VNĐ là cho tổng {qty} máy hay cho mỗi máy ạ?
 
 component_not_found: >
-  Em không tìm thấy linh kiện '{name}' trong kho. Bạn có muốn đổi sang dòng tương đương không?
+  Dạ em không tìm thấy linh kiện "{name}" trong kho. Bạn kiểm tra lại tên giúp em nhé.
 
 components_incompatible: >
-  Cấu hình với các linh kiện bạn yêu cầu hiện không có sẵn (hoặc không tương thích). Bạn có thể đổi yêu cầu không?
+  Dạ các linh kiện bạn chọn không tương thích với nhau. Bạn có muốn em gợi ý linh kiện thay thế không ạ?
+
+merge_error: >
+  Dạ em gặp lỗi khi xử lý yêu cầu cập nhật cấu hình. Bạn thử lại giúp em nhé.
+
+missing_selected_build: >
+  Dạ hiện chưa có cấu hình nào được chọn. Bạn muốn em tư vấn một bộ PC mới không ạ?
+
+build_not_found: >
+  Dạ em không tìm thấy bộ máy đã chọn trước đó trong hệ thống. Bạn muốn em tìm bộ mới không ạ?
+
+no_candidate_build: >
+  Dạ em không tìm thấy cấu hình nào phù hợp với yêu cầu của bạn. Bạn thử điều chỉnh ngân sách hoặc nhu cầu giúp em nhé.
 
 # Compatibility
 compatibility_missing_info: >

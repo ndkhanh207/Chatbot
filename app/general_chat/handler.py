@@ -1,20 +1,20 @@
 from app.chat.contracts import DomainHandler
 from app.chat.models import DomainRequest, ChatResult
-from app.core.intent.master_intent import MasterIntentSchema as ParsedIntent
+from app.core.extraction.extractor import ExtractedEntities
 from app.rag.models import EvidencePackage, GroundedAnswerRequest
 from app.rag.generator import generate_grounded_answer
 
 class GeneralChatHandler:
-    async def handle(self, request: DomainRequest, intent: ParsedIntent, route_decision=None) -> ChatResult:
+    async def handle(self, request: DomainRequest, entities: ExtractedEntities, route_decision=None) -> ChatResult:
         evidence = EvidencePackage(
             query=request.user_message,
-            intent=intent.intent,
+            intent=entities.intent,
             items=[]
         )
         generation = await generate_grounded_answer(
             GroundedAnswerRequest(
                 user_message=request.user_message,
-                intent=intent.intent,
+                intent=entities.intent,
                 evidence=evidence,
                 chat_history=request.chat_history
             )
@@ -30,5 +30,5 @@ class GeneralChatHandler:
         return ChatResult(
             reply=reply,
             contexts=[],
-            metadata={"intent": intent.intent}
+            metadata={"intent": entities.intent}
         )
